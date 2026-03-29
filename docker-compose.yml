@@ -1,0 +1,26 @@
+services:
+  platform:
+    build: ./platform
+    container_name: linux-lab-platform
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - platform-data:/data
+    environment:
+      - LAB_IMAGE=linux-lab
+      - LAB_NETWORK=linux-lab-net
+      - DB_PATH=/data/platform.db
+      - SECRET_KEY=change-me-in-production
+    depends_on:
+      lab-image:
+        condition: service_completed_successfully
+
+  # This service just builds the lab image, then exits
+  lab-image:
+    build: ./lab
+    image: linux-lab
+    entrypoint: ["echo", "Lab image built"]
+
+volumes:
+  platform-data:

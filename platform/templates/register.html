@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Inscription — Linux CLI Lab{% endblock %}
+{% block extra_css %}
+.auth-page { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+.auth-box { background:var(--bg2); border:1px solid var(--border); border-radius:16px; padding:40px; width:100%; max-width:420px; }
+.auth-logo { text-align:center; font-size:24px; font-weight:700; color:var(--accent-l); margin-bottom:8px; }
+.auth-sub { text-align:center; color:var(--dim); font-size:14px; margin-bottom:32px; }
+.row { display:flex; gap:12px; }
+.row .field { flex:1; }
+.field { margin-bottom:20px; }
+.field label { display:block; font-size:13px; font-weight:600; color:var(--dim); margin-bottom:6px; }
+.field input { width:100%; padding:12px 16px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; outline:none; transition:.2s; }
+.field input:focus { border-color:var(--accent); }
+.btn { width:100%; padding:14px; border:none; border-radius:10px; background:linear-gradient(135deg,var(--accent),#845ec2); color:white; font-size:15px; font-weight:700; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:.2s; }
+.btn:hover { transform:translateY(-1px); box-shadow:0 4px 15px rgba(108,92,231,.4); }
+.error { background:rgba(225,112,85,.15); border:1px solid var(--err); color:var(--err); padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:20px; }
+.link { text-align:center; margin-top:20px; font-size:13px; color:var(--dim); }
+{% endblock %}
+{% block body %}
+<div class="auth-page">
+    <div class="auth-box">
+        <div class="auth-logo">&gt;_ Linux CLI Lab</div>
+        <div class="auth-sub">Créez votre compte pour commencer</div>
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <form method="post" action="/register">
+            <div class="row">
+                <div class="field">
+                    <label>Prénom</label>
+                    <input type="text" name="first_name" required placeholder="Jean">
+                </div>
+                <div class="field">
+                    <label>Nom</label>
+                    <input type="text" name="last_name" required placeholder="Dupont">
+                </div>
+            </div>
+            <div class="field">
+                <label>Adresse email</label>
+                <input type="email" name="email" required placeholder="jean.dupont@ecole.fr">
+            </div>
+            <div class="field">
+                <label>Mot de passe</label>
+                <input type="password" name="password" required placeholder="4 caractères minimum">
+            </div>
+            <div class="field">
+                <label>Confirmer le mot de passe</label>
+                <input type="password" name="password2" required placeholder="••••••••">
+            </div>
+            <button type="submit" class="btn">Créer mon compte</button>
+        </form>
+        <div class="link">Déjà un compte ? <a href="/login">Se connecter</a></div>
+    </div>
+</div>
+{% endblock %}

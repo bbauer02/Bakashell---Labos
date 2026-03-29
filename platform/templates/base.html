@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Linux CLI Lab{% endblock %}</title>
+    <style>
+        :root {
+            --bg: #0f1117; --bg2: #161822; --bg3: #1a1d2e; --card: #232639;
+            --border: #2a2d3e; --text: #e1e4ed; --dim: #8b8fa3;
+            --accent: #6c5ce7; --accent-l: #a29bfe; --ok: #00b894; --err: #e17055; --cyan: #00cec9;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+        a { color:var(--accent-l); text-decoration:none; }
+        a:hover { text-decoration:underline; }
+        code { background:var(--bg); padding:2px 6px; border-radius:4px; font-family:'JetBrains Mono','Fira Code',monospace; font-size:12px; color:var(--cyan); }
+        {% block extra_css %}{% endblock %}
+    </style>
+</head>
+<body>{% block body %}{% endblock %}</body>
+</html>
