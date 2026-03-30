@@ -12,15 +12,36 @@ services:
       - LAB_NETWORK=linux-lab-net
       - DB_PATH=/data/platform.db
       - SECRET_KEY=change-me-in-production
+    networks:
+      - linux-lab-net
     depends_on:
       lab-image:
         condition: service_completed_successfully
+      ssh-target:
+        condition: service_started
 
   # This service just builds the lab image, then exits
   lab-image:
     build: ./lab
     image: linux-lab
     entrypoint: ["echo", "Lab image built"]
+
+  # Shared SSH target for connection exercises (read-only, no shell)
+  ssh-target:
+    build: ./lab/ssh-target
+    container_name: ssh-target
+    hostname: ssh-target
+    networks:
+      - linux-lab-net
+    mem_limit: 64m
+    cpu_period: 100000
+    cpu_quota: 25000
+    restart: unless-stopped
+
+networks:
+  linux-lab-net:
+    name: linux-lab-net
+    external: true
 
 volumes:
   platform-data:

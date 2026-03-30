@@ -925,7 +925,7 @@
                     `;
 
                     // Auto-advance after 2s if not last step
-                    if (currentStep < 8) {
+                    if (currentStep < stepsData.length) {
                         setTimeout(() => selectStep(currentStep + 1), 2000);
                     }
                 } else {
@@ -1006,7 +1006,7 @@
                 }
 
                 // Auto-advance when step complete
-                if (allPassed && currentStep < 8) {
+                if (allPassed && currentStep < stepsData.length) {
                     showToast(`Étape ${currentStep} terminée !`, 'success');
                     setTimeout(() => selectStep(currentStep + 1), 2500);
                 }

@@ -2,7 +2,7 @@
 # === Utility functions for Linux Lab ===
 
 PROGRESS_FILE="/opt/linux-lab/data/progress.json"
-TOTAL_EXERCISES=30
+TOTAL_EXERCISES=93
 
 # Colors
 RED='\033[0;31m'
@@ -97,7 +97,7 @@ print_score() {
     score=$(get_score)
     local completed
     completed=$(jq '.completed | length' "$PROGRESS_FILE" 2>/dev/null || echo 0)
-    local max_score=100
+    local max_score=302
 
     echo ""
     echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"

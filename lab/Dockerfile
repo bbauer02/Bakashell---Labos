@@ -16,6 +16,18 @@ RUN apt-get update && apt-get install -y \
     sudo \
     procps \
     jq \
+    findutils \
+    gawk \
+    sed \
+    iproute2 \
+    iputils-ping \
+    net-tools \
+    gzip \
+    zip \
+    unzip \
+    cron \
+    openssh-client \
+    sshpass \
     && rm -rf /var/lib/apt/lists/*
 
 # Validation scripts
