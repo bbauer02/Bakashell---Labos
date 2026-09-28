@@ -1,5 +1,5 @@
 """Mémo du parcours Docker : une fiche par commande ou notion, débloquée par un exercice."""
-from .linux import C
+from ..linux.memo import C
 
 BASE, OBS, DATA, BUILD, NETW, COMPOSE, OPS = (
     "Conteneurs", "Observer et agir", "Ports et données", "Images et Dockerfile", "Réseaux",

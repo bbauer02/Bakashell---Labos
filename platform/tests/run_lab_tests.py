@@ -7,7 +7,7 @@ Pour chaque étape (dans l'ordre du parcours, comme un étudiant) :
   4. vérifie que TOUS les exercices passent.
 
 Usage (depuis la racine du dépôt, images construites avec
-`docker build -t linux-lab ./lab` et `docker build -t jest-lab ./jest-lab`) :
+`docker build -t linux-lab ./images/linux` et `docker build -t jest-lab ./images/jest`) :
     python platform/tests/run_lab_tests.py              # toutes les étapes du parcours Linux
     python platform/tests/run_lab_tests.py --course jest
     python platform/tests/run_lab_tests.py --skip 13    # sans l'étape qui a besoin d'Internet

@@ -26,18 +26,17 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Trois 
 | Composant | Rôle |
 |---|---|
 | `platform/` | Application FastAPI : comptes, sessions, terminal WebSocket (xterm.js), éditeur (Monaco), validation, tableau de bord |
-| `platform/app/courses.py` | Registre des parcours (image, ressources, catalogue, version) |
-| `platform/app/exercises.py` | Catalogue du parcours Linux : cours, mises en place, exercices, vérifications, indices |
-| `platform/app/jest_course.py` | Catalogue du parcours Jest |
-| `platform/app/docker_course.py` | Catalogue du parcours Docker |
+| `platform/app/courses/__init__.py` | Registre des parcours (image, ressources, catalogue, version) |
+| `platform/app/courses/<parcours>/` | Un dossier par parcours (`linux`, `jest`, `docker`) : `catalogue.py` (cours, mises en place, exercices, vérifications, indices), `memo.py` (fiches du mémo), `solutions.py` (corrigés) |
+| `platform/app/memo.py` | Mémo des commandes : déblocage des fiches selon la progression |
+| `platform/app/solutions.py` | Découpage des corrigés (un script par étape, un repère `#@ <exercice>` par exercice), visibles par les admins |
 | `platform/app/scenario.py` | Entreprise fictive et personnages communs aux parcours |
 | `platform/app/runner.py` | Construit les commandes de mise en place et de vérification (partagé avec les tests) |
-| `lab/` | Image `linux-lab` : utilisateur `etudiant` (sudoer), sshd, cron, rsyslog |
-| `jest-lab/` | Image `jest-lab` : Node 20 + Jest, code de référence, mutants, tests cachés, correcteur (`verifier.js`) |
-| `docker-lab/` | Image `docker-lab` : moteur Docker complet (docker:dind), images de base préchargées, projet de la boutique |
-| `platform/app/solutions/` | Corrigés de référence (un script par étape, un repère `#@ <exercice>` par exercice), visibles par les admins |
+| `images/linux/` | Image `linux-lab` : utilisateur `etudiant` (sudoer), sshd, cron, rsyslog |
+| `images/jest/` | Image `jest-lab` : Node 20 + Jest, code de référence, mutants, tests cachés, correcteur (`verifier.js`) |
+| `images/docker/` | Image `docker-lab` : moteur Docker complet (docker:dind), images de base préchargées, projet de la boutique |
 | `platform/tests/` | Banc de test des parcours |
-| `step-*/` | Tutoriel texte d'origine (historique, non utilisé par la plateforme) |
+| `docs/tutoriel/step-*/` | Tutoriel texte d'origine (historique, non utilisé par la plateforme) |
 
 Chaque étudiant a un conteneur **par parcours** (`lab-student-<id>`, `lab-jest-<id>`, `lab-docker-<id>`), créé à sa
 première visite.
@@ -83,7 +82,7 @@ beforeEach, `--randomize`) · 4. TDD des codes promo (tests d'après une spécif
 10. Mise en production (.only/.skip, suite complète, workflow GitHub Actions).
 
 **Évaluation par mutation** : les tests de l'étudiant doivent passer sur le code de référence, puis **échouer**
-contre chaque version volontairement boguée (« mutant ») décrite dans `jest-lab/mutants.json`. Un test trop
+contre chaque version volontairement boguée (« mutant ») décrite dans `images/jest/mutants.json`. Un test trop
 permissif est signalé avec le défaut qu'il laisse passer. S'y ajoutent des tests cachés (TDD, correction de bug),
 la couverture de code, l'exécution en ordre aléatoire et avec une date système décalée. Les tests de l'étudiant
 tournent dans un bac à sable, sous un utilisateur dédié, sans accès au code de référence.
@@ -166,16 +165,16 @@ progression de ce parcours est archivée dans la table `progress_archive`, jamai
 
 ## Modifier ou ajouter des exercices
 
-Catalogues : `platform/app/exercises.py` (Linux), `platform/app/jest_course.py` (Jest) et `docker_course.py` (Docker),
+Catalogues : `platform/app/courses/<parcours>/catalogue.py` (`linux`, `jest`, `docker`),
 format documenté en tête
-de fichier ; corrigés correspondants dans `platform/app/solutions/` (`linux.py`, `jest.py`, `docker.py`). Dans
+de fichier ; corrigés correspondants dans `solutions.py` du même dossier. Dans
 chaque script d'étape, une ligne `#@ <exercice>` ouvre la correction de cet exercice : c'est ce découpage que voient
 les admins (bouton « Voir la correction »), et la plateforme refuse de démarrer si un exercice n'a pas de correction. Pour Jest, le code
-de référence est dans `jest-lab/ref/`, les fichiers livrés aux étudiants dans `jest-lab/student/`, les mutants dans
-`jest-lab/mutants.json` et les tests cachés dans `jest-lab/hidden/`. Puis :
+de référence est dans `images/jest/ref/`, les fichiers livrés aux étudiants dans `images/jest/student/`, les mutants dans
+`images/jest/mutants.json` et les tests cachés dans `images/jest/hidden/`. Puis :
 
 ```bash
-docker build -t linux-lab ./lab && docker build -t jest-lab ./jest-lab && docker build -t docker-lab ./docker-lab
+docker build -t linux-lab ./images/linux && docker build -t jest-lab ./images/jest && docker build -t docker-lab ./images/docker
 python platform/tests/run_lab_tests.py                  # parcours Linux (~5 min, dont cron)
 python platform/tests/run_lab_tests.py --only 1-8 --skip 13
 python platform/tests/run_lab_tests.py --course jest    # parcours Jest (~1,5 min)

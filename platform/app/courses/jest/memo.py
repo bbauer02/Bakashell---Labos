@@ -1,5 +1,5 @@
 """Mémo du parcours Jest : une fiche par notion ou API, débloquée par un exercice."""
-from .linux import C
+from ..linux.memo import C
 
 BASE, MATCH, ORGA, DOUBLES, ASYNC, QUAL = (
     "Bases", "Matchers", "Organisation", "Doublures", "Asynchrone et temps", "Qualité et CI",

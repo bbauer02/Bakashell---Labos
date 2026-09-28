@@ -36,19 +36,19 @@ services:
 
   # Ce service construit seulement l'image des conteneurs étudiants (parcours Linux), puis s'arrête
   lab-image:
-    build: ./lab
+    build: ./images/linux
     image: linux-lab
     entrypoint: ["echo", "Lab image built"]
 
   # Idem pour l'image du parcours Jest
   jest-image:
-    build: ./jest-lab
+    build: ./images/jest
     image: jest-lab
     entrypoint: ["echo", "Jest lab image built"]
 
   # Idem pour l'image du parcours Docker (moteur Docker + images de base préchargées)
   docker-image:
-    build: ./docker-lab
+    build: ./images/docker
     image: docker-lab
     entrypoint: ["echo", "Docker lab image built"]
 

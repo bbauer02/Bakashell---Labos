@@ -6,7 +6,9 @@ la correction d'un exercice aux comptes admin.
 """
 import re
 
-from . import docker, jest, linux
+from .courses.docker import solutions as docker
+from .courses.jest import solutions as jest
+from .courses.linux import solutions as linux
 
 SCRIPTS = {"linux": linux.SOLUTIONS, "jest": jest.SOLUTIONS, "docker": docker.SOLUTIONS}
 

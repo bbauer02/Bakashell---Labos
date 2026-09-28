@@ -1,10 +1,10 @@
 """Parcours « Tests unitaires avec Jest » (niveau avancé).
 
-Même format que exercises.py. Les vérifications s'appuient sur le correcteur de l'image
+Même format que le catalogue Linux (courses/linux/catalogue.py). Les vérifications s'appuient sur le correcteur de l'image
 jest-lab (/opt/jest-lab/verifier.js) :
   - pass      : les tests de l'étudiant passent sur le code de référence (ou le sien) ;
   - kill      : ils échouent contre chaque mutant (version boguée) d'un jeu défini dans
-                jest-lab/mutants.json — c'est ce qui prouve qu'ils testent vraiment quelque chose ;
+                images/jest/mutants.json — c'est ce qui prouve qu'ils testent vraiment quelque chose ;
   - hidden    : des tests cachés valident le code écrit par l'étudiant (TDD) ;
   - reproduce : un test doit échouer sur la version boguée signalée ;
   - coverage / suite : couverture de code et suite complète.

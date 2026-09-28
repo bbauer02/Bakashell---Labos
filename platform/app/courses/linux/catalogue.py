@@ -55,7 +55,7 @@ others() { stat -c %A "$1" 2>/dev/null | cut -c8-10; }
 #   "ticket": {"from": "<clé de CHARACTERS>", "body": "<message HTML>"}
 # « desc » décrit alors précisément le livrable attendu.
 
-from .scenario import CHARACTERS, COMPANY  # noqa: F401  (personnages partagés entre parcours)
+from ...scenario import CHARACTERS, COMPANY  # noqa: F401  (personnages partagés entre parcours)
 
 # Personnage qui « donne » les indices
 MENTOR = "lea"

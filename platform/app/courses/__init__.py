@@ -6,10 +6,10 @@ conteneurs). Les identifiants d'exercices sont uniques entre parcours (« 4.2 »
 """
 import os
 
-from . import docker_course as docker
-from . import exercises as linux
-from . import jest_course as jest
-from .scenario import CHARACTERS
+from .docker import catalogue as docker_catalogue
+from .jest import catalogue as jest_catalogue
+from .linux import catalogue as linux_catalogue
+from ..scenario import CHARACTERS
 
 COURSES = {
     "linux": {
@@ -19,15 +19,15 @@ COURSES = {
         "summary": "Admin système junior chez Cimes & Sentiers : navigation, fichiers, droits, processus, scripts, cron, réseau, SSH, sécurité et dépannage, dans un vrai serveur Ubuntu.",
         "level": "Débutant à intermédiaire",
         "duration": "20 à 30 h",
-        "steps": linux.STEPS,
-        "version": linux.EXERCISES_VERSION,
+        "steps": linux_catalogue.STEPS,
+        "version": linux_catalogue.EXERCISES_VERSION,
         "meta_key": "exercises_version",  # nom historique
         "id_glob": "[0-9]*",
         "image": os.environ.get("LAB_IMAGE", "linux-lab"),
         "container_prefix": "lab-student-",
-        "setup_prelude": linux.SETUP_PRELUDE,
-        "check_prelude": linux.CHECK_PRELUDE,
-        "mentor": linux.MENTOR,
+        "setup_prelude": linux_catalogue.SETUP_PRELUDE,
+        "check_prelude": linux_catalogue.CHECK_PRELUDE,
+        "mentor": linux_catalogue.MENTOR,
         "editor_root": None,
         "auto_validate": True,
         "check_timeout": 45,
@@ -42,15 +42,15 @@ COURSES = {
         "summary": "Sécuriser le code de la boutique en ligne : matchers, cas limites, TDD, doublures, code asynchrone, faux minuteurs, couverture et intégration continue. Vos tests sont évalués par mutation.",
         "level": "Avancé (JavaScript requis)",
         "duration": "10 à 15 h",
-        "steps": jest.STEPS,
-        "version": jest.EXERCISES_VERSION,
+        "steps": jest_catalogue.STEPS,
+        "version": jest_catalogue.EXERCISES_VERSION,
         "meta_key": "exercises_version:jest",
         "id_glob": "J*",
         "image": os.environ.get("JEST_IMAGE", "jest-lab"),
         "container_prefix": "lab-jest-",
-        "setup_prelude": jest.SETUP_PRELUDE,
-        "check_prelude": jest.CHECK_PRELUDE,
-        "mentor": jest.MENTOR,
+        "setup_prelude": jest_catalogue.SETUP_PRELUDE,
+        "check_prelude": jest_catalogue.CHECK_PRELUDE,
+        "mentor": jest_catalogue.MENTOR,
         "editor_root": "/home/etudiant/boutique",
         "auto_validate": False,
         "check_timeout": 240,
@@ -65,15 +65,15 @@ COURSES = {
         "summary": "Conteneurs, images, ports, volumes, Dockerfile, réseaux et docker compose, avec votre propre moteur Docker, jusqu'au dépannage d'une pile en production.",
         "level": "Révision des bases",
         "duration": "8 à 12 h",
-        "steps": docker.STEPS,
-        "version": docker.EXERCISES_VERSION,
+        "steps": docker_catalogue.STEPS,
+        "version": docker_catalogue.EXERCISES_VERSION,
         "meta_key": "exercises_version:docker",
         "id_glob": "D*",
         "image": os.environ.get("DOCKER_LAB_IMAGE", "docker-lab"),
         "container_prefix": "lab-docker-",
-        "setup_prelude": docker.SETUP_PRELUDE,
-        "check_prelude": docker.CHECK_PRELUDE,
-        "mentor": docker.MENTOR,
+        "setup_prelude": docker_catalogue.SETUP_PRELUDE,
+        "check_prelude": docker_catalogue.CHECK_PRELUDE,
+        "mentor": docker_catalogue.MENTOR,
         "editor_root": "/home/etudiant/projet",
         "auto_validate": True,
         "check_timeout": 180,
