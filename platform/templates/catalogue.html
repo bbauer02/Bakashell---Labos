@@ -72,6 +72,9 @@ h1 { font-size:26px; margin-bottom:6px; }
                     <span>{{ c.done }}/{{ c.total }} exercices réussis</span>
                     <span>{{ c.score }}/{{ c.max }} pts</span>
                 </div>
+                <div class="progress-line" style="margin-top:4px">
+                    <span>📖 Mémo : {{ c.memo_found }}/{{ c.memo_total }} fiches découvertes</span>
+                </div>
             </div>
             <a class="go {% if c.done == c.total %}done{% endif %}" href="/lab/{{ c.key }}">
                 {% if c.done == 0 %}Commencer{% elif c.done == c.total %}Terminé ✓ — revoir{% else %}Continuer{% endif %}

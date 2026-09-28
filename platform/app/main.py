@@ -19,9 +19,10 @@ from fastapi.templating import Jinja2Templates
 from . import containers
 from . import database as db
 from . import live
+from . import memo
 from . import runner
 from . import solutions
-from .courses import COURSES, DEFAULT_COURSE, get_course, get_exercise
+from .courses import COURSES, DEFAULT_COURSE, EXERCISE_INDEX, get_course, get_exercise
 from .scenario import CHARACTERS
 
 log = logging.getLogger("linux-lab")
@@ -58,6 +59,7 @@ def mark_active(user_id: int, course_key: str, step: int = None):
 async def startup():
     live.attach_loop(asyncio.get_running_loop())
     solutions.check_coverage(COURSES)
+    memo.check(COURSES, EXERCISE_INDEX)
     for key in db.init_db(list(COURSES.values())):
         log.warning("Parcours %s : nouvelle version du catalogue, l'ancienne progression a été archivée.", key)
     asyncio.create_task(idle_reaper())
@@ -198,7 +200,9 @@ async def catalogue(request: Request, msg: str = "", err: str = ""):
         c = COURSES[key]
         p = db.get_user_score(user["user_id"], c["id_glob"])
         done = len(p["completed"])
+        memo_found, memo_total = memo.counts(key, p["completed"])
         cards.append({
+            "memo_found": memo_found, "memo_total": memo_total,
             "key": key, "title": c["title"], "summary": c["summary"], "level": c["level"],
             "duration": c["duration"], "steps": len(c["steps"]), "total": c["total_exercises"],
             "score": p["score"], "max": c["max_score"], "done": done,
@@ -452,6 +456,7 @@ def validate_step(user_id: int, course: dict, step_num: int, auto: bool) -> dict
         results.append(res)
 
     payload = progress_payload(user_id, course)
+    payload["discoveries"] = memo.discoveries(course["key"], progress["completed"], payload["completed"])
     remaining = [r for r in results if not r["passed"]]
     if not auto and not newly_passed and remaining:
         count = live.stalled(user_id, course["key"], step_num)
@@ -617,6 +622,19 @@ async def api_hint(request: Request, exercise_id: str):
     live.publish({"type": "hint", "user_id": user["user_id"], "name": live.names.get(user["user_id"]),
                   "course": course_key, "step": step_num, "exercise": exercise_id, "title": ex["title"], "count": count})
     return {"hints": ex["hints"][:count], "hints_total": len(ex["hints"])}
+
+
+@app.get("/api/{course_key}/memo")
+async def api_memo(request: Request, course_key: str):
+    """Mémo des commandes du parcours : fiches débloquées par les exercices réussis."""
+    user = get_current_user(request)
+    if not user:
+        return unauthorized()
+    course = course_for(user, course_key)
+    if not course:
+        return not_found()
+    progress = db.get_user_score(user["user_id"], course["id_glob"])
+    return memo.build(course, progress["completed"], full_access=bool(user.get("is_admin")))
 
 
 @app.get("/api/solution/{exercise_id}")
