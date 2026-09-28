@@ -544,6 +544,11 @@
         .panel-right.with-editor #terminal { flex: 2; min-height: 0; }
         .fail-detail { color: var(--text-dim); font-size: 11px; }
 
+        /* ─── Vérification exercice par exercice ───── */
+        .btn-check { margin-top: 10px; width: 100%; background: none; border: 1px solid var(--accent); color: var(--accent-light); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: .15s; }
+        .btn-check:hover:not(:disabled) { background: var(--accent); color: #fff; }
+        .btn-check:disabled { opacity: .6; cursor: wait; }
+
         /* ─── Mémo des commandes (« Pokédex ») ─────── */
         .memo-btn { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text); border-radius: 20px; padding: 6px 12px; font-size: 13px; cursor: pointer; white-space: nowrap; transition: .2s; }
         .memo-btn:hover { border-color: var(--accent); }
@@ -732,7 +737,7 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
-                    Vérifier maintenant
+                    Tout vérifier
                 </button>
                 <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text-dim)">{% if course.auto_validate %}Vérification automatique toutes les 5 s (sauf exercices « manuel »){% else %}Vos tests sont exécutés à chaque vérification : comptez quelques secondes par exercice{% endif %}</div>
                 <button class="btn-reset-step" id="btn-reset-step" onclick="resetStep()" style="display:none">Réinitialiser les fichiers de cette étape</button>
@@ -996,6 +1001,7 @@
                     ${IS_ADMIN ? `<div class="solution-zone"><button class="btn-solution" onclick="toggleSolution('${ex.id}', this)">Voir la correction</button><div class="solution" id="solution-${ex.id}"></div></div>` : ''}
                     <div class="hint-zone" id="hints-${ex.id}" data-ticket="${ex.ticket ? 1 : ''}">${renderHints(ex.id, ex.hints, ex.hints_total, ex.completed, !!ex.ticket)}</div>
                     <div class="exercise-result">${ex.completed ? '<div class="exercise-status pass">&#10003; Validé</div>' : ''}</div>
+                    ${ex.completed ? '' : `<button class="btn-check" onclick="validateExercise('${ex.id}', this)">▶ Vérifier cet exercice</button>`}
                 </div>
             `).join('');
 
@@ -1158,10 +1164,47 @@ ${s.preamble}
             }
         }
 
+        async function validateExercise(id, btn) {
+            if (preparing) {
+                showToast("L'environnement est encore en préparation, patientez un instant.", 'info');
+                return;
+            }
+            const card = document.getElementById(`card-${id}`);
+            const label = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Vérification…';
+            validating = true;
+            try {
+                const data = await api(`/api/${COURSE}/validate/${currentStep}?exercise=${encodeURIComponent(id)}`, { method: 'POST' });
+                const r = data.validation.results[0];
+                if (!r) return;
+                setResult(card, r);
+                updateScore(data.progress);
+                announceDiscoveries(data.progress);
+                fetchSteps().catch(() => {});
+                if (r.passed) {
+                    const left = [...document.querySelectorAll('.exercise-card')].filter((c) => !c.classList.contains('passed')).length;
+                    showToast(left ? `Exercice ${id} validé ! +${r.earned} pts` : `Exercice ${id} validé ! Étape ${currentStep} terminée 🎉`, 'success');
+                } else {
+                    showToast(`Exercice ${id} : pas encore, lisez le message sous l'exercice.`, 'error');
+                    card.querySelector('.exercise-fail-msg')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            } catch (e) {
+                showToast(`Vérification impossible : ${e.message}`, 'error');
+            } finally {
+                validating = false;
+                if (document.body.contains(btn)) {
+                    btn.disabled = false;
+                    btn.textContent = label;
+                }
+            }
+        }
+
         function setResult(card, r) {
             const zone = card.querySelector('.exercise-result');
             if (r.passed) {
                 card.className = 'exercise-card passed';
+                card.querySelector('.btn-check')?.remove();
                 zone.innerHTML = `<div class="exercise-status pass">&#10003; ${r.already ? 'Validé' : 'Validé ! +' + r.earned + ' pts'}</div>`;
                 const pts = card.querySelector('.exercise-points');
                 if (pts && r.earned) pts.textContent = `${r.earned}/${r.points} pts`;
@@ -1229,7 +1272,7 @@ ${s.preamble}
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                     <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
-                Valider cette étape
+                Tout vérifier
             `;
         }
 

@@ -427,7 +427,8 @@ def prepare_step(user_id: int, course: dict, step_num: int):
     ensure_setup(user_id, course, container_id, step_num)
 
 
-def validate_step(user_id: int, course: dict, step_num: int, auto: bool) -> dict:
+def validate_step(user_id: int, course: dict, step_num: int, auto: bool, only: str = "") -> dict:
+    """Vérifie les exercices de l'étape (ou seulement « only », un identifiant d'exercice)."""
     newly_passed = []
     step = course["steps"][step_num]
     container_id = containers.get_or_create_container(user_id, course)
@@ -437,6 +438,8 @@ def validate_step(user_id: int, course: dict, step_num: int, auto: bool) -> dict
 
     results = []
     for ex in step["exercises"]:
+        if only and ex["id"] != only:
+            continue
         res = {"id": ex["id"], "title": ex["title"], "points": ex["points"],
                "passed": False, "already": False, "skipped": False, "message": None, "earned": 0}
         if ex["id"] in progress["completed"]:
@@ -458,10 +461,11 @@ def validate_step(user_id: int, course: dict, step_num: int, auto: bool) -> dict
     payload = progress_payload(user_id, course)
     payload["discoveries"] = memo.discoveries(course["key"], progress["completed"], payload["completed"])
     remaining = [r for r in results if not r["passed"]]
+    left_in_step = sum(1 for ex in step["exercises"] if ex["id"] not in payload["completed"])
     if not auto and not newly_passed and remaining:
         count = live.stalled(user_id, course["key"], step_num)
         live.publish({"type": "attempt", "user_id": user_id, "name": live.names.get(user_id),
-                      "course": course["key"], "step": step_num, "count": count, "remaining": len(remaining)})
+                      "course": course["key"], "step": step_num, "count": count, "remaining": left_in_step})
     if newly_passed:
         live.progressed(user_id, course["key"], step_num)
     for ex, earned in newly_passed:
@@ -594,7 +598,7 @@ async def api_ping(request: Request, course_key: str):
 
 
 @app.post("/api/{course_key}/validate/{num}")
-async def api_validate(request: Request, course_key: str, num: int, auto: bool = False):
+async def api_validate(request: Request, course_key: str, num: int, auto: bool = False, exercise: str = ""):
     user = get_current_user(request)
     if not user:
         return unauthorized()
@@ -605,7 +609,9 @@ async def api_validate(request: Request, course_key: str, num: int, auto: bool =
     if not auto:
         mark_active(user["user_id"], course["key"], step=num)
         db.touch_user(user["user_id"])
-    return await run_in_threadpool(validate_step, user["user_id"], course, num, auto)
+    if exercise and exercise not in {ex["id"] for ex in course["steps"][num]["exercises"]}:
+        return not_found()
+    return await run_in_threadpool(validate_step, user["user_id"], course, num, auto, exercise)
 
 
 @app.post("/api/hint/{exercise_id}")
