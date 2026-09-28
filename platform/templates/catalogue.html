@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Mes labos — Linux CLI Lab{% endblock %}
+{% block extra_css %}
+.page { max-width:1100px; margin:0 auto; padding:32px 20px 60px; }
+.top { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:28px; flex-wrap:wrap; }
+.logo { font-size:22px; font-weight:700; color:var(--accent-l); }
+.top-right { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--dim); flex-wrap:wrap; }
+.btn-link { padding:7px 14px; border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; background:var(--card); }
+.btn-link:hover { border-color:var(--accent); text-decoration:none; }
+h1 { font-size:26px; margin-bottom:6px; }
+.intro { color:var(--dim); margin-bottom:24px; font-size:14px; }
+.notice { padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:20px; }
+.notice.ok { background:rgba(0,184,148,.12); border:1px solid var(--ok); color:var(--ok); }
+.notice.err { background:rgba(225,112,85,.12); border:1px solid var(--err); color:var(--err); }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:20px; }
+.card { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:22px; display:flex; flex-direction:column; gap:12px; transition:.2s; }
+.card:hover { border-color:var(--accent); transform:translateY(-2px); }
+.card h2 { font-size:18px; }
+.tags { display:flex; gap:6px; flex-wrap:wrap; }
+.tag { font-size:11px; padding:3px 8px; border-radius:10px; background:var(--card); color:var(--dim); }
+.summary { font-size:13.5px; color:var(--dim); line-height:1.55; flex:1; }
+.bar { height:8px; background:var(--border); border-radius:4px; overflow:hidden; }
+.bar > div { height:100%; background:linear-gradient(90deg, var(--accent), var(--ok)); }
+.progress-line { display:flex; justify-content:space-between; font-size:12px; color:var(--dim); }
+.go { display:block; text-align:center; padding:11px; border-radius:10px; background:linear-gradient(135deg,var(--accent),#845ec2); color:#fff; font-weight:700; font-size:14px; }
+.go:hover { text-decoration:none; box-shadow:0 4px 15px rgba(108,92,231,.35); }
+.go.done { background:var(--card); color:var(--ok); border:1px solid var(--ok); }
+.empty { background:var(--bg2); border:1px dashed var(--border); border-radius:14px; padding:40px; text-align:center; color:var(--dim); }
+.empty strong { color:var(--text); }
+.join { margin-top:28px; background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:20px 22px; display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+.join p { font-size:13px; color:var(--dim); flex:1; min-width:240px; }
+.join form { display:flex; gap:8px; }
+.join input { padding:10px 14px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:15px; letter-spacing:2px; text-transform:uppercase; width:150px; font-family:'JetBrains Mono',monospace; }
+.join button { padding:10px 16px; border:none; border-radius:8px; background:var(--accent); color:#fff; font-weight:600; cursor:pointer; }
+.classes { font-size:12px; color:var(--dim); margin-top:6px; }
+.admin-note { font-size:12px; color:#fdcb6e; margin-bottom:16px; }
+{% endblock %}
+{% block body %}
+<div class="page">
+    <div class="top">
+        <div class="logo">&gt;_ Linux CLI Lab</div>
+        <div class="top-right">
+            <span>{{ user.first_name }} {{ user.last_name }}</span>
+            {% if user.is_admin %}
+            <a class="btn-link" href="/dashboard">Tableau de bord</a>
+            <a class="btn-link" href="/admin/classes">Classes</a>
+            {% endif %}
+            <a class="btn-link" href="/logout">Déconnexion</a>
+        </div>
+    </div>
+
+    <h1>Mes labos</h1>
+    <p class="intro">Choisissez un labo pour reprendre là où vous vous étiez arrêté·e.</p>
+    {% if user.is_admin %}<p class="admin-note">Compte enseignant : tous les labos vous sont ouverts. Les étudiants ne voient que ceux de leurs classes.</p>{% endif %}
+    {% if msg %}<div class="notice ok">{{ msg }}</div>{% endif %}
+    {% if err %}<div class="notice err">{{ err }}</div>{% endif %}
+
+    {% if cards %}
+    <div class="grid">
+        {% for c in cards %}
+        <div class="card">
+            <h2>{{ c.title }}</h2>
+            <div class="tags">
+                <span class="tag">{{ c.level }}</span>
+                <span class="tag">{{ c.steps }} étapes · {{ c.total }} exercices</span>
+                <span class="tag">{{ c.duration }}</span>
+            </div>
+            <p class="summary">{{ c.summary }}</p>
+            <div>
+                <div class="bar"><div style="width:{{ c.pct }}%"></div></div>
+                <div class="progress-line" style="margin-top:6px">
+                    <span>{{ c.done }}/{{ c.total }} exercices réussis</span>
+                    <span>{{ c.score }}/{{ c.max }} pts</span>
+                </div>
+            </div>
+            <a class="go {% if c.done == c.total %}done{% endif %}" href="/lab/{{ c.key }}">
+                {% if c.done == 0 %}Commencer{% elif c.done == c.total %}Terminé ✓ — revoir{% else %}Continuer{% endif %}
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+        <p><strong>Aucun labo ne vous est encore ouvert.</strong></p>
+        <p style="margin-top:8px">Saisissez ci-dessous le code de classe donné par votre enseignant·e.</p>
+    </div>
+    {% endif %}
+
+    <div class="join">
+        <p>
+            Vous avez reçu un <strong>code de classe</strong> ? Saisissez-le pour accéder aux labos de cette classe.
+            {% if classes %}<span class="classes"><br>Vos classes : {% for cl in classes %}{{ cl.name }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+        </p>
+        <form method="post" action="/catalogue/rejoindre">
+            <input name="code" placeholder="ABC-123" maxlength="8" required autocomplete="off">
+            <button type="submit">Rejoindre</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

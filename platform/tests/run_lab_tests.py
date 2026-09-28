@@ -6,8 +6,10 @@ Pour chaque étape (dans l'ordre du parcours, comme un étudiant) :
   3. exécute la solution de référence en tant qu'etudiant ;
   4. vérifie que TOUS les exercices passent.
 
-Usage (depuis la racine du dépôt, image construite avec `docker build -t linux-lab ./lab`) :
-    python platform/tests/run_lab_tests.py              # toutes les étapes
+Usage (depuis la racine du dépôt, images construites avec
+`docker build -t linux-lab ./lab` et `docker build -t jest-lab ./jest-lab`) :
+    python platform/tests/run_lab_tests.py              # toutes les étapes du parcours Linux
+    python platform/tests/run_lab_tests.py --course jest
     python platform/tests/run_lab_tests.py --skip 13    # sans l'étape qui a besoin d'Internet
     python platform/tests/run_lab_tests.py --only 1-5   # jusqu'à l'étape 5
     python platform/tests/run_lab_tests.py --keep       # garde le conteneur pour inspection
@@ -24,8 +26,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 from app import runner  # noqa: E402
-from app.exercises import STEPS  # noqa: E402
-from solutions import SOLUTIONS  # noqa: E402
+from app.courses import COURSES  # noqa: E402
+from app.solutions import SCRIPTS, check_coverage  # noqa: E402
 
 CONTAINER = "lab-test-runner"
 NETWORK = "linux-lab-test"
@@ -50,10 +52,10 @@ def dexec(argv, env=None, user="root", input=None):
     return r.returncode, r.stdout, r.stderr
 
 
-def run_checks(step, env):
+def run_checks(course, step, env):
     out = {}
     for ex in step["exercises"]:
-        code, stdout, _ = dexec(runner.check_command(ex), env=env)
+        code, stdout, _ = dexec(runner.check_command(course, ex), env=env)
         out[ex["id"]] = runner.parse_check_output(ex, code, stdout)
     return out
 
@@ -74,8 +76,15 @@ def main():
     ap.add_argument("--only", default="", help="étapes à exécuter, ex. 1-5,8")
     ap.add_argument("--skip", default="", help="étapes à ignorer, ex. 13")
     ap.add_argument("--keep", action="store_true", help="ne pas supprimer le conteneur à la fin")
-    ap.add_argument("--image", default="linux-lab")
+    ap.add_argument("--course", default="linux", choices=sorted(COURSES))
+    ap.add_argument("--image", default=None, help="image à tester (par défaut celle du parcours)")
     args = ap.parse_args()
+
+    check_coverage(COURSES)
+    course = COURSES[args.course]
+    STEPS = course["steps"]
+    SOLUTIONS = SCRIPTS[args.course]
+    image = args.image or course["image"]
 
     steps = sorted(STEPS)
     if args.only:
@@ -87,8 +96,14 @@ def main():
     docker("rm", "-f", CONTAINER)
     if docker("network", "inspect", NETWORK).returncode != 0:
         docker("network", "create", "-o", "com.docker.network.bridge.enable_icc=false", NETWORK, check=True)
+    extra = []
+    if course.get("docker_in_docker"):
+        # Sur un poste de développement (Docker Desktop), Sysbox n'est pas disponible : mode privilégié
+        runtime = os.environ.get("DOCKER_LAB_RUNTIME", "privileged")
+        extra = ["--privileged"] if runtime == "privileged" else [f"--runtime={runtime}"]
+        extra += ["-v", "/var/lib/docker"]
     docker("run", "-d", "--init", "--name", CONTAINER, "--hostname", "linux-lab", "--network", NETWORK,
-           "--memory", "256m", "--pids-limit", "256", args.image, check=True)
+           "--memory", course["mem_limit"], "--pids-limit", str(course["pids_limit"]), *extra, image, check=True)
     time.sleep(2)
     dexec(["bash", "-c", "echo 'etudiant ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/zz-test && chmod 440 /etc/sudoers.d/zz-test"])
 
@@ -103,13 +118,13 @@ def main():
             ts = time.time()
             data = {}
             if runner.has_setup(step):
-                code, stdout, stderr = dexec(runner.setup_command(num, step))
+                code, stdout, stderr = dexec(runner.setup_command(course, num, step))
                 data = runner.parse_setup_output(stdout)
                 if code != 0:
                     problems.append(f"{num} : setup en échec (code {code}) {stderr.strip()[-500:]}")
             env = runner.check_env(data)
 
-            for ex_id, (passed, _) in run_checks(step, env).items():
+            for ex_id, (passed, _) in run_checks(course, step, env).items():
                 if passed:
                     problems.append(f"{ex_id} : valide AVANT la solution (points gratuits)")
 
@@ -121,7 +136,7 @@ def main():
             _, _, sol_err = dexec(["bash", "/tmp/solution.sh"], user="etudiant")
 
             failed = []
-            for ex_id, (passed, msg) in run_checks(step, env).items():
+            for ex_id, (passed, msg) in run_checks(course, step, env).items():
                 if not passed:
                     failed.append(ex_id)
                     problems.append(f"{ex_id} : échoue APRÈS la solution → {msg}")

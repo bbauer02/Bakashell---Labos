@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Linux CLI Lab</title>
+    <title>{{ course.short }} — Linux CLI Lab</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
     <style>
         :root {
@@ -527,6 +527,34 @@
             padding: 4px;
         }
 
+        /* ─── Parcours et éditeur ──────────────────── */
+        .course-switch { display: flex; gap: 4px; margin-left: 14px; flex-shrink: 0; }
+        .course-switch a { font-size: 12px; padding: 4px 10px; border-radius: 12px; border: 1px solid var(--border); color: var(--text-dim); text-decoration: none; white-space: nowrap; }
+        .course-switch a.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .course-switch a:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+        .editor-pane { flex: 3; display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--border); background: #1e1e1e; }
+        .editor-toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); font-size: 12px; }
+        .editor-toolbar select { background: var(--bg-primary); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; max-width: 320px; }
+        .editor-toolbar button { background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+        .editor-toolbar button:hover { border-color: var(--accent); color: var(--text); }
+        .editor-toolbar button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .editor-status { margin-left: auto; color: var(--text-dim); white-space: nowrap; }
+        .editor-status.dirty { color: var(--warning, #fdcb6e); }
+        #editor { flex: 1; min-height: 0; }
+        .panel-right.with-editor #terminal { flex: 2; min-height: 0; }
+        .fail-detail { color: var(--text-dim); font-size: 11px; }
+
+        /* ─── Correction (admin) ───────────────────── */
+        .solution-zone { margin-top: 8px; }
+        .btn-solution { background: none; border: 1px solid var(--warning, #fdcb6e); color: var(--warning, #fdcb6e); border-radius: 6px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
+        .btn-solution:hover { background: rgba(253, 203, 110, 0.1); }
+        .solution { display: none; margin-top: 8px; border: 1px dashed var(--warning, #fdcb6e); border-radius: 8px; padding: 10px 12px; background: var(--bg-primary); }
+        .solution.open { display: block; }
+        .solution-title { font-size: 11px; font-weight: 600; color: var(--warning, #fdcb6e); text-transform: uppercase; letter-spacing: .4px; margin: 4px 0 6px; }
+        .solution-code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 11.5px; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-word; overflow-x: auto; background: #0a0c10; border-radius: 6px; padding: 8px 10px; margin: 0 0 6px; max-height: 420px; }
+        .btn-copy { background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; margin-bottom: 8px; }
+        .solution-checks { padding-left: 18px; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
         /* ─── Resize Handle ────────────────────────── */
         .resize-handle {
             width: 4px;
@@ -612,13 +640,16 @@
     <!-- Top Bar -->
     <div class="topbar">
         <div class="topbar-left">
-            <div class="logo">
+            <a class="logo" href="/catalogue" title="Retour au catalogue des labos" style="text-decoration:none">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="4 17 10 11 4 5"></polyline>
                     <line x1="12" y1="19" x2="20" y2="19"></line>
                 </svg>
                 Linux CLI Lab
-            </div>
+            </a>
+            <nav class="course-switch">
+                {% for c in courses %}<a href="/lab/{{ c.key }}" class="{% if c.key == course.key %}active{% endif %}" title="{{ c.title }}">{{ c.short }}</a>{% endfor %}
+            </nav>
         </div>
         <div class="topbar-center" id="step-dots"></div>
         <div class="topbar-right">
@@ -634,7 +665,8 @@
                 </div>
             </div>
             <span style="font-size:13px;color:var(--text-dim)">{{ user.first_name }} {{ user.last_name }}{% if user.is_admin %} <span style="color:var(--accent-light);font-size:10px;background:var(--bg-primary);padding:2px 6px;border-radius:4px">ADMIN</span>{% endif %}</span>
-            {% if user.is_admin %}<a href="/dashboard" class="btn-reset" style="text-decoration:none">Dashboard</a>{% endif %}
+            {% if user.is_admin %}<a href="/dashboard?course={{ course.key }}" class="btn-reset" style="text-decoration:none">Dashboard</a>{% endif %}
+            <a href="/catalogue" class="btn-reset" style="text-decoration:none">Mes labos</a>
             <a href="/logout" class="btn-reset" style="text-decoration:none">Déconnexion</a>
         </div>
     </div>
@@ -661,7 +693,7 @@
                     </svg>
                     Vérifier maintenant
                 </button>
-                <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text-dim)">Vérification automatique toutes les 5 s (sauf exercices « manuel »)</div>
+                <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text-dim)">{% if course.auto_validate %}Vérification automatique toutes les 5 s (sauf exercices « manuel »){% else %}Vos tests sont exécutés à chaque vérification : comptez quelques secondes par exercice{% endif %}</div>
                 <button class="btn-reset-step" id="btn-reset-step" onclick="resetStep()" style="display:none">Réinitialiser les fichiers de cette étape</button>
             </div>
         </div>
@@ -670,12 +702,24 @@
         <div class="resize-handle" id="resize-handle"></div>
 
         <!-- Right Panel -->
-        <div class="panel-right">
+        <div class="panel-right{% if course.editor %} with-editor{% endif %}">
+            {% if course.editor %}
+            <div class="editor-pane">
+                <div class="editor-toolbar">
+                    <select id="file-select" onchange="openFile(this.value)"></select>
+                    <button onclick="refreshFiles()" title="Relire la liste des fichiers">↻</button>
+                    <button onclick="newFile()">Nouveau fichier</button>
+                    <span class="editor-status" id="editor-status">Chargement de l'éditeur…</span>
+                    <button class="primary" onclick="saveFile()" title="Ctrl+S">Enregistrer</button>
+                </div>
+                <div id="editor"></div>
+            </div>
+            {% endif %}
             <div class="terminal-header">
                 <div class="terminal-dots">
                     <span></span><span></span><span></span>
                 </div>
-                <span class="terminal-title">bash — linux-lab</span>
+                <span class="terminal-title">bash — {{ course.short | lower }}</span>
                 <span class="terminal-status disconnected" id="ws-status">Connexion...</span>
             </div>
             <div id="terminal"></div>
@@ -690,7 +734,11 @@
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
     <script>
         // ─── State ─────────────────────────────────────
-        let currentStep = 1;
+        const COURSE = {{ course.key | tojson }};
+        const HAS_EDITOR = {{ course.editor | tojson }};
+        const AUTO_VALIDATE = {{ course.auto_validate | tojson }};
+        const IS_ADMIN = {{ (user.is_admin == 1) | tojson }};
+        let currentStep = Number(localStorage.getItem('step:' + COURSE)) || 1;
         let stepsData = [];
         let ws = null;
 
@@ -726,7 +774,7 @@
 
         function connectWS() {
             const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${proto}//${location.host}/ws`);
+            ws = new WebSocket(`${proto}//${location.host}/ws?course=${COURSE}`);
             ws.binaryType = 'arraybuffer';
 
             ws.onopen = () => {
@@ -814,16 +862,16 @@
         }
 
         async function fetchSteps() {
-            stepsData = await api('/api/steps');
+            stepsData = await api(`/api/${COURSE}/steps`);
             renderStepDots();
         }
 
         async function fetchStep(num) {
-            return api(`/api/step/${num}`);
+            return api(`/api/${COURSE}/step/${num}`);
         }
 
         async function fetchProgress() {
-            return api('/api/progress');
+            return api(`/api/${COURSE}/progress`);
         }
 
         // ─── Render Functions ──────────────────────────
@@ -837,7 +885,12 @@
                 return `<div class="step-dot ${cls}" onclick="selectStep(${s.num})" title="Étape ${s.num}: ${s.title}">${s.num}</div>`;
             }).join('');
             const active = container.querySelector('.step-dot.active');
-            if (active) container.scrollLeft = active.offsetLeft - container.clientWidth / 2;
+            if (active) {
+                // centre l'étape active dans la barre défilante
+                const c = container.getBoundingClientRect();
+                const a = active.getBoundingClientRect();
+                container.scrollLeft += (a.left - c.left) - (c.width - a.width) / 2;
+            }
         }
 
         function switchTab(tab) {
@@ -887,6 +940,7 @@
                     <div class="ticket-body">${ex.ticket.body}</div>
                     <div class="exercise-desc"><span class="deliverable-label">À livrer :</span> ${ex.desc}</div>` : `
                     <div class="exercise-desc">${ex.desc}</div>`}
+                    ${IS_ADMIN ? `<div class="solution-zone"><button class="btn-solution" onclick="toggleSolution('${ex.id}', this)">Voir la correction</button><div class="solution" id="solution-${ex.id}"></div></div>` : ''}
                     <div class="hint-zone" id="hints-${ex.id}" data-ticket="${ex.ticket ? 1 : ''}">${renderHints(ex.id, ex.hints, ex.hints_total, ex.completed, !!ex.ticket)}</div>
                     <div class="exercise-result">${ex.completed ? '<div class="exercise-status pass">&#10003; Validé</div>' : ''}</div>
                 </div>
@@ -920,10 +974,43 @@
             zone.innerHTML = renderHints(id, data.hints, data.hints_total, card.classList.contains('passed'), !!zone.dataset.ticket);
         }
 
+        // ─── Correction (comptes admin) ───────────────
+        async function toggleSolution(id, btn) {
+            const box = document.getElementById(`solution-${id}`);
+            if (box.classList.contains('open')) {
+                box.classList.remove('open');
+                btn.textContent = 'Voir la correction';
+                return;
+            }
+            if (!box.dataset.loaded) {
+                try {
+                    const s = await api(`/api/solution/${encodeURIComponent(id)}`);
+                    const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+                    const code = (s.preamble ? `# (préalable commun à l'étape)
+${s.preamble}
+
+` : '') + s.code;
+                    box.innerHTML = `
+                        <div class="solution-title">Commandes attendues${s.manual ? ' <span class="badge-manual">vérification sur clic</span>' : ''}</div>
+                        <pre class="solution-code">${esc(code)}</pre>
+                        <button class="btn-copy" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent); showToast('Correction copiée', 'info')">Copier</button>
+                        <div class="solution-title">Ce qui est vérifié (message affiché à l'étudiant en cas d'échec)</div>
+                        <ol class="solution-checks">${s.checks.map((c) => `<li>${c}</li>`).join('')}</ol>`;
+                    box.dataset.loaded = '1';
+                } catch (e) {
+                    showToast(`Correction indisponible : ${e.message}`, 'error');
+                    return;
+                }
+            }
+            box.classList.add('open');
+            btn.textContent = 'Masquer la correction';
+        }
+
         async function resetStep() {
             if (!confirm("Recréer les fichiers et processus fournis pour cette étape ? Votre score est conservé, mais les fichiers fournis reviennent à leur état initial.")) return;
             try {
-                await api(`/api/reset-step/${currentStep}`, { method: 'POST' });
+                await api(`/api/${COURSE}/reset-step/${currentStep}`, { method: 'POST' });
+                if (HAS_EDITOR) { await refreshFiles(); if (currentFile) await openFile(currentFile, true); }
                 showToast('Étape réinitialisée', 'info');
             } catch (e) {
                 showToast('Réinitialisation impossible : ' + e.message, 'error');
@@ -984,11 +1071,18 @@
             }
             // L'étudiant a cliqué sur une autre étape pendant le chargement : on ignore
             if (currentStep !== num) return;
+            try { localStorage.setItem('step:' + COURSE, String(num)); } catch (e) { /* stockage indisponible */ }
             renderExercises(stepData);
-            await fetchSteps().catch(() => {});
+            fetchSteps().catch(() => {});
+            prepareStep(num);
+        }
 
-            // Reset validate button
+        // ─── Préparation de l'environnement (en arrière-plan) ─────
+        let preparing = false;
+
+        function resetValidateButton() {
             const btn = document.getElementById('btn-validate');
+            btn.disabled = false;
             btn.className = 'btn-validate';
             btn.innerHTML = `
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -996,6 +1090,26 @@
                 </svg>
                 Valider cette étape
             `;
+        }
+
+        async function prepareStep(num) {
+            preparing = true;
+            const btn = document.getElementById('btn-validate');
+            btn.disabled = true;
+            btn.className = 'btn-validate validating';
+            btn.innerHTML = '<span class="validating-anim">Préparation de votre environnement…</span>';
+            try {
+                await api(`/api/${COURSE}/prepare/${num}`, { method: 'POST' });
+                if (currentStep !== num) return;
+                if (HAS_EDITOR) refreshFiles();
+            } catch (e) {
+                if (currentStep === num) showToast(`Préparation de l'étape impossible : ${e.message}`, 'error');
+            } finally {
+                if (currentStep === num) {
+                    preparing = false;
+                    resetValidateButton();
+                }
+            }
         }
 
         async function validateStep() {
@@ -1008,7 +1122,7 @@
             btn.innerHTML = '<span class="validating-anim">Validation en cours...</span>';
 
             try {
-                const data = await api(`/api/validate/${currentStep}`, { method: 'POST' });
+                const data = await api(`/api/${COURSE}/validate/${currentStep}`, { method: 'POST' });
 
                 // Update exercise cards with results
                 let allPassed = true;
@@ -1068,7 +1182,7 @@
 
         async function resetProgress() {
             if (!confirm('Remettre votre score à zéro ?')) return;
-            await api('/api/reset', { method: 'POST' });
+            await api(`/api/${COURSE}/reset`, { method: 'POST' });
             updateScore({ score: 0, completed: [] });
             await fetchSteps();
             selectStep(currentStep);
@@ -1089,10 +1203,10 @@
         let validating = false;
 
         async function autoValidate() {
-            if (document.hidden || validating) return;
+            if (document.hidden || validating || preparing) return;
             validating = true;
             try {
-                const data = await api(`/api/validate/${currentStep}?auto=true`, { method: 'POST' });
+                const data = await api(`/api/${COURSE}/validate/${currentStep}?auto=true`, { method: 'POST' });
                 if (data.validation.step !== currentStep) return;
 
                 let newPoints = 0;
@@ -1141,9 +1255,133 @@
             await fetchSteps();
             const progress = await fetchProgress();
             updateScore(progress);
-            await selectStep(1);
+            if (!stepsData.some(s => s.num === currentStep)) currentStep = 1;
+            await selectStep(currentStep);
             connectWS();
-            startAutoValidation();
+            if (AUTO_VALIDATE) startAutoValidation();
+            if (HAS_EDITOR) initEditor();
+        }
+
+        // ─── Éditeur (Monaco) ─────────────────────────
+        let editor = null;
+        let currentFile = null;
+        let savedContent = '';
+
+        function setEditorStatus(text, dirty = false) {
+            const el = document.getElementById('editor-status');
+            el.textContent = text;
+            el.className = 'editor-status' + (dirty ? ' dirty' : '');
+        }
+
+        function languageOf(path) {
+            if (path.endsWith('.js')) return 'javascript';
+            if (path.endsWith('.json')) return 'json';
+            if (path.endsWith('.md')) return 'markdown';
+            if (path.endsWith('.yml') || path.endsWith('.yaml')) return 'yaml';
+            return 'plaintext';
+        }
+
+        function isDirty() {
+            return editor && currentFile && editor.getValue() !== savedContent;
+        }
+
+        function initEditor() {
+            const base = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min';
+            window.MonacoEnvironment = {
+                getWorkerUrl: () => `data:text/javascript;charset=utf-8,${encodeURIComponent(
+                    `self.MonacoEnvironment = { baseUrl: '${base}/' }; importScripts('${base}/vs/base/worker/workerMain.js');`)}`,
+            };
+            const loader = document.createElement('script');
+            loader.src = `${base}/vs/loader.js`;
+            loader.onload = () => {
+                window.require.config({ paths: { vs: `${base}/vs` } });
+                window.require(['vs/editor/editor.main'], () => {
+                    editor = monaco.editor.create(document.getElementById('editor'), {
+                        value: '', language: 'javascript', theme: 'vs-dark', automaticLayout: true,
+                        fontSize: 13, minimap: { enabled: false }, scrollBeyondLastLine: false, tabSize: 2,
+                    });
+                    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, saveFile);
+                    let lastPing = 0;
+                    editor.onDidChangeModelContent(() => {
+                        if (currentFile) setEditorStatus(isDirty() ? `${currentFile} — modifié` : currentFile, isDirty());
+                        if (Date.now() - lastPing > 20000) {
+                            lastPing = Date.now();
+                            fetch(`/api/${COURSE}/ping`, { method: 'POST' }).catch(() => {});
+                        }
+                    });
+                    refreshFiles(true);
+                });
+            };
+            loader.onerror = () => setEditorStatus("Éditeur indisponible (pas d'accès au CDN) : utilisez nano dans le terminal");
+            document.body.appendChild(loader);
+            window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
+            setTimeout(() => fitAddon.fit(), 100);
+        }
+
+        async function refreshFiles(openDefault = false) {
+            if (!editor) return;
+            let data;
+            try { data = await api(`/api/${COURSE}/files`); } catch (e) { setEditorStatus(e.message); return; }
+            const select = document.getElementById('file-select');
+            select.innerHTML = data.files.map(f => `<option value="${f}">${f}</option>`).join('');
+            if (currentFile && data.files.includes(currentFile)) {
+                select.value = currentFile;
+            } else if (openDefault || !currentFile) {
+                const preferred = data.files.find(f => f.startsWith('tests/')) || data.files[0];
+                if (preferred) await openFile(preferred, true);
+                else setEditorStatus('Aucun fichier : ouvrez une étape pour recevoir le projet');
+            }
+        }
+
+        async function openFile(path, force = false) {
+            if (!editor || !path) return;
+            if (!force && isDirty() && !confirm(`${currentFile} contient des modifications non enregistrées. Les abandonner ?`)) {
+                document.getElementById('file-select').value = currentFile;
+                return;
+            }
+            try {
+                const data = await api(`/api/${COURSE}/file?path=${encodeURIComponent(path)}`);
+                currentFile = path;
+                savedContent = data.content;
+                const model = monaco.editor.createModel(data.content, languageOf(path));
+                const old = editor.getModel();
+                editor.setModel(model);
+                if (old) old.dispose();
+                document.getElementById('file-select').value = path;
+                setEditorStatus(path);
+            } catch (e) {
+                showToast(`Impossible d'ouvrir ${path} : ${e.message}`, 'error');
+            }
+        }
+
+        async function saveFile() {
+            if (!editor || !currentFile) return;
+            const content = editor.getValue();
+            try {
+                await api(`/api/${COURSE}/file`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: currentFile, content }),
+                });
+                savedContent = content;
+                setEditorStatus(`${currentFile} — enregistré`);
+            } catch (e) {
+                showToast(`Enregistrement impossible : ${e.message}`, 'error');
+            }
+        }
+
+        async function newFile() {
+            const path = prompt('Chemin du nouveau fichier (relatif au projet), par exemple tests/arrondir.test.js :', 'tests/');
+            if (!path) return;
+            try {
+                await api(`/api/${COURSE}/file`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path, content: '' }),
+                });
+                await refreshFiles();
+                await openFile(path, true);
+            } catch (e) {
+                showToast(`Création impossible : ${e.message}`, 'error');
+            }
         }
 
         init();

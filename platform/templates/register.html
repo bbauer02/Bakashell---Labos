@@ -26,24 +26,29 @@
             <div class="row">
                 <div class="field">
                     <label>Prénom</label>
-                    <input type="text" name="first_name" required placeholder="Jean">
+                    <input type="text" name="first_name" required placeholder="Jean" value="{{ form.first_name or '' }}">
                 </div>
                 <div class="field">
                     <label>Nom</label>
-                    <input type="text" name="last_name" required placeholder="Dupont">
+                    <input type="text" name="last_name" required placeholder="Dupont" value="{{ form.last_name or '' }}">
                 </div>
             </div>
             <div class="field">
                 <label>Adresse email</label>
-                <input type="email" name="email" required placeholder="jean.dupont@ecole.fr">
+                <input type="email" name="email" required placeholder="jean.dupont@ecole.fr" value="{{ form.email or '' }}">
             </div>
             <div class="field">
                 <label>Mot de passe</label>
-                <input type="password" name="password" required placeholder="4 caractères minimum">
+                <input type="password" name="password" required placeholder="8 caractères minimum">
             </div>
             <div class="field">
                 <label>Confirmer le mot de passe</label>
                 <input type="password" name="password2" required placeholder="••••••••">
+            </div>
+            <div class="field">
+                <label>Code de classe <span style="font-weight:400">(donné par votre enseignant·e, facultatif)</span></label>
+                <input type="text" name="class_code" placeholder="ABC-123" maxlength="8" autocomplete="off"
+                       style="text-transform:uppercase; letter-spacing:2px; font-family:'JetBrains Mono',monospace" value="{{ form.class_code or '' }}">
             </div>
             <button type="submit" class="btn">Créer mon compte</button>
         </form>

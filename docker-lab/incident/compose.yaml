@@ -1,0 +1,15 @@
+# Pile « incident » déployée par Marc juste avant son départ.
+# Attendu : l'API répond sur http://localhost:8090/visites
+services:
+  api:
+    build: ./app
+    ports:
+      - "3000:8090"
+    environment:
+      REDIS_HOTE: cache
+    depends_on:
+      - cache
+    restart: on-failure
+
+  cache:
+    image: redis:7-alpine

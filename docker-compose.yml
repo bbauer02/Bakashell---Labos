@@ -9,6 +9,11 @@ services:
       - platform-data:/data
     environment:
       - LAB_IMAGE=linux-lab
+      - JEST_IMAGE=jest-lab
+      - DOCKER_LAB_IMAGE=docker-lab
+      # Parcours Docker : chaque étudiant a son propre moteur Docker.
+      # sysbox-runc (recommandé, nécessite Sysbox sur l'hôte) ou privileged (machine dédiée / développement)
+      - DOCKER_LAB_RUNTIME=${DOCKER_LAB_RUNTIME:-sysbox-runc}
       - LAB_NETWORK=linux-lab-students
       - DB_PATH=/data/platform.db
       # Compte enseignant : définissez-les dans un fichier .env (voir .env.example)
@@ -24,12 +29,28 @@ services:
     depends_on:
       lab-image:
         condition: service_completed_successfully
+      jest-image:
+        condition: service_completed_successfully
+      docker-image:
+        condition: service_completed_successfully
 
-  # Ce service construit seulement l'image des conteneurs étudiants, puis s'arrête
+  # Ce service construit seulement l'image des conteneurs étudiants (parcours Linux), puis s'arrête
   lab-image:
     build: ./lab
     image: linux-lab
     entrypoint: ["echo", "Lab image built"]
+
+  # Idem pour l'image du parcours Jest
+  jest-image:
+    build: ./jest-lab
+    image: jest-lab
+    entrypoint: ["echo", "Jest lab image built"]
+
+  # Idem pour l'image du parcours Docker (moteur Docker + images de base préchargées)
+  docker-image:
+    build: ./docker-lab
+    image: docker-lab
+    entrypoint: ["echo", "Docker lab image built"]
 
 volumes:
   platform-data:

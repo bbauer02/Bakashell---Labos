@@ -1,0 +1,111 @@
+"""Registre des parcours disponibles sur la plateforme.
+
+Chaque parcours a son image Docker, son conteneur par étudiant, son catalogue d'étapes et
+sa version (un changement de version archive la progression du parcours et recrée les
+conteneurs). Les identifiants d'exercices sont uniques entre parcours (« 4.2 », « J4.2 »).
+"""
+import os
+
+from . import docker_course as docker
+from . import exercises as linux
+from . import jest_course as jest
+from .scenario import CHARACTERS
+
+COURSES = {
+    "linux": {
+        "key": "linux",
+        "title": "Linux en ligne de commande",
+        "short": "Linux",
+        "summary": "Admin système junior chez Cimes & Sentiers : navigation, fichiers, droits, processus, scripts, cron, réseau, SSH, sécurité et dépannage, dans un vrai serveur Ubuntu.",
+        "level": "Débutant à intermédiaire",
+        "duration": "20 à 30 h",
+        "steps": linux.STEPS,
+        "version": linux.EXERCISES_VERSION,
+        "meta_key": "exercises_version",  # nom historique
+        "id_glob": "[0-9]*",
+        "image": os.environ.get("LAB_IMAGE", "linux-lab"),
+        "container_prefix": "lab-student-",
+        "setup_prelude": linux.SETUP_PRELUDE,
+        "check_prelude": linux.CHECK_PRELUDE,
+        "mentor": linux.MENTOR,
+        "editor_root": None,
+        "auto_validate": True,
+        "check_timeout": 45,
+        "mem_limit": "256m",
+        "cpu_quota": 50000,
+        "pids_limit": 256,
+    },
+    "jest": {
+        "key": "jest",
+        "title": "Tests unitaires avec Jest",
+        "short": "Jest",
+        "summary": "Sécuriser le code de la boutique en ligne : matchers, cas limites, TDD, doublures, code asynchrone, faux minuteurs, couverture et intégration continue. Vos tests sont évalués par mutation.",
+        "level": "Avancé (JavaScript requis)",
+        "duration": "10 à 15 h",
+        "steps": jest.STEPS,
+        "version": jest.EXERCISES_VERSION,
+        "meta_key": "exercises_version:jest",
+        "id_glob": "J*",
+        "image": os.environ.get("JEST_IMAGE", "jest-lab"),
+        "container_prefix": "lab-jest-",
+        "setup_prelude": jest.SETUP_PRELUDE,
+        "check_prelude": jest.CHECK_PRELUDE,
+        "mentor": jest.MENTOR,
+        "editor_root": "/home/etudiant/boutique",
+        "auto_validate": False,
+        "check_timeout": 240,
+        "mem_limit": "1g",
+        "cpu_quota": 100000,
+        "pids_limit": 512,
+    },
+    "docker": {
+        "key": "docker",
+        "title": "Docker : conteneuriser la boutique",
+        "short": "Docker",
+        "summary": "Conteneurs, images, ports, volumes, Dockerfile, réseaux et docker compose, avec votre propre moteur Docker, jusqu'au dépannage d'une pile en production.",
+        "level": "Révision des bases",
+        "duration": "8 à 12 h",
+        "steps": docker.STEPS,
+        "version": docker.EXERCISES_VERSION,
+        "meta_key": "exercises_version:docker",
+        "id_glob": "D*",
+        "image": os.environ.get("DOCKER_LAB_IMAGE", "docker-lab"),
+        "container_prefix": "lab-docker-",
+        "setup_prelude": docker.SETUP_PRELUDE,
+        "check_prelude": docker.CHECK_PRELUDE,
+        "mentor": docker.MENTOR,
+        "editor_root": "/home/etudiant/projet",
+        "auto_validate": True,
+        "check_timeout": 180,
+        "mem_limit": "1536m",
+        "cpu_quota": 100000,
+        "pids_limit": 2048,
+        # Moteur Docker propre à chaque étudiant : runtime Sysbox (recommandé) ou « privileged »
+        # (Docker-in-Docker classique : à réserver à une machine dédiée ou au développement).
+        "docker_in_docker": os.environ.get("DOCKER_LAB_RUNTIME", "sysbox-runc"),
+    },
+}
+
+DEFAULT_COURSE = "linux"
+
+# Index global : identifiant d'exercice -> (parcours, étape, position dans l'étape, exercice)
+EXERCISE_INDEX = {}
+for _key, _course in COURSES.items():
+    for _num, _step in _course["steps"].items():
+        for _pos, _ex in enumerate(_step["exercises"], 1):
+            assert _ex["id"] not in EXERCISE_INDEX, f"Identifiant d'exercice en double : {_ex['id']}"
+            if "ticket" in _ex:
+                assert _ex["ticket"]["from"] in CHARACTERS, f"Personnage inconnu dans {_ex['id']}"
+            EXERCISE_INDEX[_ex["id"]] = (_key, _num, _pos, _ex)
+    _course["max_score"] = sum(ex["points"] for s in _course["steps"].values() for ex in s["exercises"])
+    _course["total_exercises"] = sum(len(s["exercises"]) for s in _course["steps"].values())
+    _course["ids"] = {ex["id"] for s in _course["steps"].values() for ex in s["exercises"]}
+
+
+def get_course(key: str):
+    return COURSES.get(key)
+
+
+def get_exercise(exercise_id: str):
+    """Retourne (parcours, étape, position, exercice) ou (None, None, None, None)."""
+    return EXERCISE_INDEX.get(exercise_id, (None, None, None, None))

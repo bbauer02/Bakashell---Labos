@@ -1,14 +1,13 @@
 """Construction des commandes de mise en place / vérification et lecture de leurs résultats.
 
 Module sans dépendance à Docker ni à la base : utilisé par la plateforme et par les tests.
+Chaque fonction reçoit le parcours (dict de courses.COURSES) pour ses préludes et délais.
 """
+import html
 import posixpath
 import re
 
-from .exercises import CHECK_PRELUDE, SETUP_PRELUDE
-
 SETUP_TIMEOUT = 120
-CHECK_TIMEOUT = 45
 
 PERSISTENT_MARKERS = "/var/lib/lab/setup"
 VOLATILE_MARKERS = "/run/lab-setup"  # vidé par start.sh à chaque démarrage du conteneur
@@ -31,10 +30,10 @@ def marker_test_command(step_num: int, step: dict) -> list:
     return ["test", "-f", marker_path(step_num, step)]
 
 
-def setup_command(step_num: int, step: dict) -> list:
+def setup_command(course: dict, step_num: int, step: dict) -> list:
     marker = marker_path(step_num, step)
     script = (
-        SETUP_PRELUDE
+        course["setup_prelude"]
         + step["setup"]
         + f"\nmkdir -p {posixpath.dirname(marker)}\ntouch {marker}\n"
     )
@@ -55,18 +54,21 @@ def check_env(setup_data: dict) -> dict:
     return {f"LAB_{k}": v for k, v in (setup_data or {}).items()}
 
 
-def check_command(exercise: dict) -> list:
-    """Un seul `docker exec` par exercice : les vérifications s'enchaînent,
-    la première en échec est signalée par « @@FAIL <index> »."""
-    parts = [CHECK_PRELUDE, _UNEXPORT, "cd /home/etudiant\n"]
+def check_command(course: dict, exercise: dict) -> list:
+    """Un seul `docker exec` par exercice : les vérifications s'enchaînent, la première
+    en échec est signalée par « @@FAIL <index> », suivie des lignes « MSG:… » qu'elle a produites."""
+    parts = [course["check_prelude"], _UNEXPORT, "cd /home/etudiant\n", '_out=$(mktemp)\n']
     for i, (cmd, _msg) in enumerate(exercise["checks"]):
-        parts.append(f"( {cmd}\n) >/dev/null 2>&1 </dev/null || {{ echo '@@FAIL {i}'; exit 0; }}\n")
-    parts.append("echo '@@OK'\n")
-    return ["timeout", "-k", "5", str(CHECK_TIMEOUT), "bash", "-c", "".join(parts)]
+        parts.append(
+            f"( {cmd}\n) >\"$_out\" 2>/dev/null </dev/null || "
+            f"{{ echo '@@FAIL {i}'; grep '^MSG:' \"$_out\" | tail -n 3; rm -f \"$_out\"; exit 0; }}\n"
+        )
+    parts.append('rm -f "$_out"\necho \'@@OK\'\n')
+    return ["timeout", "-k", "5", str(course["check_timeout"]), "bash", "-c", "".join(parts)]
 
 
 def parse_check_output(exercise: dict, exit_code: int, output: str):
-    """Retourne (réussi, message d'échec ou None)."""
+    """Retourne (réussi, message d'échec HTML ou None)."""
     if "@@OK" in output:
         return True, None
     m = re.search(r"@@FAIL (\d+)", output)
@@ -74,7 +76,11 @@ def parse_check_output(exercise: dict, exit_code: int, output: str):
         idx = int(m.group(1))
         checks = exercise["checks"]
         if 0 <= idx < len(checks):
-            return False, checks[idx][1]
+            message = checks[idx][1]
+            details = [html.escape(line[4:].strip()) for line in output[m.end():].splitlines() if line.startswith("MSG:")]
+            if details:
+                message += "<br><span class='fail-detail'>" + "<br>".join(details) + "</span>"
+            return False, message
     if exit_code in (124, 137):
-        return False, "La vérification a dépassé le délai autorisé : un de vos scripts attend-il une saisie ou boucle-t-il sans fin ?"
+        return False, "La vérification a dépassé le délai autorisé : un de vos scripts ou tests attend-il indéfiniment ?"
     return False, "La vérification n'a pas pu aboutir. Réessayez dans un instant."

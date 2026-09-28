@@ -55,15 +55,7 @@ others() { stat -c %A "$1" 2>/dev/null | cut -c8-10; }
 #   "ticket": {"from": "<clé de CHARACTERS>", "body": "<message HTML>"}
 # « desc » décrit alors précisément le livrable attendu.
 
-COMPANY = "Cimes & Sentiers"
-
-CHARACTERS = {
-    "sophie": {"name": "Sophie Marchand", "role": "DSI, votre responsable", "color": "#6c5ce7"},
-    "lea": {"name": "Léa Nguyen", "role": "Admin système senior, votre mentore", "color": "#00a383"},
-    "thomas": {"name": "Thomas Leroy", "role": "Développeur web", "color": "#d35400"},
-    "julien": {"name": "Julien Petit", "role": "Stagiaire", "color": "#b7950b"},
-    "diallo": {"name": "Aminata Diallo", "role": "Responsable comptabilité", "color": "#0e8f8c"},
-}
+from .scenario import CHARACTERS, COMPANY  # noqa: F401  (personnages partagés entre parcours)
 
 # Personnage qui « donne » les indices
 MENTOR = "lea"
@@ -1136,7 +1128,7 @@ emit PORT "$port"
              "desc": "Faites en sorte que le nom <code>serveur-local</code> soit résolu en <code>192.168.1.100</code> sur cette machine.",
              "hints": ["Éditez <code>/etc/hosts</code> avec sudo.", "Testez avec <code>getent hosts serveur-local</code>."],
              "checks": [
-                 ('timeout 3 getent hosts serveur-local | grep -q "^192\\.168\\.1\\.100\\b"', "serveur-local n'est pas résolu en 192.168.1.100."),
+                 ('timeout 5 getent ahostsv4 serveur-local | grep -q "^192\\.168\\.1\\.100\\b"', "serveur-local n'est pas résolu en 192.168.1.100."),
              ]},
             {"id": "21.5", "points": 3, "title": "Serveur DNS",
              "desc": "Quel est le serveur DNS utilisé par la machine ? Écrivez son adresse dans <code>~/dns.txt</code>.",

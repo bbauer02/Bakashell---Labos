@@ -1,0 +1,8 @@
+{
+  "name": "jest-lab-runtime",
+  "private": true,
+  "description": "Dépendances partagées par les projets des étudiants (lien node_modules)",
+  "dependencies": {
+    "jest": "29.7.0"
+  }
+}

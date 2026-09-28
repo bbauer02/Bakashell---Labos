@@ -1,0 +1,10 @@
+{
+  "name": "boutique-cimes-sentiers",
+  "version": "1.0.0",
+  "description": "Code métier de la boutique en ligne Cimes & Sentiers",
+  "private": true,
+  "scripts": {},
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

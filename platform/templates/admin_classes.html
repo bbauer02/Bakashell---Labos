@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Classes — Linux CLI Lab{% endblock %}
+{% block extra_css %}
+.page { max-width:1100px; margin:0 auto; padding:32px 20px 60px; }
+.top { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
+.top h1 { font-size:24px; color:var(--accent-l); }
+.nav { display:flex; gap:8px; }
+.btn-link { padding:7px 14px; border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; background:var(--card); }
+.btn-link:hover { border-color:var(--accent); text-decoration:none; }
+.notice { padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:20px; }
+.notice.ok { background:rgba(0,184,148,.12); border:1px solid var(--ok); color:var(--ok); }
+.notice.err { background:rgba(225,112,85,.12); border:1px solid var(--err); color:var(--err); }
+.help { color:var(--dim); font-size:13px; line-height:1.6; margin-bottom:20px; }
+.box { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:20px 22px; margin-bottom:20px; }
+.box h2 { font-size:18px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+input[type=text] { padding:9px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; }
+button { padding:8px 14px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:13px; cursor:pointer; }
+button:hover { border-color:var(--accent); }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+button.danger:hover { border-color:var(--err); color:var(--err); }
+button.small { padding:3px 9px; font-size:11px; }
+.code { font-family:'JetBrains Mono',monospace; font-size:16px; letter-spacing:2px; background:var(--bg); border:1px dashed var(--accent); color:var(--accent-l); border-radius:8px; padding:4px 12px; }
+.meta { font-size:12px; color:var(--dim); font-weight:400; }
+.section { margin-top:16px; }
+.section h3 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--dim); margin-bottom:8px; }
+.courses label { display:inline-flex; align-items:center; gap:6px; margin:0 16px 8px 0; font-size:14px; cursor:pointer; }
+.members { display:flex; flex-wrap:wrap; gap:6px; }
+.member { display:inline-flex; align-items:center; gap:6px; background:var(--card); border-radius:16px; padding:4px 6px 4px 12px; font-size:13px; }
+.member form { display:inline; }
+.member button { border:none; background:none; color:var(--dim); padding:0 6px; font-size:14px; }
+.member button:hover { color:var(--err); }
+details { margin-top:10px; }
+summary { cursor:pointer; font-size:13px; color:var(--accent-l); }
+.pick { max-height:240px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin:8px 0; columns:2; }
+.pick label { display:block; font-size:13px; padding:3px 0; break-inside:avoid; cursor:pointer; }
+.pick .none { color:var(--dim); font-size:11px; }
+.tools { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; border-top:1px solid var(--border); padding-top:14px; }
+.empty { color:var(--dim); font-size:13px; }
+.orphans { font-size:13px; color:var(--dim); }
+{% endblock %}
+{% block body %}
+<div class="page">
+    <div class="top">
+        <h1>&gt;_ Classes</h1>
+        <div class="nav">
+            <a class="btn-link" href="/dashboard">Tableau de bord</a>
+            <a class="btn-link" href="/catalogue">Catalogue</a>
+        </div>
+    </div>
+    {% if msg %}<div class="notice ok">{{ msg }}</div>{% endif %}
+    {% if err %}<div class="notice err">{{ err }}</div>{% endif %}
+    <p class="help">
+        Une classe regroupe des étudiants et leur ouvre des <strong>labos</strong>. Un étudiant voit dans son catalogue
+        les labos de toutes ses classes. Pour inscrire une classe, donnez-lui son <strong>code</strong> : les étudiants
+        le saisissent à l'inscription ou depuis leur catalogue. Vous pouvez aussi les ajouter à la main.
+    </p>
+
+    <div class="box">
+        <form method="post" action="/admin/classes" class="row">
+            <input type="text" name="name" placeholder="Nom de la nouvelle classe (ex. BTS SIO 1 — 2026)" required style="flex:1; min-width:260px">
+            <button type="submit" class="primary">Créer la classe</button>
+        </form>
+    </div>
+
+    {% set orphans = students | selectattr('nb_classes', 'equalto', 0) | list %}
+    {% if orphans %}
+    <div class="box">
+        <p class="orphans"><strong style="color:#fdcb6e">{{ orphans | length }} étudiant(s) sans classe</strong> (ils ne voient aucun labo) :
+        {% for s in orphans %}{{ s.first_name }} {{ s.last_name }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    </div>
+    {% endif %}
+
+    {% for c in classes %}
+    <div class="box" id="classe-{{ c.id }}">
+        <h2>
+            {{ c.name }}
+            <span class="code" title="Code d'inscription">{{ c.code }}</span>
+            <span class="meta">{{ c.members | length }} étudiant(s)</span>
+        </h2>
+
+        <div class="section">
+            <h3>Labos ouverts</h3>
+            <form method="post" action="/admin/classes/{{ c.id }}/courses" class="courses">
+                {% for k in all_courses %}
+                <label><input type="checkbox" name="course_{{ k.key }}" value="1" {% if k.key in c.courses %}checked{% endif %}> {{ k.title }}</label>
+                {% endfor %}
+                <div><button type="submit" class="small">Enregistrer les labos</button></div>
+            </form>
+        </div>
+
+        <div class="section">
+            <h3>Étudiants</h3>
+            {% if c.members %}
+            <div class="members">
+                {% for m in c.members %}
+                <span class="member" title="{{ m.email }}">{{ m.first_name }} {{ m.last_name }}
+                    <form method="post" action="/admin/classes/{{ c.id }}/remove/{{ m.id }}"><button type="submit" title="Retirer de la classe">×</button></form>
+                </span>
+                {% endfor %}
+            </div>
+            {% else %}<p class="empty">Aucun étudiant pour l'instant.</p>{% endif %}
+            {% set member_ids = c.members | map(attribute='id') | list %}
+            {% set candidates = students | rejectattr('id', 'in', member_ids) | list %}
+            {% if candidates %}
+            <details>
+                <summary>Ajouter des étudiants ({{ candidates | length }} disponibles)</summary>
+                <form method="post" action="/admin/classes/{{ c.id }}/members">
+                    <div class="pick">
+                        {% for s in candidates %}
+                        <label><input type="checkbox" name="user_ids" value="{{ s.id }}"> {{ s.last_name }} {{ s.first_name }}
+                            {% if s.nb_classes == 0 %}<span class="none">(sans classe)</span>{% endif %}</label>
+                        {% endfor %}
+                    </div>
+                    <button type="submit" class="small primary">Ajouter la sélection</button>
+                </form>
+            </details>
+            {% endif %}
+        </div>
+
+        <div class="tools">
+            <form method="post" action="/admin/classes/{{ c.id }}/rename" class="row">
+                <input type="text" name="name" value="{{ c.name }}" required>
+                <button type="submit" class="small">Renommer</button>
+            </form>
+            <form method="post" action="/admin/classes/{{ c.id }}/code" onsubmit="return confirm('Générer un nouveau code ? L\'ancien ne fonctionnera plus.')">
+                <button type="submit" class="small">Nouveau code</button>
+            </form>
+            <a class="btn-link" style="font-size:11px;padding:4px 9px" href="/dashboard?classe={{ c.id }}">Suivre cette classe</a>
+            <form method="post" action="/admin/classes/{{ c.id }}/delete" onsubmit="return confirm('Supprimer la classe « {{ c.name }} » ? Les comptes et leur progression sont conservés, mais ces étudiants perdent l\'accès aux labos de cette classe.')">
+                <button type="submit" class="small danger">Supprimer la classe</button>
+            </form>
+        </div>
+    </div>
+    {% else %}
+    <div class="box"><p class="empty">Aucune classe : créez-en une ci-dessus.</p></div>
+    {% endfor %}
+</div>
+{% endblock %}
