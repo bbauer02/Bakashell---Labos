@@ -61,6 +61,8 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .logo svg { width: 28px; height: 28px; }
@@ -69,11 +71,18 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            flex: 1 1 auto;
+            min-width: 0;
+            margin: 0 16px;
+            overflow-x: auto;
+            scrollbar-width: none;
         }
+        .topbar-center::-webkit-scrollbar { display: none; }
 
         .step-dot {
             width: 32px;
             height: 32px;
+            flex-shrink: 0;
             border-radius: 50%;
             border: 2px solid var(--border);
             display: flex;
@@ -95,6 +104,8 @@
             display: flex;
             align-items: center;
             gap: 16px;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
 
         .score-display {
@@ -566,6 +577,29 @@
         .toast.error { background: var(--danger); }
         .toast.info { background: var(--accent); }
 
+        /* ─── Indices, messages, badges ────────────── */
+        .exercise-fail-msg { margin-top: 8px; font-size: 12px; color: var(--danger); line-height: 1.5; }
+        .badge-manual { font-size: 10px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-dim); margin-left: 6px; }
+        .hint-list { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--text-dim); }
+        .hint-list li { margin-bottom: 4px; }
+        .hint-list code { background: var(--bg-primary); padding: 1px 5px; border-radius: 4px; color: var(--cyan); font-size: 11px; }
+        .btn-hint { margin-top: 8px; background: none; border: 1px dashed var(--border); color: var(--text-dim); border-radius: 6px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
+        .btn-hint:hover { border-color: var(--accent); color: var(--text); }
+        .btn-reset-step { display: block; margin: 8px auto 0; background: none; border: none; color: var(--text-dim); font-size: 11px; cursor: pointer; text-decoration: underline; }
+        .btn-reset-step:hover { color: var(--danger); }
+
+        /* ─── Scénario et tickets ─────────────────── */
+        .lesson-content .scenario { background: var(--bg-primary); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; }
+        .lesson-content .scenario h3 { margin-top: 0; }
+        .lesson-content .scenario .cast { margin-top: 8px; }
+        .ticket-head { display: flex; align-items: center; gap: 10px; margin: 6px 0 10px; }
+        .ticket-avatar { width: 32px; height: 32px; border-radius: 50%; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .ticket-from { font-size: 13px; font-weight: 600; }
+        .ticket-role { font-size: 11px; color: var(--text-dim); font-weight: 400; }
+        .ticket-body { font-size: 13px; line-height: 1.6; background: var(--bg-primary); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+        .ticket-body code { background: var(--bg-secondary, rgba(255,255,255,.06)); padding: 1px 5px; border-radius: 4px; color: var(--cyan); font-size: 12px; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+        .deliverable-label { font-weight: 600; color: var(--text); }
+
         /* ─── Responsive ───────────────────────────── */
         @media (max-width: 768px) {
             .main { flex-direction: column; }
@@ -596,7 +630,7 @@
                 </svg>
                 <div>
                     <div class="score-num" id="score-num">0</div>
-                    <div class="score-label">/ 100 pts</div>
+                    <div class="score-label">/ <span id="score-max">…</span> pts</div>
                 </div>
             </div>
             <span style="font-size:13px;color:var(--text-dim)">{{ user.first_name }} {{ user.last_name }}{% if user.is_admin %} <span style="color:var(--accent-light);font-size:10px;background:var(--bg-primary);padding:2px 6px;border-radius:4px">ADMIN</span>{% endif %}</span>
@@ -627,7 +661,8 @@
                     </svg>
                     Vérifier maintenant
                 </button>
-                <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text-dim)">Vérification automatique toutes les 3s</div>
+                <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text-dim)">Vérification automatique toutes les 5 s (sauf exercices « manuel »)</div>
+                <button class="btn-reset-step" id="btn-reset-step" onclick="resetStep()" style="display:none">Réinitialiser les fichiers de cette étape</button>
             </div>
         </div>
 
@@ -789,6 +824,8 @@
                 else if (s.completed > 0) cls = 'partial';
                 return `<div class="step-dot ${cls}" onclick="selectStep(${s.num})" title="Étape ${s.num}: ${s.title}">${s.num}</div>`;
             }).join('');
+            const active = container.querySelector('.step-dot.active');
+            if (active) container.scrollLeft = active.offsetLeft - container.clientWidth / 2;
         }
 
         function switchTab(tab) {
@@ -819,30 +856,89 @@
             const lessonEl = document.getElementById('lesson-content');
             lessonEl.innerHTML = stepData.lesson || '<p>Pas de cours pour cette étape.</p>';
 
+            if (stepData.mentor) mentorName = stepData.mentor;
+
             // Render exercises
             const list = document.getElementById('exercises-list');
             list.innerHTML = stepData.exercises.map(ex => `
                 <div class="exercise-card ${ex.completed ? 'passed' : ''}" id="card-${ex.id}">
                     <div class="exercise-top">
-                        <span class="exercise-id">Exercice ${ex.id}</span>
-                        <span class="exercise-points">${ex.points} pts</span>
+                        <span class="exercise-id">${ex.ticket ? 'Ticket #' + ex.ticket.num : 'Exercice ' + ex.id}${ex.manual ? '<span class="badge-manual" title="Vos scripts sont exécutés : cliquez sur Vérifier">manuel</span>' : ''}</span>
+                        <span class="exercise-points">${ex.completed ? ex.earned + '/' : ''}${ex.points} pts</span>
                     </div>
                     <div class="exercise-title">${ex.title}</div>
-                    <div class="exercise-desc">${ex.desc}</div>
-                    ${ex.completed ? '<div class="exercise-status pass">&#10003; Validé</div>' : ''}
+                    ${ex.ticket ? `
+                    <div class="ticket-head">
+                        <div class="ticket-avatar" style="background:${ex.ticket.color}">${ex.ticket.initials}</div>
+                        <div class="ticket-from">${ex.ticket.from}<br><span class="ticket-role">${ex.ticket.role}</span></div>
+                    </div>
+                    <div class="ticket-body">${ex.ticket.body}</div>
+                    <div class="exercise-desc"><span class="deliverable-label">À livrer :</span> ${ex.desc}</div>` : `
+                    <div class="exercise-desc">${ex.desc}</div>`}
+                    <div class="hint-zone" id="hints-${ex.id}" data-ticket="${ex.ticket ? 1 : ''}">${renderHints(ex.id, ex.hints, ex.hints_total, ex.completed, !!ex.ticket)}</div>
+                    <div class="exercise-result">${ex.completed ? '<div class="exercise-status pass">&#10003; Validé</div>' : ''}</div>
                 </div>
             `).join('');
+
+            document.getElementById('btn-reset-step').style.display = stepData.has_setup ? 'block' : 'none';
 
             // Show lesson tab by default when switching steps
             switchTab('lesson');
         }
 
+        let mentorName = 'Léa';
+
+        function renderHints(id, hints, total, completed, ticket) {
+            const intro = ticket ? `<div class="ticket-role" style="margin-top:8px">${mentorName} vous glisse :</div>` : '';
+            let html = hints.length ? `${intro}<ol class="hint-list">${hints.map(h => `<li>${h}</li>`).join('')}</ol>` : '';
+            if (hints.length < total) {
+                const ask = ticket ? `Demander à ${mentorName}` : 'Indice';
+                const label = completed ? ask : `${ask} (−1 pt)`;
+                html += `<button class="btn-hint" onclick="askHint('${id}')">${label} · ${hints.length}/${total}</button>`;
+            }
+            return html;
+        }
+
+        async function askHint(id) {
+            const res = await fetch(`/api/hint/${id}`, { method: 'POST' });
+            if (!res.ok) return;
+            const data = await res.json();
+            const card = document.getElementById(`card-${id}`);
+            const zone = document.getElementById(`hints-${id}`);
+            zone.innerHTML = renderHints(id, data.hints, data.hints_total, card.classList.contains('passed'), !!zone.dataset.ticket);
+        }
+
+        async function resetStep() {
+            if (!confirm("Recréer les fichiers et processus fournis pour cette étape ? Votre score est conservé, mais les fichiers fournis reviennent à leur état initial.")) return;
+            const res = await fetch(`/api/reset-step/${currentStep}`, { method: 'POST' });
+            showToast(res.ok ? 'Étape réinitialisée' : 'Réinitialisation impossible', res.ok ? 'info' : 'error');
+        }
+
+        function setResult(card, r) {
+            const zone = card.querySelector('.exercise-result');
+            if (r.passed) {
+                card.className = 'exercise-card passed';
+                zone.innerHTML = `<div class="exercise-status pass">&#10003; ${r.already ? 'Validé' : 'Validé ! +' + r.earned + ' pts'}</div>`;
+                const pts = card.querySelector('.exercise-points');
+                if (pts && r.earned) pts.textContent = `${r.earned}/${r.points} pts`;
+            } else if (r.skipped) {
+                zone.innerHTML = '';
+            } else {
+                card.className = 'exercise-card failed';
+                zone.innerHTML = `<div class="exercise-status fail">&#10007; Pas encore</div><div class="exercise-fail-msg">${r.message || ''}</div>`;
+            }
+        }
+
+        let maxScore = 100;
+
         function updateScore(progress) {
             const score = progress.score || 0;
+            if (progress.max_score) maxScore = progress.max_score;
             document.getElementById('score-num').textContent = score;
+            document.getElementById('score-max').textContent = maxScore;
 
             // Update ring
-            const pct = score / 100;
+            const pct = score / maxScore;
             const circumference = 106.8;
             const offset = circumference * (1 - pct);
             document.getElementById('progress-circle').style.strokeDashoffset = offset;
@@ -875,6 +971,7 @@
         async function validateStep() {
             // Switch to exercises tab to show results
             switchTab('exercises');
+            validating = true;
 
             const btn = document.getElementById('btn-validate');
             btn.className = 'btn-validate validating';
@@ -891,22 +988,9 @@
                 for (const r of data.validation.results) {
                     const card = document.getElementById(`card-${r.id}`);
                     if (!card) continue;
-
-                    // Remove old status
-                    const oldStatus = card.querySelector('.exercise-status');
-                    if (oldStatus) oldStatus.remove();
-
-                    if (r.passed) {
-                        card.className = 'exercise-card passed';
-                        card.insertAdjacentHTML('beforeend',
-                            `<div class="exercise-status pass">&#10003; ${r.message}${r.already ? ' (déjà validé)' : ''}</div>`);
-                        if (!r.already) newPoints += r.points;
-                    } else {
-                        card.className = 'exercise-card failed';
-                        card.insertAdjacentHTML('beforeend',
-                            `<div class="exercise-status fail">&#10007; ${r.message}</div>`);
-                        allPassed = false;
-                    }
+                    setResult(card, r);
+                    if (r.passed && !r.already) newPoints += r.earned;
+                    if (!r.passed) allPassed = false;
                 }
 
                 // Update score
@@ -948,6 +1032,8 @@
                 showToast('Erreur de validation', 'error');
                 btn.className = 'btn-validate';
                 btn.innerHTML = 'Réessayer';
+            } finally {
+                validating = false;
             }
         }
 
@@ -971,10 +1057,15 @@
         // ─── Auto-validation ──────────────────────────
         let autoValidateTimer = null;
 
+        let validating = false;
+
         async function autoValidate() {
+            if (document.hidden || validating) return;
+            validating = true;
             try {
-                const res = await fetch(`/api/validate/${currentStep}`, { method: 'POST' });
+                const res = await fetch(`/api/validate/${currentStep}?auto=true`, { method: 'POST' });
                 const data = await res.json();
+                if (data.validation.step !== currentStep) return;
 
                 let newPoints = 0;
                 let allPassed = true;
@@ -985,15 +1076,8 @@
 
                     if (r.passed) {
                         if (!card.classList.contains('passed')) {
-                            // New completion!
-                            card.className = 'exercise-card passed';
-                            const oldStatus = card.querySelector('.exercise-status');
-                            if (oldStatus) oldStatus.remove();
-                            card.insertAdjacentHTML('beforeend',
-                                `<div class="exercise-status pass">&#10003; ${r.message}</div>`);
-                            if (!r.already) {
-                                newPoints += r.points;
-                            }
+                            setResult(card, r);
+                            if (!r.already) newPoints += r.earned;
                         }
                     } else {
                         allPassed = false;
@@ -1014,12 +1098,14 @@
                 }
             } catch (e) {
                 // Silently ignore polling errors
+            } finally {
+                validating = false;
             }
         }
 
         function startAutoValidation() {
             if (autoValidateTimer) clearInterval(autoValidateTimer);
-            autoValidateTimer = setInterval(autoValidate, 3000);
+            autoValidateTimer = setInterval(autoValidate, 5000);
         }
 
         // ─── Init ─────────────────────────────────────

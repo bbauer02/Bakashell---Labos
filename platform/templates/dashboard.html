@@ -1,33 +1,39 @@
 {% extends "base.html" %}
 {% block title %}Scores — Linux CLI Lab{% endblock %}
 {% block extra_css %}
-.dashboard { max-width:900px; margin:0 auto; padding:40px 20px; }
+.dashboard { max-width:1200px; margin:0 auto; padding:40px 20px; }
 .dash-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:32px; }
 .dash-header h1 { font-size:24px; color:var(--accent-l); }
 .back-btn { padding:8px 16px; background:var(--card); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; cursor:pointer; text-decoration:none; }
 .back-btn:hover { border-color:var(--accent); text-decoration:none; }
-table { width:100%; border-collapse:collapse; background:var(--bg2); border-radius:12px; overflow:hidden; }
-th { background:var(--card); padding:14px 16px; text-align:left; font-size:13px; font-weight:600; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid var(--border); }
-td { padding:12px 16px; border-bottom:1px solid var(--border); font-size:14px; }
+.table-wrap { overflow-x:auto; border-radius:12px; }
+table { width:100%; border-collapse:collapse; background:var(--bg2); }
+th { background:var(--card); padding:14px 12px; text-align:left; font-size:12px; font-weight:600; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid var(--border); white-space:nowrap; }
+td { padding:10px 12px; border-bottom:1px solid var(--border); font-size:14px; }
 tr:last-child td { border-bottom:none; }
 .rank { width:40px; text-align:center; font-weight:700; color:var(--accent-l); }
-.name { font-weight:600; }
-.email { color:var(--dim); font-size:13px; }
-.score-cell { font-weight:700; font-size:16px; }
+.name { font-weight:600; white-space:nowrap; }
+.email { color:var(--dim); font-size:12px; }
+.score-cell { font-weight:700; font-size:16px; white-space:nowrap; }
 .score-high { color:var(--ok); }
 .score-mid { color:var(--accent-l); }
 .score-low { color:var(--dim); }
-.bar-bg { background:var(--border); border-radius:4px; height:8px; width:120px; }
-.bar-fg { background:var(--accent); border-radius:4px; height:8px; transition:.3s; }
+.steps-grid { display:flex; gap:2px; }
+.cell { width:12px; height:18px; border-radius:2px; background:var(--border); }
+.cell.partial { background:var(--accent); opacity:.55; }
+.cell.done { background:var(--ok); }
+.seen { color:var(--dim); font-size:12px; white-space:nowrap; }
 .empty { text-align:center; padding:60px; color:var(--dim); font-size:16px; }
 .actions { display:flex; gap:6px; }
 .btn-sm { padding:4px 10px; border:1px solid var(--border); border-radius:6px; font-size:11px; cursor:pointer; background:none; color:var(--dim); transition:.2s; }
 .btn-sm:hover { border-color:var(--accent); color:var(--accent-l); }
 .btn-sm.danger:hover { border-color:var(--err); color:var(--err); }
-.stat-cards { display:flex; gap:16px; margin-bottom:24px; }
-.stat-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px 24px; flex:1; }
+.stat-cards { display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
+.stat-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px 24px; flex:1; min-width:160px; }
 .stat-card .num { font-size:28px; font-weight:700; color:var(--accent-l); }
 .stat-card .label { font-size:12px; color:var(--dim); margin-top:4px; }
+.legend { font-size:12px; color:var(--dim); margin:0 0 12px; display:flex; gap:14px; align-items:center; }
+.legend .cell { display:inline-block; vertical-align:middle; margin-right:4px; }
 {% endblock %}
 {% block body %}
 <div class="dashboard">
@@ -42,35 +48,48 @@ tr:last-child td { border-bottom:none; }
         </div>
         <div class="stat-card">
             <div class="num">{% if students %}{{ (students | map(attribute='score') | sum / students | length) | round(1) }}{% else %}0{% endif %}</div>
-            <div class="label">Score moyen / 100</div>
+            <div class="label">Score moyen / {{ max_score }}</div>
         </div>
         <div class="stat-card">
-            <div class="num">{{ containers | length }}</div>
-            <div class="label">Containers actifs</div>
+            <div class="num">{{ running }}</div>
+            <div class="label">Conteneurs démarrés ({{ containers | length }} au total)</div>
         </div>
     </div>
-
     {% if students %}
+    <p class="legend">
+        <span><span class="cell done"></span>étape terminée</span>
+        <span><span class="cell partial"></span>commencée</span>
+        <span><span class="cell"></span>non commencée</span>
+    </p>
+    <div class="table-wrap">
     <table>
         <tr>
             <th>#</th>
             <th>Étudiant</th>
-            <th>Email</th>
             <th>Score</th>
-            <th>Progression</th>
+            <th>Étapes (1 → {{ steps | length }})</th>
             <th>Exercices</th>
+            <th>Dernière activité</th>
             <th>Actions</th>
         </tr>
         {% for s in students %}
+        {% set pct = (s.score * 100 / max_score) if max_score else 0 %}
         <tr>
             <td class="rank">{{ loop.index }}</td>
-            <td class="name">{{ s.first_name }} {{ s.last_name }}</td>
-            <td class="email">{{ s.email }}</td>
-            <td class="score-cell {% if s.score >= 70 %}score-high{% elif s.score >= 30 %}score-mid{% else %}score-low{% endif %}">{{ s.score }}/100</td>
-            <td><div class="bar-bg"><div class="bar-fg" style="width:{{ s.score }}%"></div></div></td>
-            <td style="color:var(--dim)">{{ s.exercises_done }}/30</td>
+            <td><div class="name">{{ s.first_name }} {{ s.last_name }}</div><div class="email">{{ s.email }}</div></td>
+            <td class="score-cell {% if pct >= 70 %}score-high{% elif pct >= 30 %}score-mid{% else %}score-low{% endif %}">{{ s.score }}/{{ max_score }}</td>
+            <td>
+                <div class="steps-grid">
+                {% for st in steps %}
+                    {% set n = s.per_step.get(st.num, 0) %}
+                    <div class="cell {% if n >= st.total %}done{% elif n > 0 %}partial{% endif %}" title="Étape {{ st.num }} — {{ st.title }} : {{ n }}/{{ st.total }}"></div>
+                {% endfor %}
+                </div>
+            </td>
+            <td style="color:var(--dim)">{{ s.exercises_done }}/{{ total_exercises }}</td>
+            <td class="seen">{{ s.last_seen or '—' }}</td>
             <td class="actions">
-                <form method="post" action="/admin/reset-user/{{ s.id }}" onsubmit="return confirm('Remettre le score de {{ s.first_name }} à zéro ?')">
+                <form method="post" action="/admin/reset-user/{{ s.id }}" onsubmit="return confirm('Remettre le score de {{ s.first_name }} à zéro et recréer son conteneur ?')">
                     <button type="submit" class="btn-sm">Reset</button>
                 </form>
                 <form method="post" action="/admin/delete-user/{{ s.id }}" onsubmit="return confirm('Supprimer le compte de {{ s.first_name }} {{ s.last_name }} ? Cette action est irréversible.')">
@@ -80,6 +99,7 @@ tr:last-child td { border-bottom:none; }
         </tr>
         {% endfor %}
     </table>
+    </div>
     {% else %}
     <div class="empty">Aucun étudiant inscrit pour le moment.</div>
     {% endif %}

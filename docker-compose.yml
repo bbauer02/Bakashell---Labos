@@ -9,39 +9,27 @@ services:
       - platform-data:/data
     environment:
       - LAB_IMAGE=linux-lab
-      - LAB_NETWORK=linux-lab-net
+      - LAB_NETWORK=linux-lab-students
       - DB_PATH=/data/platform.db
-      - SECRET_KEY=change-me-in-production
-    networks:
-      - linux-lab-net
+      # Compte enseignant : définissez-les dans un fichier .env (voir .env.example)
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@lab.local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - ADMIN_FIRST=${ADMIN_FIRST:-Admin}
+      - ADMIN_LAST=${ADMIN_LAST:-Lab}
+      # Arrêt des conteneurs étudiants sans activité (secondes)
+      - IDLE_TIMEOUT=${IDLE_TIMEOUT:-7200}
+      # Mettre à 1 derrière un reverse proxy HTTPS
+      - COOKIE_SECURE=${COOKIE_SECURE:-0}
+    restart: unless-stopped
     depends_on:
       lab-image:
         condition: service_completed_successfully
-      ssh-target:
-        condition: service_started
 
-  # This service just builds the lab image, then exits
+  # Ce service construit seulement l'image des conteneurs étudiants, puis s'arrête
   lab-image:
     build: ./lab
     image: linux-lab
     entrypoint: ["echo", "Lab image built"]
-
-  # Shared SSH target for connection exercises (read-only, no shell)
-  ssh-target:
-    build: ./lab/ssh-target
-    container_name: ssh-target
-    hostname: ssh-target
-    networks:
-      - linux-lab-net
-    mem_limit: 64m
-    cpu_period: 100000
-    cpu_quota: 25000
-    restart: unless-stopped
-
-networks:
-  linux-lab-net:
-    name: linux-lab-net
-    external: true
 
 volumes:
   platform-data:
