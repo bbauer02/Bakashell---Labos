@@ -63,20 +63,44 @@ def get_or_create_container(user_id: int, course: dict) -> str:
 
 def container_status(user_id: int, course: dict) -> str:
     """État de l'environnement avant son ouverture : « running », « stopped » (arrêté après inactivité,
-    le travail est conservé), « outdated » (nouvelle version du parcours : il sera recréé) ou « absent »."""
+    le travail est conservé), « outdated » (nouvelle version du parcours : il sera recréé), « refreshed »
+    (nouvelle image du labo : il sera recréé en gardant le dossier personnel) ou « absent »."""
     try:
         container = client().containers.get(get_container_name(user_id, course))
     except docker.errors.NotFound:
         return "absent"
     if container.labels.get("linux-lab.version") != course["version"]:
         return "outdated"
+    if _image_changed(container, course):
+        return "refreshed"
     return "running" if container.status == "running" else "stopped"
 
 
+def _image_changed(container, course: dict) -> bool:
+    """Vrai si l'image du parcours a été reconstruite depuis la création du conteneur."""
+    try:
+        current = client().images.get(course["image"]).id
+    except docker.errors.ImageNotFound:
+        return False
+    return container.attrs.get("Image") != current
+
+
+def _save_home(container) -> bytes:
+    """Archive tar du dossier personnel de l'étudiant (fonctionne aussi sur un conteneur arrêté)."""
+    stream, _ = container.get_archive(STUDENT_HOME)
+    return b"".join(stream)
+
+
 def _get_or_create(user_id: int, course: dict, name: str) -> str:
+    home = None
     try:
         container = client().containers.get(name)
         if container.labels.get("linux-lab.version") != course["version"]:
+            container.remove(force=True)
+        elif _image_changed(container, course):
+            # Nouvelle image du labo (exercices enrichis, outils ajoutés) : conteneur recréé, dossier personnel
+            # conservé. Les mises en place seront rejouées à l'ouverture de chaque étape (marqueurs absents).
+            home = _save_home(container)
             container.remove(force=True)
         else:
             if container.status != "running":
@@ -122,6 +146,8 @@ def _get_or_create(user_id: int, course: dict, name: str) -> str:
         if code == 0:
             break
         time.sleep(0.25)
+    if home is not None:
+        container.put_archive(os.path.dirname(STUDENT_HOME), home)
     return container.id
 
 
