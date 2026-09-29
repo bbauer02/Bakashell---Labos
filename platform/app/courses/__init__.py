@@ -2,11 +2,13 @@
 
 Chaque parcours a son image Docker, son conteneur par étudiant, son catalogue d'étapes et
 sa version (un changement de version archive la progression du parcours et recrée les
-conteneurs). Les identifiants d'exercices sont uniques entre parcours (« 4.2 », « J4.2 »).
+conteneurs). Les identifiants d'exercices sont uniques entre parcours (« 4.2 », « J4.2 », « D4.2 », « G4.2 », « A4.2 »).
 """
 import os
 
+from .ansible import catalogue as ansible_catalogue
 from .docker import catalogue as docker_catalogue
+from .git import catalogue as git_catalogue
 from .jest import catalogue as jest_catalogue
 from .linux import catalogue as linux_catalogue
 from ..scenario import CHARACTERS
@@ -82,6 +84,54 @@ COURSES = {
         "pids_limit": 2048,
         # Moteur Docker propre à chaque étudiant : runtime Sysbox (recommandé) ou « privileged »
         # (Docker-in-Docker classique : à réserver à une machine dédiée ou au développement).
+        "docker_in_docker": os.environ.get("DOCKER_LAB_RUNTIME", "sysbox-runc"),
+    },
+    "git": {
+        "key": "git",
+        "title": "Git : travailler en équipe",
+        "short": "Git",
+        "summary": "Versionner, explorer l'historique, collaborer sur un dépôt partagé : branches, conflits, rebase, stash, bisect, étiquettes et récupération de commits perdus.",
+        "level": "Débutant à intermédiaire",
+        "duration": "8 à 12 h",
+        "steps": git_catalogue.STEPS,
+        "version": git_catalogue.EXERCISES_VERSION,
+        "meta_key": "exercises_version:git",
+        "id_glob": "G*",
+        "image": os.environ.get("GIT_LAB_IMAGE", "git-lab"),
+        "container_prefix": "lab-git-",
+        "setup_prelude": git_catalogue.SETUP_PRELUDE,
+        "check_prelude": git_catalogue.CHECK_PRELUDE,
+        "mentor": git_catalogue.MENTOR,
+        "editor_root": None,
+        "auto_validate": True,
+        "check_timeout": 45,
+        "mem_limit": "256m",
+        "cpu_quota": 50000,
+        "pids_limit": 256,
+    },
+    "ansible": {
+        "key": "ansible",
+        "title": "Ansible : automatiser l'infrastructure",
+        "short": "Ansible",
+        "summary": "Comprendre ce que fait Ansible et décrire toute l'infrastructure en code : inventaire, modules, playbooks, variables et modèles, handlers, rôles, Vault, sur de vrais serveurs joignables en SSH.",
+        "level": "Intermédiaire (bases Linux requises)",
+        "duration": "10 à 15 h",
+        "steps": ansible_catalogue.STEPS,
+        "version": ansible_catalogue.EXERCISES_VERSION,
+        "meta_key": "exercises_version:ansible",
+        "id_glob": "A*",
+        "image": os.environ.get("ANSIBLE_LAB_IMAGE", "ansible-lab"),
+        "container_prefix": "lab-ansible-",
+        "setup_prelude": ansible_catalogue.SETUP_PRELUDE,
+        "check_prelude": ansible_catalogue.CHECK_PRELUDE,
+        "mentor": ansible_catalogue.MENTOR,
+        "editor_root": "/home/etudiant/infra",
+        "auto_validate": True,
+        "check_timeout": 240,
+        "mem_limit": "1536m",
+        "cpu_quota": 100000,
+        "pids_limit": 2048,
+        # Les serveurs gérés (web1, web2, db1, web3) tournent dans un moteur Docker propre à l'étudiant
         "docker_in_docker": os.environ.get("DOCKER_LAB_RUNTIME", "sysbox-runc"),
     },
 }

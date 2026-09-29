@@ -3,11 +3,13 @@
 Chaque fiche indique les exercices qui la débloquent (« unlock ») ; aucune donnée n'est stockée :
 le déblocage se calcule à partir de la progression de l'étudiant.
 """
+from .courses.ansible import memo as ansible
 from .courses.docker import memo as docker
+from .courses.git import memo as git
 from .courses.jest import memo as jest
 from .courses.linux import memo as linux
 
-MEMOS = {"linux": linux.CARDS, "jest": jest.CARDS, "docker": docker.CARDS}
+MEMOS = {"linux": linux.CARDS, "jest": jest.CARDS, "docker": docker.CARDS, "git": git.CARDS, "ansible": ansible.CARDS}
 
 
 def check(courses: dict, exercise_index: dict):

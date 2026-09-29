@@ -4,3 +4,4 @@ __pycache__/
 *.db
 images/linux/docker-compose.yml
 .env
+backups/

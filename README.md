@@ -1,13 +1,15 @@
 # Linux CLI Lab
 
 Plateforme d'apprentissage (BTS SIO / DevOps) : chaque étudiant dispose, dans son navigateur, d'un conteneur
-personnel, d'un cours par étape et d'exercices validés automatiquement. Trois parcours :
+personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq parcours :
 
 | Parcours | URL | Contenu |
 |---|---|---|
 | **Linux en ligne de commande** | `/lab/linux` | 25 étapes, 119 exercices, 422 points — terminal Ubuntu |
 | **Tests unitaires avec Jest** (niveau avancé) | `/lab/jest` | 10 journées, 21 exercices, 103 points — éditeur de code + terminal Node |
 | **Docker : conteneuriser la boutique** (révision des bases) | `/lab/docker` | 8 journées, 21 exercices, 87 points — un moteur Docker par étudiant + éditeur |
+| **Git : travailler en équipe** | `/lab/git` | 8 journées, 21 exercices, 77 points — terminal + dépôt partagé de l'équipe |
+| **Ansible : automatiser l'infrastructure** | `/lab/ansible` | 8 journées, 21 exercices, 88 points — poste de contrôle + vrais serveurs joignables en SSH + éditeur |
 
 ## Organisation : catalogue et classes
 
@@ -19,7 +21,21 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Trois 
 - L'accès est contrôlé côté serveur (pages, API, terminal, éditeur, indices). Un compte admin voit tous les labos, et
   un bouton « Voir la correction » sur chaque exercice.
 - Le tableau de bord (`/dashboard`) se filtre par parcours et par classe, et se met à jour en temps réel (présence,
-  progression, élèves bloqués, fil d'activité).
+  progression, élèves bloqués, fil d'activité). Depuis la ligne d'un étudiant, l'enseignant peut **regarder son
+  terminal en direct** (lecture seule : ses frappes ne sont pas transmises) ou générer un **lien de réinitialisation
+  du mot de passe** (valable 48 h, à transmettre à l'étudiant).
+- **Échéances** : sur `/admin/classes`, l'enseignant fixe une date par classe, parcours et étape (« étapes 1 à 8 pour
+  le 15/10 »). L'étudiant les voit dans son catalogue et dans le lab ; le tableau de bord signale les retards.
+- **Export des notes** (`/admin/export.csv`, par parcours et par classe) : points, exercices réussis, indices utilisés,
+  dernière réussite, attestation. Séparateur `;`, UTF-8 avec BOM : s'ouvre directement dans Excel ou LibreOffice.
+- **Statistiques par exercice** (`/admin/stats`) : taux de réussite, vérifications en échec, indices consommés, pour
+  repérer les exercices qui font buter toute la classe. Chaque vérification en échec est conservée : l'étudiant
+  retrouve ses tentatives précédentes sous chaque exercice.
+- **Attestation de fin de parcours** : à partir de `CERTIFICATE_MIN_PCT` % des points (70 % par défaut), l'étudiant
+  obtient depuis son catalogue une page publique vérifiable (`/attestation/<code>`), imprimable en PDF, pour son
+  portfolio.
+- Chaque utilisateur change son mot de passe sur `/compte`. Connexion, inscription et réinitialisation sont limitées
+  (10 échecs de connexion en 15 min) contre le forçage des mots de passe.
 
 ## Architecture
 
@@ -27,19 +43,25 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Trois 
 |---|---|
 | `platform/` | Application FastAPI : comptes, sessions, terminal WebSocket (xterm.js), éditeur (Monaco), validation, tableau de bord |
 | `platform/app/courses/__init__.py` | Registre des parcours (image, ressources, catalogue, version) |
-| `platform/app/courses/<parcours>/` | Un dossier par parcours (`linux`, `jest`, `docker`) : `catalogue.py` (cours, mises en place, exercices, vérifications, indices), `memo.py` (fiches du mémo), `solutions.py` (corrigés) |
+| `platform/app/courses/<parcours>/` | Un dossier par parcours (`linux`, `jest`, `docker`, `git`, `ansible`) : `catalogue.py` (cours, mises en place, exercices, vérifications, indices), `memo.py` (fiches du mémo), `solutions.py` (corrigés) |
 | `platform/app/memo.py` | Mémo des commandes : déblocage des fiches selon la progression |
 | `platform/app/solutions.py` | Découpage des corrigés (un script par étape, un repère `#@ <exercice>` par exercice), visibles par les admins |
 | `platform/app/scenario.py` | Entreprise fictive et personnages communs aux parcours |
 | `platform/app/runner.py` | Construit les commandes de mise en place et de vérification (partagé avec les tests) |
+| `platform/app/terminals.py` | Diffusion du terminal d'un étudiant vers l'enseignant qui le regarde |
+| `platform/app/ratelimit.py` | Limitation des tentatives (connexion, inscription, mot de passe) |
 | `images/linux/` | Image `linux-lab` : utilisateur `etudiant` (sudoer), sshd, cron, rsyslog |
 | `images/jest/` | Image `jest-lab` : Node 20 + Jest, code de référence, mutants, tests cachés, correcteur (`verifier.js`) |
 | `images/docker/` | Image `docker-lab` : moteur Docker complet (docker:dind), images de base préchargées, projet de la boutique |
-| `platform/tests/` | Banc de test des parcours |
+| `images/git/` | Image `git-lab` : Git, invite qui affiche la branche courante, dépôt partagé de l'équipe dans `/srv/git` |
+| `images/ansible/` | Image `ansible-lab` : poste de contrôle (ansible-core) + moteur Docker interne qui fait tourner les serveurs gérés (Debian + SSH) et le dépôt APT interne |
+| `platform/tests/` | Banc de test des parcours (`run_lab_tests.py`) et tests unitaires de la plateforme (`test_platform.py`) |
+| `.github/workflows/ci.yml` | Intégration continue : tests unitaires, image de la plateforme, banc de test de chaque parcours |
 | `docs/tutoriel/step-*/` | Tutoriel texte d'origine (historique, non utilisé par la plateforme) |
 
-Chaque étudiant a un conteneur **par parcours** (`lab-student-<id>`, `lab-jest-<id>`, `lab-docker-<id>`), créé à sa
-première visite.
+Chaque étudiant a un conteneur **par parcours** (`lab-student-<id>`, `lab-jest-<id>`, `lab-docker-<id>`,
+`lab-git-<id>`, `lab-ansible-<id>`), créé à sa première visite. Un conteneur arrêté pour inactivité redémarre à la visite suivante, avec
+un message qui prévient l'étudiant ; son travail est conservé.
 
 Fonctionnement d'une étape :
 
@@ -51,16 +73,16 @@ Fonctionnement d'une étape :
    vérification en échec renvoie un message explicite, éventuellement détaillé (valeurs attendues, défaut non
    détecté…).
 4. Les exercices marqués `manual` (qui exécutent du code de l'étudiant) ne sont testés que sur clic ; dans le
-   parcours Linux, les autres sont vérifiés automatiquement toutes les 5 s.
+   parcours Linux, Docker, Git et Ansible, les autres sont vérifiés automatiquement toutes les 5 s.
 5. Chaque indice débloqué coûte 1 point (minimum 1 point par exercice réussi).
 
 ## Scénario
 
 L'étudiant travaille chez **Cimes & Sentiers**, une PME fictive de vente de matériel de randonnée. Les exercices
 arrivent sous forme de **tickets** envoyés par des collègues récurrents : Sophie (DSI), Léa (admin senior, mentore
-du parcours Linux), Nadia (lead développeuse, mentore du parcours Jest), Thomas (développeur), Aminata
-(comptabilité), Julien (stagiaire). Un exercice sans clé `ticket` s'affiche au format classique (parcours Linux,
-étapes 6 à 25 pour l'instant).
+des parcours Linux et Ansible), Nadia (lead développeuse, mentore des parcours Jest et Git), Thomas (développeur), Aminata
+(comptabilité), Julien (stagiaire). Tous les exercices des cinq parcours ont leur ticket ; un exercice
+sans clé `ticket` s'affiche au format classique.
 
 ## Parcours Linux
 
@@ -101,9 +123,38 @@ reconstruction de l'image depuis son Dockerfile, contrôle du contenu de l'image
 Les images `hello-world`, `alpine`, `nginx:alpine`, `node:20-alpine` et `redis:7-alpine` sont intégrées à l'image
 `docker-lab` : pas de limite de téléchargement Docker Hub en salle, et le parcours fonctionne sans Internet.
 
+## Parcours Git
+
+L'étudiant met en place Git dans l'équipe web : 1. Premiers pas (config, init, add, commit, `.gitignore`,
+`rm --cached`) · 2. Enquête dans les archives de Marc (log, `log -S`, show, restauration d'un fichier supprimé,
+revert) · 3. Le dépôt de l'équipe (clone, push) · 4. À plusieurs sur la même branche (push refusé, pull,
+`pull.rebase`) · 5. Branches (switch, `push -u`, merge, suppression locale et distante) · 6. Conflits (résolution,
+`merge --abort`) · 7. Réécrire son histoire locale (stash, `commit --amend`, rebase) · 8. Enquêtes et mise en
+production (bisect, étiquette annotée, reflog).
+
+Le dépôt partagé est un dépôt nu local (`/srv/git/boutique.git`) : pas besoin de GitHub ni d'Internet. Pendant le
+parcours, les collègues y publient leurs propres commits : un commit de Nadia qui fait refuser le push, une branche de
+Thomas à fusionner, une modification concurrente de la même ligne… Les vérifications lisent les dépôts sans les
+modifier : auteur des commits, ancêtres (`merge-base --is-ancestor`), contenu d'un fichier dans un commit, absence de
+marqueurs de conflit, historique conservé (un `push --force` qui efface le travail d'un collègue est signalé).
+
+## Parcours Ansible
+
+L'étudiant automatise l'infrastructure de la boutique : 1. Ce que fait Ansible (inventaire, clés SSH, `ping`) ·
+2. Modules et commandes ad hoc · 3. Premier playbook (idempotence) · 4. Variables, facts et modèles Jinja2 ·
+5. Configurer un service : les handlers · 6. Boucles et conditions · 7. La chasse aux dérives, puis les rôles ·
+8. Secrets (Ansible Vault) et mise en production (arrivée de `web3`, `site.yml` qui décrit toute l'infrastructure).
+
+L'étudiant travaille sur un **poste de contrôle** sans `sudo`. Les serveurs `web1`, `web2`, `db1` (puis `web3`) sont
+de vrais conteneurs Debian avec SSH (compte `admin`, mot de passe `cimes` pour le premier contact), qui tournent dans
+un moteur Docker interne au conteneur de l'étudiant, sur le réseau `10.10.0.0/24`. L'étudiant n'a pas accès à ce
+moteur : pour lui, ce sont des serveurs distants. Un dépôt APT interne (`depot.cimes.lan`) fournit nginx, Redis…
+sans Internet. Les vérifications observent le résultat réel sur les serveurs (pages HTTP, Redis, comptes) et, pour
+les exercices `manual`, rejouent les playbooks de l'étudiant pour contrôler qu'un second passage ne change rien.
+
 ### Sysbox (serveur Linux)
 
-Chaque étudiant fait tourner son propre moteur Docker dans son conteneur. Pour que ce soit sûr, le conteneur
+Dans les parcours Docker et Ansible, chaque étudiant fait tourner son propre moteur Docker dans son conteneur. Pour que ce soit sûr, le conteneur
 utilise le runtime **Sysbox** (conteneur non privilégié, espaces de noms utilisateur) :
 
 ```bash
@@ -113,12 +164,13 @@ sudo apt-get install ./sysbox-ce_<version>.linux_amd64.deb   # redémarre le dé
 docker info | grep -i runtimes                                # doit mentionner sysbox-runc
 ```
 
-`DOCKER_LAB_RUNTIME=sysbox-runc` (valeur par défaut) active ce mode. `DOCKER_LAB_RUNTIME=privileged` lance à la place
+`DOCKER_LAB_RUNTIME=sysbox-runc` (valeur par défaut) active ce mode, pour les deux parcours. `DOCKER_LAB_RUNTIME=privileged` lance à la place
 des conteneurs **privilégiés** (Docker-in-Docker classique) : un étudiant malveillant pourrait alors prendre le
 contrôle de l'hôte. À réserver au développement (Docker Desktop, où Sysbox n'existe pas) ou à une VM dédiée.
 
 Chaque étudiant dispose d'un volume `lab-docker-<id>-docker` pour son moteur (environ 300 Mo au départ, plus ses
-propres images) : prévoir 1 Go de disque par étudiant.
+propres images) : prévoir 1 Go de disque par étudiant. De même pour Ansible (volume `lab-ansible-<id>-docker`, qui contient les
+serveurs de l'étudiant).
 
 ## Déploiement
 
@@ -132,15 +184,23 @@ premier démarrage avec `ADMIN_EMAIL` / `ADMIN_PASSWORD` ; si `ADMIN_PASSWORD` e
 chaque démarrage. Sans `ADMIN_PASSWORD`, un mot de passe aléatoire est affiché une fois dans
 `docker compose logs platform`.
 
-Variables utiles : `IDLE_TIMEOUT` (secondes avant l'arrêt d'un conteneur inactif, 7200 par défaut — le travail
-est conservé), `COOKIE_SECURE=1` derrière un reverse proxy HTTPS.
+Variables utiles (voir `.env.example`) :
+
+- `IDLE_TIMEOUT` : secondes avant l'arrêt d'un conteneur inactif (7200 par défaut ; le travail est conservé) ;
+- `COOKIE_SECURE=1` derrière un reverse proxy HTTPS, avec `FORWARDED_ALLOW_IPS` = adresse du proxy (pour que la
+  limitation des tentatives voie l'IP réelle des étudiants) ;
+- `BACKUP_HOURS` / `BACKUP_KEEP` : **sauvegarde automatique** de la base toutes les 24 h dans `./backups` (sur
+  l'hôte), en gardant les 14 dernières ;
+- `CERTIFICATE_MIN_PCT` : part des points exigée pour l'attestation (70 par défaut).
 
 Isolation des étudiants : réseau `linux-lab-students` sans communication entre conteneurs ; parcours Linux :
 256 Mo de RAM, 50 % d'un CPU, 256 processus, sshd limité à `localhost` ; parcours Jest : 1 Go, 1 CPU, 512 processus ;
-parcours Docker : 1,5 Go, 1 CPU, 2048 processus, runtime Sysbox.
+parcours Docker : 1,5 Go, 1 CPU, 2048 processus, runtime Sysbox ; parcours Git : 256 Mo, 50 % d'un CPU,
+256 processus ; parcours Ansible : 1,5 Go, 1 CPU, 2048 processus, runtime Sysbox.
 
-Accès Internet depuis les conteneurs : nécessaire uniquement pour l'étape 13 du parcours Linux. Les navigateurs
-chargent xterm.js et l'éditeur Monaco depuis le CDN jsDelivr.
+Accès Internet depuis les conteneurs : nécessaire uniquement pour l'étape 13 du parcours Linux. xterm.js et l'éditeur
+Monaco sont installés dans l'image de la plateforme et servis par elle : en salle, les navigateurs n'ont pas besoin
+d'Internet.
 
 ## Mettre à jour une installation existante
 
@@ -165,7 +225,7 @@ progression de ce parcours est archivée dans la table `progress_archive`, jamai
 
 ## Modifier ou ajouter des exercices
 
-Catalogues : `platform/app/courses/<parcours>/catalogue.py` (`linux`, `jest`, `docker`),
+Catalogues : `platform/app/courses/<parcours>/catalogue.py` (`linux`, `jest`, `docker`, `git`, `ansible`),
 format documenté en tête
 de fichier ; corrigés correspondants dans `solutions.py` du même dossier. Dans
 chaque script d'étape, une ligne `#@ <exercice>` ouvre la correction de cet exercice : c'est ce découpage que voient
@@ -174,15 +234,28 @@ de référence est dans `images/jest/ref/`, les fichiers livrés aux étudiants 
 `images/jest/mutants.json` et les tests cachés dans `images/jest/hidden/`. Puis :
 
 ```bash
-docker build -t linux-lab ./images/linux && docker build -t jest-lab ./images/jest && docker build -t docker-lab ./images/docker
+docker build -t linux-lab ./images/linux && docker build -t jest-lab ./images/jest && docker build -t docker-lab ./images/docker && docker build -t git-lab ./images/git && docker build -t ansible-lab ./images/ansible
 python platform/tests/run_lab_tests.py                  # parcours Linux (~5 min, dont cron)
 python platform/tests/run_lab_tests.py --only 1-8 --skip 13
 python platform/tests/run_lab_tests.py --course jest    # parcours Jest (~1,5 min)
 python platform/tests/run_lab_tests.py --course docker  # parcours Docker (~2 min, conteneur privilégié par défaut)
+python platform/tests/run_lab_tests.py --course git     # parcours Git (~15 s)
+python platform/tests/run_lab_tests.py --course ansible # parcours Ansible (~5 min, conteneur privilégié par défaut)
 ```
 
 Le banc vérifie, pour chaque étape jouée dans l'ordre du parcours, qu'**aucun exercice ne passe avant d'être
 fait** puis que **tous passent après la solution de référence**.
+
+Les tests unitaires de la plateforme (droits d'accès par classe, mots de passe, limitation des tentatives, échéances,
+export, attestation, sauvegarde, terminal en lecture seule…) n'ont pas besoin de Docker :
+
+```bash
+pip install -r platform/requirements.txt -r platform/requirements-dev.txt
+python -m pytest platform/tests
+```
+
+Sur GitHub, la CI (`.github/workflows/ci.yml`) lance à chaque push les tests unitaires, construit l'image de la
+plateforme et passe le banc de test des cinq parcours.
 
 Si les identifiants d'exercices d'un parcours changent de sens, incrémentez son `EXERCISES_VERSION` : au
 démarrage, la progression de ce parcours est archivée dans la table `progress_archive` et les conteneurs

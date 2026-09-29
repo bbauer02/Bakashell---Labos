@@ -1,6 +1,9 @@
 """Linux Lab Platform — FastAPI : comptes, parcours, conteneurs par étudiant, terminal, éditeur, validation."""
 import asyncio
 import base64
+import csv
+import datetime
+import io
 import json
 import logging
 import os
@@ -9,32 +12,49 @@ import re
 import threading
 import time
 from collections import defaultdict
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import containers
 from . import database as db
 from . import live
 from . import memo
+from . import ratelimit
 from . import runner
 from . import solutions
+from . import terminals
 from .courses import COURSES, DEFAULT_COURSE, EXERCISE_INDEX, get_course, get_exercise
 from .scenario import CHARACTERS
 
 log = logging.getLogger("linux-lab")
 logging.basicConfig(level=logging.INFO)
 
+APP_DIR = os.environ.get("APP_DIR", "/app")
+
 app = FastAPI(title="Linux CLI Lab")
-templates = Jinja2Templates(directory="/app/templates")
+templates = Jinja2Templates(directory=os.path.join(APP_DIR, "templates"))
+# xterm.js et Monaco servis par la plateforme (installés dans l'image) : pas besoin d'Internet en salle
+if os.path.isdir(os.path.join(APP_DIR, "static")):
+    app.mount("/static", StaticFiles(directory=os.path.join(APP_DIR, "static")), name="static")
 
 IDLE_TIMEOUT = int(os.environ.get("IDLE_TIMEOUT", "7200"))  # secondes avant d'arrêter un conteneur inactif
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "0") == "1"
+# Adresse publique de la plateforme (ex. https://lab.mon-lycee.fr) pour les liens transmis (réinitialisation,
+# attestation) ; vide : l'adresse par laquelle la page a été ouverte
+PUBLIC_URL = os.environ.get("PUBLIC_URL", "").strip().rstrip("/")
 STARTED_AT = time.time()
 MAX_FILE_BYTES = 256 * 1024
+# Pourcentage des points à atteindre pour obtenir l'attestation de fin de parcours
+CERTIFICATE_MIN_PCT = int(os.environ.get("CERTIFICATE_MIN_PCT", "70"))
+# Sauvegarde automatique de la base : dossier (vide = désactivée), intervalle et nombre de copies gardées
+BACKUP_DIR = os.environ.get("BACKUP_DIR", "")
+BACKUP_HOURS = max(1.0, float(os.environ.get("BACKUP_HOURS", "24")))  # au moins une heure entre deux copies
+BACKUP_KEEP = int(os.environ.get("BACKUP_KEEP", "14"))
 
 # Activité des étudiants (en mémoire) pour l'arrêt des conteneurs inactifs ; clés (user_id, parcours)
 last_activity: dict = {}
@@ -63,6 +83,30 @@ async def startup():
     for key in db.init_db(list(COURSES.values())):
         log.warning("Parcours %s : nouvelle version du catalogue, l'ancienne progression a été archivée.", key)
     asyncio.create_task(idle_reaper())
+    if BACKUP_DIR:
+        asyncio.create_task(backup_loop())
+
+
+def backup_now() -> str:
+    """Copie datée de la base dans BACKUP_DIR ; ne garde que les BACKUP_KEEP plus récentes."""
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    path = os.path.join(BACKUP_DIR, time.strftime("platform-%Y%m%d-%H%M%S.db"))
+    db.backup_to(path)
+    old = sorted(f for f in os.listdir(BACKUP_DIR) if f.startswith("platform-") and f.endswith(".db"))
+    for name in old[:-BACKUP_KEEP] if BACKUP_KEEP > 0 else []:
+        os.remove(os.path.join(BACKUP_DIR, name))
+    return path
+
+
+async def backup_loop():
+    await asyncio.sleep(60)  # laisse la plateforme démarrer
+    while True:
+        try:
+            path = await run_in_threadpool(backup_now)
+            log.info("Sauvegarde de la base : %s", path)
+        except Exception:
+            log.exception("Sauvegarde de la base impossible")
+        await asyncio.sleep(BACKUP_HOURS * 3600)
 
 
 async def idle_reaper():
@@ -125,12 +169,25 @@ async def login_page(request: Request):
     return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
+def client_ip(request) -> str:
+    # Derrière un reverse proxy, lancer uvicorn avec --proxy-headers (voir le Dockerfile) pour obtenir l'IP réelle
+    return request.client.host if request.client else "?"
+
+
 @app.post("/login")
 async def login_submit(request: Request):
     form = await request.form()
-    user = await run_in_threadpool(db.authenticate, form.get("email", ""), form.get("password", ""))
+    email = form.get("email", "").strip().lower()
+    ip = client_ip(request)
+    wait = ratelimit.login_blocked(ip, email)
+    if wait:
+        return templates.TemplateResponse(request, "login.html", {"error": ratelimit.wait_message(wait)},
+                                          status_code=429)
+    user = await run_in_threadpool(db.authenticate, email, form.get("password", ""))
     if not user:
+        ratelimit.login_failed(ip, email)
         return templates.TemplateResponse(request, "login.html", {"error": "Email ou mot de passe incorrect."})
+    ratelimit.login_succeeded(ip, email)
     response = RedirectResponse("/catalogue", status_code=302)
     set_session_cookie(response, db.create_session(user["id"]))
     return response
@@ -151,9 +208,14 @@ async def register_submit(request: Request):
     password2 = form.get("password2", "")
     class_code = form.get("class_code", "").strip()
 
-    def error(msg):
-        return templates.TemplateResponse(request, "register.html", {"error": msg, "form": dict(form)})
+    def error(msg, status_code=200):
+        return templates.TemplateResponse(request, "register.html", {"error": msg, "form": dict(form)},
+                                          status_code=status_code)
 
+    ip_key = f"ip:{client_ip(request)}"
+    wait = ratelimit.REGISTER.blocked(ip_key)
+    if wait:
+        return error(ratelimit.wait_message(wait), 429)
     if not all([first_name, last_name, email, password]):
         return error("Tous les champs sont obligatoires.")
     if password != password2:
@@ -163,6 +225,7 @@ async def register_submit(request: Request):
     if class_code and not db.class_exists_for_code(class_code):
         return error("Ce code de classe n'existe pas : vérifiez-le auprès de votre enseignant·e.")
 
+    ratelimit.REGISTER.hit(ip_key)
     user_id = await run_in_threadpool(db.create_user, first_name, last_name, email, password)
     if not user_id:
         return error("Un compte existe déjà avec cet email.")
@@ -184,6 +247,81 @@ async def logout(request: Request):
     return response
 
 
+MIN_PASSWORD = 8
+
+
+@app.get("/compte", response_class=HTMLResponse)
+async def account_page(request: Request, ok: int = 0):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    msg = "Mot de passe modifié. Vos autres sessions ont été fermées." if ok else ""
+    return templates.TemplateResponse(request, "account.html", {"user": user, "error": None, "msg": msg})
+
+
+@app.post("/compte")
+async def account_submit(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    form = await request.form()
+    current, new, new2 = form.get("current", ""), form.get("password", ""), form.get("password2", "")
+
+    def error(msg, status_code=200):
+        return templates.TemplateResponse(request, "account.html", {"user": user, "error": msg, "msg": ""},
+                                          status_code=status_code)
+
+    key = f"user:{user['user_id']}"
+    wait = ratelimit.PASSWORD.blocked(key)
+    if wait:
+        return error(ratelimit.wait_message(wait), 429)
+    if not await run_in_threadpool(db.check_password, user["user_id"], current):
+        ratelimit.PASSWORD.hit(key)
+        return error("Mot de passe actuel incorrect.")
+    if new != new2:
+        return error("Les nouveaux mots de passe ne correspondent pas.")
+    if len(new) < MIN_PASSWORD:
+        return error(f"Mot de passe trop court ({MIN_PASSWORD} caractères minimum).")
+    await run_in_threadpool(db.set_password, user["user_id"], new, request.cookies.get("session"))
+    return RedirectResponse("/compte?ok=1", status_code=302)
+
+
+@app.get("/reinitialiser/{token}", response_class=HTMLResponse)
+async def reset_page(request: Request, token: str):
+    target = db.reset_token_user(token)
+    return templates.TemplateResponse(request, "reset_password.html", {"target": target, "error": None},
+                                      status_code=200 if target else 404)
+
+
+@app.post("/reinitialiser/{token}")
+async def reset_submit(request: Request, token: str):
+    key = f"ip:{client_ip(request)}"
+    wait = ratelimit.PASSWORD.blocked(key)
+    if wait:
+        return templates.TemplateResponse(request, "reset_password.html",
+                                          {"target": None, "error": ratelimit.wait_message(wait), "limited": True},
+                                          status_code=429)
+    target = db.reset_token_user(token)
+    if not target:
+        ratelimit.PASSWORD.hit(key)
+        return templates.TemplateResponse(request, "reset_password.html", {"target": None, "error": None},
+                                          status_code=404)
+    form = await request.form()
+    new, new2 = form.get("password", ""), form.get("password2", "")
+    error = None
+    if new != new2:
+        error = "Les mots de passe ne correspondent pas."
+    elif len(new) < MIN_PASSWORD:
+        error = f"Mot de passe trop court ({MIN_PASSWORD} caractères minimum)."
+    if error:
+        return templates.TemplateResponse(request, "reset_password.html", {"target": target, "error": error})
+    await run_in_threadpool(db.set_password, target["id"], new)  # ferme toutes ses sessions, annule le lien
+    ratelimit.LOGIN_ACCOUNT.clear(f"email:{target['email']}")
+    response = RedirectResponse("/catalogue", status_code=302)
+    set_session_cookie(response, db.create_session(target["id"]))
+    return response
+
+
 @app.get("/lab", response_class=HTMLResponse)
 async def lab_default(request: Request):
     return RedirectResponse("/catalogue", status_code=302)
@@ -196,21 +334,84 @@ async def catalogue(request: Request, msg: str = "", err: str = ""):
     if not user:
         return RedirectResponse("/login", status_code=302)
     cards = []
+    certificates = db.user_certificates(user["user_id"])
+    today = datetime.date.today().isoformat()
     for key in accessible_keys(user):
         c = COURSES[key]
         p = db.get_user_score(user["user_id"], c["id_glob"])
         done = len(p["completed"])
         memo_found, memo_total = memo.counts(key, p["completed"])
+        pending = step_deadlines(user["user_id"], c, p["completed"])
         cards.append({
             "memo_found": memo_found, "memo_total": memo_total,
             "key": key, "title": c["title"], "summary": c["summary"], "level": c["level"],
             "duration": c["duration"], "steps": len(c["steps"]), "total": c["total_exercises"],
             "score": p["score"], "max": c["max_score"], "done": done,
             "pct": round(100 * p["score"] / c["max_score"]) if c["max_score"] else 0,
+            "certificate": certificates.get(key),
+            "certificate_ok": certificate_eligible(c, p["score"]),
+            "next_deadline": pending[0] if pending else None,
+            "late": sum(1 for d in pending if d["due"] < today),
         })
     return templates.TemplateResponse(request, "catalogue.html", {
         "user": user, "cards": cards, "classes": db.get_user_classes(user["user_id"]), "msg": msg, "err": err,
+        "today": today, "certificate_pct": CERTIFICATE_MIN_PCT,
     })
+
+
+def step_deadlines(user_id: int, course: dict, completed) -> list:
+    """Échéances des étapes pas encore terminées, de la plus proche à la plus lointaine."""
+    completed = set(completed)
+    out = []
+    for step, due in db.user_deadlines(user_id, course["key"]).items():
+        s = course["steps"].get(step)
+        if s and any(ex["id"] not in completed for ex in s["exercises"]):
+            out.append({"step": step, "title": s["title"], "due": due})
+    return sorted(out, key=lambda d: (d["due"], d["step"]))
+
+
+def certificate_eligible(course: dict, score: int) -> bool:
+    return bool(course["max_score"]) and score * 100 >= CERTIFICATE_MIN_PCT * course["max_score"]
+
+
+@app.post("/attestation/{course_key}")
+async def certificate_issue(request: Request, course_key: str):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    course = course_for(user, course_key)
+    if not course:
+        return RedirectResponse("/catalogue?err=Ce+labo+ne+vous+est+pas+ouvert", status_code=302)
+    p = db.get_user_score(user["user_id"], course["id_glob"])
+    if not certificate_eligible(course, p["score"]):
+        return RedirectResponse(
+            f"/catalogue?err={quote_plus(f'Attestation disponible à partir de {CERTIFICATE_MIN_PCT} % des points.')}",
+            status_code=302)
+    code = db.issue_certificate(user["user_id"], course, p["score"], len(p["completed"]))
+    return RedirectResponse(f"/attestation/{code}", status_code=302)
+
+
+@app.get("/attestation/{code}", response_class=HTMLResponse)
+async def certificate_page(request: Request, code: str):
+    """Page publique (vérifiable par un jury ou un employeur), imprimable en PDF depuis le navigateur."""
+    cert = db.get_certificate(code)
+    if cert:
+        course = get_course(cert["course_key"])
+        cert["pct"] = round(100 * cert["score"] / cert["max_score"]) if cert["max_score"] else 0
+        # Compétences travaillées : les étapes où l'étudiant a réussi au moins un exercice
+        done = set(db.get_user_score(cert["user_id"], course["id_glob"])["completed"]) if course else set()
+        cert["steps"] = [s["title"] for s in course["steps"].values()
+                         if any(ex["id"] in done for ex in s["exercises"])] if course else []
+        cert["issued"] = datetime.datetime.strptime(cert["issued_at"][:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    # Lien de vérification construit à partir du code seul (jamais de l'URL demandée : rien n'est réfléchi)
+    url = f"{public_base(request)}/attestation/{quote(code, safe='')}"
+    return templates.TemplateResponse(request, "certificate.html", {
+        "cert": cert, "url": url, "viewer": get_current_user(request),
+    }, status_code=200 if cert else 404)
+
+
+def public_base(request: Request) -> str:
+    return PUBLIC_URL or str(request.base_url).rstrip("/")
 
 
 @app.post("/catalogue/rejoindre")
@@ -251,13 +452,13 @@ async def dashboard(request: Request, course: str = DEFAULT_COURSE, classe: int 
     if not user.get("is_admin"):
         return RedirectResponse("/catalogue", status_code=302)
     c = get_course(course) or COURSES[DEFAULT_COURSE]
-    step_of = {ex["id"]: n for n, s in c["steps"].items() for ex in s["exercises"]}
-    students = await run_in_threadpool(db.get_all_students, c, step_of)
+    students = await run_in_threadpool(course_students, c, classe)
     classes = db.list_classes()
-    if classe:
-        members = db.class_member_ids(classe)
-        students = [s for s in students if s["id"] in members]
-    container_list = await run_in_threadpool(containers.list_student_containers)
+    try:
+        container_list = await run_in_threadpool(containers.list_student_containers)
+    except Exception:
+        log.exception("Liste des conteneurs indisponible")
+        container_list = []
     course_containers = [x for x in container_list if x["course"] == c["key"]]
     steps = [{"num": n, "title": s["title"], "total": len(s["exercises"])} for n, s in c["steps"].items()]
     return templates.TemplateResponse(request, "dashboard.html", {
@@ -274,7 +475,107 @@ async def dashboard(request: Request, course: str = DEFAULT_COURSE, classe: int 
                          for k, v in COURSES.items()},
         "classes": classes,
         "classe": classe,
+        "late_total": sum(1 for s in students if s["late"]),
     })
+
+
+def course_students(course: dict, classe: int = 0) -> list:
+    """Étudiants (d'une classe ou tous) avec leur progression sur le parcours et leurs retards."""
+    step_of = {ex["id"]: n for n, s in course["steps"].items() for ex in s["exercises"]}
+    students = db.get_all_students(course, step_of)
+    if classe:
+        members = db.class_member_ids(classe)
+        students = [s for s in students if s["id"] in members]
+    deadlines = db.deadlines_per_user(course["key"])
+    today = datetime.date.today().isoformat()
+    for s in students:
+        s["deadlines"] = deadlines.get(s["id"], {})
+        s["late"] = sorted(step for step, due in s["deadlines"].items()
+                           if due < today and step in course["steps"]
+                           and s["per_step"].get(step, 0) < len(course["steps"][step]["exercises"]))
+    return students
+
+
+@app.get("/admin/export.csv")
+async def admin_export(request: Request, course: str = DEFAULT_COURSE, classe: int = 0):
+    """Notes du parcours au format CSV (séparateur « ; », UTF-8 avec BOM : s'ouvre directement dans Excel)."""
+    if not admin_or_none(request):
+        return RedirectResponse("/login", status_code=302)
+    c = get_course(course) or COURSES[DEFAULT_COURSE]
+    students = await run_in_threadpool(course_students, c, classe)
+    hints = db.hints_per_user(c["id_glob"])
+    last = db.last_completion_per_user(c["id_glob"])
+    class_names = db.class_names_per_user()
+    certificates = {}
+    for s in students:
+        certificates[s["id"]] = db.user_certificates(s["id"]).get(c["key"], "")
+
+    out = io.StringIO()
+    w = csv.writer(out, delimiter=";")
+    step_nums = list(c["steps"])
+    w.writerow(["Nom", "Prénom", "Email", "Classes", "Score", "Score max", "Note /20", "Exercices réussis",
+                "Exercices", "Indices utilisés", "Étapes terminées", "Étapes en retard", "Dernière réussite (UTC)",
+                "Attestation"] + [f"Étape {n}" for n in step_nums])
+    for s in sorted(students, key=lambda s: (s["last_name"].lower(), s["first_name"].lower())):
+        finished = sum(1 for n in step_nums if s["per_step"].get(n, 0) >= len(c["steps"][n]["exercises"]))
+        note = round(20 * s["score"] / c["max_score"], 2) if c["max_score"] else 0
+        w.writerow([csv_text(s["last_name"]), csv_text(s["first_name"]), csv_text(s["email"]),
+                    csv_text(", ".join(class_names.get(s["id"], []))),
+                    s["score"], c["max_score"], str(note).replace(".", ","), s["exercises_done"],
+                    c["total_exercises"], hints.get(s["id"], 0), finished, " ".join(map(str, s["late"])),
+                    last.get(s["id"]) or "", certificates.get(s["id"], "")]
+                   + [f"{s['per_step'].get(n, 0)}/{len(c['steps'][n]['exercises'])}" for n in step_nums])
+    suffix = ""
+    if classe:
+        match = [cl["name"] for cl in db.list_classes() if cl["id"] == classe]
+        suffix = "-" + re.sub(r"[^A-Za-z0-9_-]+", "-", match[0]).strip("-") if match else ""
+    filename = f"notes-{c['key']}{suffix}-{datetime.date.today().isoformat()}.csv"
+    return Response("﻿" + out.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+def csv_text(value) -> str:
+    """Texte saisi par un utilisateur : un tableur ne doit pas l'interpréter comme une formule."""
+    value = str(value)
+    return "'" + value if value[:1] in ("=", "+", "-", "@", "\t", "\r") else value
+
+
+@app.get("/admin/stats", response_class=HTMLResponse)
+async def admin_stats(request: Request, course: str = DEFAULT_COURSE, classe: int = 0):
+    """Statistiques par exercice : où les étudiants bloquent, pour ajuster le catalogue."""
+    user = admin_or_none(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    c = get_course(course) or COURSES[DEFAULT_COURSE]
+    data = await run_in_threadpool(db.exercise_stats, c, db.class_member_ids(classe) if classe else None)
+    steps = []
+    for num, step in c["steps"].items():
+        rows = []
+        for ex in step["exercises"]:
+            st = data["exercises"].get(ex["id"], {"tried": 0, "passed": 0, "fails": 0, "hints": 0,
+                                                  "top_message": None, "top_count": 0})
+            rate = round(100 * st["passed"] / st["tried"]) if st["tried"] else None
+            rows.append({**st, "id": ex["id"], "title": ex["title"], "points": ex["points"],
+                         "rate": rate, "fails_per_student": round(st["fails"] / st["tried"], 1) if st["tried"] else 0,
+                         "hints_total": len(ex.get("hints", []))})
+        steps.append({"num": num, "title": step["title"], "rows": rows})
+    return templates.TemplateResponse(request, "stats.html", {
+        "user": user, "course": c, "courses": courses_menu(), "classes": db.list_classes(), "classe": classe,
+        "steps": steps, "students": data["students"],
+    })
+
+
+@app.post("/api/admin/reset-link/{user_id}")
+async def admin_reset_link(request: Request, user_id: int):
+    """Lien de réinitialisation du mot de passe, à transmettre à l'étudiant (valable RESET_HOURS heures)."""
+    if not admin_or_none(request):
+        return JSONResponse({"error": "Réservé aux enseignants"}, status_code=403)
+    target = db.get_user(user_id)
+    if not target:
+        return not_found()
+    token = db.create_reset_token(user_id)
+    return {"link": f"{public_base(request)}/reinitialiser/{token}", "hours": db.RESET_HOURS,
+            "name": f"{target['first_name']} {target['last_name']}"}
 
 
 # ─── Classes (admin) ────────────────────────────────────────────────────
@@ -297,9 +598,50 @@ async def admin_classes(request: Request, msg: str = "", err: str = ""):
         return RedirectResponse("/login", status_code=302)
     return templates.TemplateResponse(request, "admin_classes.html", {
         "user": user, "classes": db.list_classes(), "students": db.list_students(),
-        "all_courses": [{"key": k, "title": c["title"], "short": c["short"]} for k, c in COURSES.items()],
+        "all_courses": [{"key": k, "title": c["title"], "short": c["short"],
+                         "steps": [{"num": n, "title": s["title"]} for n, s in c["steps"].items()]}
+                        for k, c in COURSES.items()],
+        "deadlines": db.list_deadlines(), "today": datetime.date.today().isoformat(),
         "msg": msg, "err": err,
     })
+
+
+@app.post("/admin/classes/{class_id}/deadlines")
+async def admin_class_deadline(request: Request, class_id: int):
+    """Ajoute ou modifie une échéance ; « jusqu'à » applique la même date à toutes les étapes d'un intervalle."""
+    if not admin_or_none(request):
+        return RedirectResponse("/login", status_code=302)
+    form = await request.form()
+    course = get_course(form.get("course", ""))
+    due = form.get("due_date", "")
+    try:
+        first, last = int(form.get("step", "0")), int(form.get("step_to") or form.get("step", "0"))
+        datetime.date.fromisoformat(due)
+    except ValueError:
+        return back_to_classes("Échéance invalide : choisissez une étape et une date.", f"#classe-{class_id}", err=True)
+    if not course:
+        return back_to_classes("Parcours inconnu.", f"#classe-{class_id}", err=True)
+    if not db.class_exists(class_id):
+        return back_to_classes("Classe inconnue.", err=True)
+    steps = [n for n in course["steps"] if min(first, last) <= n <= max(first, last)]
+    if not steps:
+        return back_to_classes("Aucune étape dans cet intervalle.", f"#classe-{class_id}", err=True)
+    for n in steps:
+        db.set_deadline(class_id, course["key"], n, due)
+    label = f"étape {steps[0]}" if len(steps) == 1 else f"étapes {steps[0]} à {steps[-1]}"
+    return back_to_classes(f"Échéance enregistrée : {course['short']}, {label}.", f"#classe-{class_id}")
+
+
+@app.post("/admin/classes/{class_id}/deadlines/delete")
+async def admin_class_deadline_delete(request: Request, class_id: int):
+    if not admin_or_none(request):
+        return RedirectResponse("/login", status_code=302)
+    form = await request.form()
+    try:
+        db.delete_deadline(class_id, form.get("course", ""), int(form.get("step", "0")))
+    except ValueError:
+        pass
+    return back_to_classes("Échéance supprimée.", f"#classe-{class_id}")
 
 
 @app.post("/admin/classes")
@@ -383,9 +725,17 @@ async def admin_delete_user(request: Request, user_id: int):
     user = get_current_user(request)
     if not user or not user.get("is_admin"):
         return RedirectResponse("/login", status_code=302)
-    await run_in_threadpool(containers.remove_container, user_id)
+    await remove_containers_safely(user_id)
     db.delete_user(user_id)
     return RedirectResponse("/dashboard", status_code=302)
+
+
+async def remove_containers_safely(user_id: int, course: dict = None):
+    """Supprime les conteneurs de l'étudiant ; si Docker ne répond pas, on le journalise et on continue."""
+    try:
+        await run_in_threadpool(containers.remove_container, user_id, *([course] if course else []))
+    except Exception:
+        log.exception("Suppression des conteneurs de l'utilisateur %s impossible", user_id)
 
 
 @app.post("/admin/reset-user/{user_id}")
@@ -395,7 +745,7 @@ async def admin_reset_user(request: Request, user_id: int, course: str = DEFAULT
         return RedirectResponse("/login", status_code=302)
     c = get_course(course) or COURSES[DEFAULT_COURSE]
     db.reset_user_progress(user_id, c)
-    await run_in_threadpool(containers.remove_container, user_id, c)
+    await remove_containers_safely(user_id, c)
     return RedirectResponse(f"/dashboard?course={c['key']}", status_code=302)
 
 
@@ -449,6 +799,8 @@ def validate_step(user_id: int, course: dict, step_num: int, auto: bool, only: s
         else:
             code, out = containers.exec_in_container(container_id, runner.check_command(course, ex), env=env)
             passed, message = runner.parse_check_output(ex, code, out)
+            if not auto:  # historique : seulement les vérifications demandées par l'étudiant
+                db.record_attempt(user_id, ex["id"], passed, None if passed else message)
             if passed:
                 earned = max(1, ex["points"] - hints.get(ex["id"], 0))
                 if db.add_exercise_completion(user_id, ex["id"], earned):
@@ -500,13 +852,31 @@ async def api_steps(request: Request, course_key: str):
     if not course:
         return not_found()
     progress = db.get_user_score(user["user_id"], course["id_glob"])
+    deadlines = db.user_deadlines(user["user_id"], course["key"])
     return [{
         "num": num,
         "title": step["title"],
         "description": step["description"],
         "total": len(step["exercises"]),
         "completed": sum(1 for ex in step["exercises"] if ex["id"] in progress["completed"]),
+        "due": deadlines.get(num),
     } for num, step in course["steps"].items()]
+
+
+@app.get("/api/{course_key}/status")
+async def api_status(request: Request, course_key: str):
+    """État de l'environnement avant son ouverture, pour prévenir l'étudiant d'un démarrage un peu long."""
+    user = get_current_user(request)
+    if not user:
+        return unauthorized()
+    course = course_for(user, course_key)
+    if not course:
+        return not_found()
+    try:
+        status = await run_in_threadpool(containers.container_status, user["user_id"], course)
+    except Exception:
+        status = "unknown"
+    return {"status": status, "idle_hours": round(IDLE_TIMEOUT / 3600, 1)}
 
 
 def ticket_payload(ex: dict):
@@ -525,10 +895,13 @@ def ticket_payload(ex: dict):
     }
 
 
-def exercise_payload(ex: dict, progress: dict, hints: dict) -> dict:
+def exercise_payload(ex: dict, progress: dict, hints: dict, attempts: dict = None) -> dict:
     used = hints.get(ex["id"], 0)
     all_hints = ex.get("hints", [])
+    history = (attempts or {}).get(ex["id"], {"count": 0, "items": []})
     return {
+        "attempts": history["items"],
+        "attempts_total": history["count"],
         "ticket": ticket_payload(ex),
         "id": ex["id"],
         "points": ex["points"],
@@ -556,6 +929,7 @@ async def api_step(request: Request, course_key: str, num: int):
     # Le contenu s'affiche tout de suite ; l'environnement est préparé par /prepare (appelé juste après)
     progress = db.get_user_score(user["user_id"], course["id_glob"])
     hints = db.get_hints_used(user["user_id"])
+    attempts = db.get_attempts(user["user_id"], [ex["id"] for ex in step["exercises"]])
     return {
         "num": num,
         "title": step["title"],
@@ -563,8 +937,23 @@ async def api_step(request: Request, course_key: str, num: int):
         "lesson": step.get("lesson", ""),
         "has_setup": runner.has_setup(step),
         "mentor": CHARACTERS[course["mentor"]]["name"].split()[0],
-        "exercises": [exercise_payload(ex, progress, hints) for ex in step["exercises"]],
+        "due": db.user_deadlines(user["user_id"], course["key"]).get(num),
+        "exercises": [exercise_payload(ex, progress, hints, attempts) for ex in step["exercises"]],
     }
+
+
+@app.get("/api/{course_key}/attempts/{exercise_id}")
+async def api_attempts(request: Request, course_key: str, exercise_id: str):
+    """Historique des vérifications d'un exercice (mis à jour après chaque vérification)."""
+    user = get_current_user(request)
+    if not user:
+        return unauthorized()
+    course = course_for(user, course_key)
+    key, _, _, ex = get_exercise(exercise_id)
+    if not course or not ex or key != course["key"]:
+        return not_found()
+    h = db.get_attempts(user["user_id"], [exercise_id]).get(exercise_id, {"count": 0, "items": []})
+    return {"attempts": h["items"], "attempts_total": h["count"]}
 
 
 @app.post("/api/{course_key}/prepare/{num}")
@@ -701,7 +1090,7 @@ async def api_reset(request: Request, course_key: str):
     if not course:
         return not_found()
     db.reset_user_progress(user["user_id"], course)
-    await run_in_threadpool(containers.remove_container, user["user_id"], course)
+    await remove_containers_safely(user["user_id"], course)
     return {"status": "ok"}
 
 
@@ -831,6 +1220,7 @@ async def websocket_terminal(ws: WebSocket):
         return
 
     open_terminals[key] += 1
+    term_id = terminals.opened(key)
     live.remember_name(user)
     live.terminal_opened(user_id, course["key"])
     raw_sock = sock._sock
@@ -843,6 +1233,7 @@ async def websocket_terminal(ws: WebSocket):
                 data = await loop.sock_recv(raw_sock, 4096)
                 if not data:
                     break
+                terminals.feed(key, term_id, data)  # copie pour l'enseignant qui regarde (lecture seule)
                 await ws.send_bytes(data)
         except (OSError, asyncio.CancelledError):
             pass
@@ -866,16 +1257,78 @@ async def websocket_terminal(ws: WebSocket):
                 if payload.get("type") == "input":
                     await loop.sock_sendall(raw_sock, payload["data"].encode())
                 elif payload.get("type") == "resize":
-                    containers.resize_exec(exec_id, rows=payload.get("rows", 24), cols=payload.get("cols", 80))
+                    rows, cols = int(payload.get("rows", 24)), int(payload.get("cols", 80))
+                    containers.resize_exec(exec_id, rows=rows, cols=cols)
+                    terminals.resized(key, term_id, cols, rows)
             elif msg.get("bytes") is not None:
                 await loop.sock_sendall(raw_sock, msg["bytes"])
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         open_terminals[key] -= 1
+        terminals.closed(key, term_id)
         live.terminal_closed(user_id, course["key"])
         reader_task.cancel()
         try:
             raw_sock.close()
         except Exception:
             pass
+
+
+# ─── Terminal d'un étudiant, vu par l'enseignant (lecture seule) ────────
+
+@app.get("/admin/terminal/{user_id}", response_class=HTMLResponse)
+async def admin_watch_page(request: Request, user_id: int, course: str = DEFAULT_COURSE):
+    user = admin_or_none(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    c = get_course(course) or COURSES[DEFAULT_COURSE]
+    target = db.get_user(user_id)
+    if not target:
+        return RedirectResponse(f"/dashboard?course={c['key']}", status_code=302)
+    return templates.TemplateResponse(request, "watch.html", {
+        "user": user, "target": target, "course": c,
+    })
+
+
+@app.websocket("/ws/watch")
+async def websocket_watch(ws: WebSocket):
+    """Recopie la sortie des terminaux ouverts d'un étudiant ; les messages reçus de l'enseignant sont ignorés."""
+    user = db.get_session(ws.cookies.get("session"))
+    course = get_course(ws.query_params.get("course", DEFAULT_COURSE))
+    try:
+        target_id = int(ws.query_params.get("user", ""))
+    except ValueError:
+        target_id = None
+    if not user or not user.get("is_admin") or not course or target_id is None:
+        await ws.close(code=4001, reason="Unauthorized")
+        return
+    await ws.accept()
+    key = (target_id, course["key"])
+    q = terminals.subscribe(key)
+
+    async def drain_input():
+        # Lecture seule : on consomme les messages uniquement pour détecter la déconnexion
+        while (await ws.receive())["type"] != "websocket.disconnect":
+            pass
+
+    input_task = asyncio.ensure_future(drain_input())
+    try:
+        await ws.send_text(json.dumps({"type": "hello", "open": terminals.is_open(key)}))
+        while not input_task.done():
+            try:
+                kind, term_id, data = await asyncio.wait_for(q.get(), timeout=15)
+            except asyncio.TimeoutError:
+                await ws.send_text(json.dumps({"type": "ping"}))
+                continue
+            if kind == "data":
+                await ws.send_bytes(term_id.to_bytes(4, "big") + data)
+            elif kind == "size":
+                await ws.send_text(json.dumps({"type": "size", "term": term_id, "cols": data[0], "rows": data[1]}))
+            else:
+                await ws.send_text(json.dumps({"type": kind, "term": term_id}))
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
+        input_task.cancel()
+        terminals.unsubscribe(key, q)

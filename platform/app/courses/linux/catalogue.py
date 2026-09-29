@@ -369,12 +369,14 @@ chmod 755 /usr/local/bin/bavard
 ''',
         "exercises": [
             {"id": "6.1", "points": 3, "title": "Compter avec un pipe",
+             "ticket": {"from": "lea", "body": "Question de l'auditeur : combien d'entrées contient <code>/etc</code> sur ce serveur ? Il veut la réponse dans un fichier, et je veux voir que tu sais le faire <strong>en une seule ligne</strong>, sans compter à la main."},
              "desc": "Combien d'entrées (fichiers et dossiers) affiche <code>ls /etc</code> ? Écrivez le nombre dans <code>~/nb-etc.txt</code> en une seule ligne de commande.",
              "hints": ["<code>ls /etc | wc -l</code>, puis redirigez."],
              "checks": [
                  ('[ "$(ans $H/nb-etc.txt)" = "$(ls /etc | wc -l)" ]', "Ce n'est pas le bon nombre."),
              ]},
             {"id": "6.2", "points": 3, "title": "Séparer les erreurs",
+             "ticket": {"from": "lea", "body": "Julien a lancé un <code>find /root</code> et son écran s'est rempli de « Permission denied ». Montre-lui comment ranger les résultats d'un côté et les erreurs de l'autre, dans deux fichiers séparés."},
              "desc": "Lancez <code>find /root</code> (sans sudo) en envoyant la sortie normale dans <code>~/find-ok.txt</code> et les erreurs dans <code>~/erreurs.txt</code>.",
              "hints": ["<code>&gt;</code> pour stdout, <code>2&gt;</code> pour stderr, dans la même commande."],
              "checks": [
@@ -382,6 +384,7 @@ chmod 755 /usr/local/bin/bavard
                  ('test -f $H/find-ok.txt && ! grep -qi "permission denied" $H/find-ok.txt', "~/find-ok.txt est absent ou contient des erreurs."),
              ]},
             {"id": "6.3", "points": 4, "title": "Le programme bavard",
+             "ticket": {"from": "thomas", "body": "L'outil <code>bavard</code> de Marc mélange ses messages normaux et ses erreurs à l'écran, impossible de s'y retrouver. Tu peux capturer chacun des deux flux dans son propre fichier ?"},
              "desc": "La commande <code>bavard</code> écrit sur les deux flux. Envoyez sa sortie standard dans <code>~/sortie.txt</code> et ses erreurs dans <code>~/erreurs-bavard.txt</code>.",
              "hints": ["Même principe que l'exercice précédent."],
              "checks": [
@@ -389,18 +392,21 @@ chmod 755 /usr/local/bin/bavard
                  ('[ "$(grep -c "^ERR" $H/erreurs-bavard.txt)" -eq 3 ] && ! grep -q "^OK" $H/erreurs-bavard.txt', "~/erreurs-bavard.txt doit contenir les 3 lignes ERR et aucune ligne OK."),
              ]},
             {"id": "6.4", "points": 3, "title": "Afficher et sauvegarder avec tee",
+             "ticket": {"from": "sophie", "body": "J'aimerais garder une trace des programmes installés dans <code>/usr/bin</code>, mais je veux aussi voir la liste défiler pendant que tu la génères. Tu peux faire les deux en même temps ?"},
              "desc": "Avec <code>tee</code>, sauvegardez le résultat de <code>ls /usr/bin</code> dans <code>~/programmes.txt</code> tout en l'affichant.",
              "hints": ["<code>commande | tee fichier</code>"],
              "checks": [
                  ('test -f $H/programmes.txt && grep -qx bash $H/programmes.txt && [ "$(wc -l < $H/programmes.txt)" -gt 100 ]', "~/programmes.txt ne contient pas la liste de /usr/bin (un nom par ligne)."),
              ]},
             {"id": "6.5", "points": 4, "title": "Utilisateurs triés",
+             "ticket": {"from": "sophie", "body": "Pour la revue des accès, il me faut la liste de tous les comptes du serveur, triée par ordre alphabétique et sans doublon. Les comptes sont dans <code>/etc/passwd</code>."},
              "desc": "Extrayez les noms d'utilisateurs de <code>/etc/passwd</code> (1<sup>er</sup> champ), triés par ordre alphabétique et sans doublon, dans <code>~/users-sorted.txt</code>.",
              "hints": ["<code>cut -d: -f1</code> extrait le premier champ.", "<code>sort -u</code> trie et supprime les doublons."],
              "checks": [
                  ('linecmp $H/users-sorted.txt "cut -d: -f1 /etc/passwd | sort -u"', "Le contenu ne correspond pas à la liste triée des utilisateurs."),
              ]},
             {"id": "6.6", "points": 3, "title": "Silence les erreurs !",
+             "ticket": {"from": "lea", "body": "Combien de <strong>fichiers</strong> un utilisateur ordinaire peut-il voir sous <code>/etc</code> ? Je veux le nombre, et je ne veux <strong>aucun</strong> message d'erreur à l'écran : les « Permission denied », on les fait disparaître."},
              "desc": "Combien de <strong>fichiers</strong> (pas de dossiers) pouvez-vous voir sous <code>/etc</code>, sans sudo ? Écrivez le nombre dans <code>~/nb-fichiers-etc.txt</code>, sans qu'aucune erreur ne s'affiche à l'écran.",
              "hints": ["<code>find /etc -type f</code>, erreurs vers <code>/dev/null</code>, puis <code>wc -l</code>."],
              "checks": [
@@ -434,6 +440,7 @@ own $H/config
 ''',
         "exercises": [
             {"id": "7.1", "points": 3, "title": "Éditer avec nano",
+             "ticket": {"from": "thomas", "body": "Il me faut un petit fichier de configuration pour mes tests locaux. Tu peux me l'écrire avec <code>nano</code> ? Trois lignes, pas une de plus, pas une de moins."},
              "desc": "Avec <code>nano</code>, créez <code>~/config.txt</code> contenant exactement ces 3 lignes :<br><code>serveur=localhost</code><br><code>port=8080</code><br><code>debug=false</code>",
              "hints": ["<code>nano ~/config.txt</code>, tapez les lignes, <kbd>Ctrl+O</kbd>, <kbd>Entrée</kbd>, <kbd>Ctrl+X</kbd>."],
              "checks": [
@@ -441,6 +448,7 @@ own $H/config
                  ('[ "$(sed -n 1p $H/config.txt)" = serveur=localhost ] && [ "$(sed -n 2p $H/config.txt)" = port=8080 ] && sed -n 3p $H/config.txt | grep -qxE "debug=(false|true)"', "Le contenu ne correspond pas aux 3 lignes demandées (attention aux espaces)."),
              ]},
             {"id": "7.2", "points": 4, "title": "Éditer avec vim",
+             "ticket": {"from": "julien", "body": "Marc a laissé un poème dans <code>~/config/poeme.txt</code> (oui, vraiment). Quelqu'un y a glissé une ligne qui n'a rien à faire là. Léa dit que c'est l'occasion d'apprendre <code>vim</code>… tu peux t'en occuper ?"},
              "desc": "Avec <code>vim</code>, dans <code>~/config/poeme.txt</code> : supprimez la ligne qui contient <code>INTRUS</code> et ajoutez une dernière ligne <code>Fin</code>.",
              "hints": ["Placez le curseur sur la ligne, tapez <kbd>dd</kbd>.", "<kbd>G</kbd> puis <kbd>o</kbd> pour écrire sous la dernière ligne, <kbd>Echap</kbd> puis <code>:wq</code>."],
              "checks": [
@@ -449,6 +457,7 @@ own $H/config
                  ('[ "$(wc -l < $H/config/poeme.txt)" -eq 5 ] && [ "$(head -n1 $H/config/poeme.txt)" = "Il pleure dans mon coeur" ]', "Le reste du poème a été modifié : seules la ligne INTRUS et la ligne Fin devaient changer."),
              ]},
             {"id": "7.3", "points": 3, "title": "Remplacer avec sed",
+             "ticket": {"from": "thomas", "body": "Je dois activer le mode debug dans le <code>config.txt</code> que tu m'as préparé. Plutôt que de rouvrir un éditeur, tu peux le faire d'une seule commande avec <code>sed</code> ?"},
              "desc": "Avec <code>sed -i</code>, remplacez <code>debug=false</code> par <code>debug=true</code> dans <code>~/config.txt</code> sans toucher aux autres lignes.",
              "hints": ["<code>sed -i 's/ancien/nouveau/' fichier</code>"],
              "checks": [
@@ -456,6 +465,7 @@ own $H/config
                  ('grep -qx serveur=localhost $H/config.txt && grep -qx port=8080 $H/config.txt && [ "$(wc -l < $H/config.txt)" -eq 3 ]', "Les autres lignes ont été modifiées."),
              ]},
             {"id": "7.4", "points": 4, "title": "Remplacement global",
+             "ticket": {"from": "lea", "body": "On a migré vers le nouveau serveur, mais <code>~/config/app.conf</code> mentionne encore l'ancien <strong>partout</strong>. Corrige toutes les occurrences d'un coup, pas seulement la première de chaque ligne."},
              "desc": "Dans <code>~/config/app.conf</code>, remplacez <strong>toutes</strong> les occurrences de <code>ancien-serveur</code> par <code>nouveau-serveur</code>.",
              "hints": ["Le drapeau <code>g</code> à la fin de l'expression <code>s///</code> remplace toutes les occurrences."],
              "checks": [
@@ -494,12 +504,14 @@ own $H/regex
 ''',
         "exercises": [
             {"id": "8.1", "points": 3, "title": "Début de ligne",
+             "ticket": {"from": "lea", "body": "Pour l'audit, j'ai besoin des comptes de <code>/etc/passwd</code> dont le nom commence par <code>r</code> ou par <code>s</code>. Une seule expression régulière devrait suffire."},
              "desc": "Extrayez les lignes de <code>/etc/passwd</code> qui commencent par <code>r</code> <strong>ou</strong> par <code>s</code> dans <code>~/regex/rs.txt</code>.",
              "hints": ["<code>^</code> ancre le motif en début de ligne ; <code>[rs]</code> = r ou s."],
              "checks": [
                  ('linecmp $H/regex/rs.txt "grep \'^[rs]\' /etc/passwd"', "Le contenu ne correspond pas (lignes manquantes ou en trop)."),
              ]},
             {"id": "8.2", "points": 5, "title": "Adresses e-mail valides",
+             "ticket": {"from": "diallo", "body": "Notre fichier de contacts est plein d'adresses mal saisies et l'envoi des factures échoue. Tu peux m'extraire seulement les adresses <strong>valides</strong> ? Attention, il y a des pièges."},
              "desc": "<code>~/regex/contacts.txt</code> contient des adresses valides et des pièges. Extrayez <strong>uniquement</strong> les adresses valides (une par ligne) dans <code>~/regex/emails-valides.txt</code>.<br>Adresse valide : caractères <code>[a-z0-9._-]</code>, un seul <code>@</code>, puis un domaine contenant au moins un point et finissant par au moins 2 lettres.",
              "hints": ["<code>grep -oE</code> n'affiche que la partie reconnue par le motif.", "Structure : <code>[a-z0-9._-]+@[a-z0-9.-]+\\.[a-z]{2,}</code>"],
              "checks": [
@@ -507,12 +519,14 @@ own $H/regex
                  ('setcmp $H/regex/emails-valides.txt "cat $REF/emails.txt"', "La liste ne correspond pas : il y a des adresses manquantes, des adresses invalides ou du texte en trop."),
              ]},
             {"id": "8.3", "points": 4, "title": "Configuration épurée",
+             "ticket": {"from": "lea", "body": "<code>~/regex/serveur.conf</code> est noyé sous les commentaires et les lignes vides. Sors-moi uniquement les lignes utiles, dans l'ordre, que je voie la vraie configuration."},
              "desc": "Extrayez de <code>~/regex/serveur.conf</code> les lignes utiles — ni vides (ou blanches), ni commentaires (même précédés d'espaces) — dans <code>~/regex/serveur-clean.txt</code>, en gardant l'ordre.",
              "hints": ["<code>grep -v</code> inverse la sélection.", "<code>^\\s*#</code> reconnaît un commentaire indenté, <code>^\\s*$</code> une ligne blanche."],
              "checks": [
                  ('test -f $H/regex/serveur-clean.txt && diff -q $H/regex/serveur-clean.txt $REF/serveur-clean.txt', "Le résultat n'est pas le bon : vérifiez les commentaires indentés et les lignes ne contenant que des espaces."),
              ]},
             {"id": "8.4", "points": 3, "title": "Censure",
+             "ticket": {"from": "sophie", "body": "Je dois transmettre la liste de contacts à un prestataire, mais sans aucun numéro lisible, RGPD oblige. Masque tous les chiffres, et garde bien l'original intact."},
              "desc": "Avec <code>sed</code>, remplacez <strong>tous</strong> les chiffres de <code>~/regex/contacts.txt</code> par <code>X</code> et enregistrez le résultat dans <code>~/regex/censure.txt</code> (sans modifier l'original).",
              "hints": ["<code>sed 's/[0-9]/X/g' source &gt; destination</code>"],
              "checks": [
@@ -520,6 +534,7 @@ own $H/regex
                  ('diff -q $H/regex/censure.txt $REF/censure.txt', "Le texte a été modifié au-delà des chiffres."),
              ]},
             {"id": "8.5", "points": 4, "title": "Numéros de téléphone",
+             "ticket": {"from": "diallo", "body": "La relance téléphonique commence lundi. Il me faudrait tous les numéros de téléphone du fichier de contacts, un par ligne, au format français habituel."},
              "desc": "Extrayez les numéros de téléphone au format <code>0X XX XX XX XX</code> de <code>~/regex/contacts.txt</code> (un par ligne) dans <code>~/regex/telephones.txt</code>.",
              "hints": ["Un zéro, un chiffre de 1 à 9, puis 4 fois « espace + 2 chiffres ».", "<code>0[1-9]( [0-9]{2}){4}</code>"],
              "checks": [
@@ -555,6 +570,7 @@ own $H/logs $H/texte
 ''',
         "exercises": [
             {"id": "9.1", "points": 3, "title": "Compter les shells",
+             "ticket": {"from": "lea", "body": "Combien de comptes utilisent chaque shell sur ce serveur ? Donne-moi le décompte trié du plus fréquent au moins fréquent : c'est souvent comme ça qu'on repère un compte bizarre."},
              "desc": "Pour chaque shell de <code>/etc/passwd</code> (7<sup>e</sup> champ), comptez le nombre d'utilisateurs. Sauvegardez le résultat de <code>uniq -c</code>, trié du plus fréquent au moins fréquent, dans <code>~/shells-count.txt</code>.",
              "hints": ["<code>cut -d: -f7 /etc/passwd | sort | uniq -c | sort -rn</code>"],
              "checks": [
@@ -562,24 +578,28 @@ own $H/logs $H/texte
                  ('[ "$(awk \'NF{print $1; exit}\' $H/shells-count.txt)" = "$(cut -d: -f7 /etc/passwd | sort | uniq -c | sort -rn | awk \'{print $1; exit}\')" ]', "Le fichier n'est pas trié du plus fréquent au moins fréquent."),
              ]},
             {"id": "9.2", "points": 5, "title": "Top 3 des visiteurs",
+             "ticket": {"from": "thomas", "body": "La boutique a ramé toute la nuit. Je soupçonne quelques clients (ou robots) de nous bombarder de requêtes. Tu peux me trouver les 3 adresses IP les plus actives dans le journal du serveur web ?"},
              "desc": "Dans <code>~/logs/access.log</code>, quelles sont les 3 adresses IP qui ont fait le plus de requêtes ? Écrivez-les dans <code>~/top-ip.txt</code>, de la plus active à la moins active.",
              "hints": ["L'IP est le premier champ : <code>awk '{print $1}'</code>.", "Puis <code>sort | uniq -c | sort -rn | head -3</code>."],
              "checks": [
                  ('[ "$(grep -oE "([0-9]{1,3}\\.){3}[0-9]{1,3}" $H/top-ip.txt | head -3 | paste -sd,)" = "$LAB_TOP3" ]', "Ce ne sont pas les 3 bonnes IP, ou elles ne sont pas dans le bon ordre."),
              ]},
             {"id": "9.3", "points": 4, "title": "Pages introuvables",
+             "ticket": {"from": "thomas", "body": "Le référencement de la boutique baisse, et je pense que c'est à cause des pages introuvables. Combien de requêtes ont reçu une erreur 404 ?"},
              "desc": "Combien de requêtes de <code>~/logs/access.log</code> ont reçu le code HTTP <code>404</code> ? Écrivez le nombre dans <code>~/nb-404.txt</code>.",
              "hints": ["Attention : « 404 » peut aussi apparaître dans la taille de la réponse (ex. 1404) ! Filtrez sur le bon champ.", "<code>awk '$9 == 404' ~/logs/access.log | wc -l</code>"],
              "checks": [
                  ('[ "$(ans $H/nb-404.txt)" = "$LAB_N404" ]', "Ce n'est pas le bon nombre. Un simple grep 404 compte-t-il trop de lignes ?"),
              ]},
             {"id": "9.4", "points": 4, "title": "Extraire avec awk",
+             "ticket": {"from": "sophie", "body": "Pour la revue des accès, je ne veux que les comptes des vraies personnes, pas les comptes système. Donne-moi leur nom et leur UID."},
              "desc": "Avec <code>awk</code>, listez les comptes « humains » de <code>/etc/passwd</code> (UID ≥ 1000 et &lt; 65534) sous la forme <code>nom UID</code> (séparés par un espace) dans <code>~/users-uid.txt</code>.",
              "hints": ["<code>-F:</code> choisit le séparateur, <code>$3</code> est l'UID.", "<code>awk -F: '$3 &gt;= 1000 &amp;&amp; $3 &lt; 65534 {print $1, $3}' /etc/passwd</code>"],
              "checks": [
                  ('setcmp $H/users-uid.txt "awk -F: \'\\$3 >= 1000 && \\$3 < 65534 {print \\$1, \\$3}\' /etc/passwd"', "La liste ne correspond pas aux comptes d'UID ≥ 1000."),
              ]},
             {"id": "9.5", "points": 3, "title": "Tout en majuscules",
+             "ticket": {"from": "julien", "body": "Le vieux logiciel de caisse n'accepte que des textes en MAJUSCULES. Tu peux convertir <code>~/texte/minuscules.txt</code> pour moi ?"},
              "desc": "Avec <code>tr</code>, convertissez <code>~/texte/minuscules.txt</code> en majuscules dans <code>~/texte/majuscules.txt</code>.",
              "hints": ["<code>tr</code> lit l'entrée standard : utilisez <code>&lt;</code> ou un pipe."],
              "checks": [
@@ -601,6 +621,7 @@ own $H/scripts
 ''',
         "exercises": [
             {"id": "10.1", "points": 3, "title": "Créer des utilisateurs",
+             "ticket": {"from": "sophie", "body": "Deux nouvelles recrues arrivent lundi au service marketing : Alice et Bob. Crée-leur un compte, avec leur dossier personnel bien sûr."},
              "desc": "Créez les utilisateurs <code>alice</code> et <code>bob</code>, <strong>avec</strong> leur dossier personnel.",
              "hints": ["<code>sudo useradd -m ...</code> : sans <code>-m</code>, pas de dossier personnel."],
              "checks": [
@@ -608,6 +629,7 @@ own $H/scripts
                  ('test -d /home/alice && test -d /home/bob', "Les dossiers personnels /home/alice et /home/bob n'existent pas (option -m de useradd)."),
              ]},
             {"id": "10.2", "points": 3, "title": "Créer un groupe",
+             "ticket": {"from": "sophie", "body": "Alice et Bob vont travailler ensemble sur la prochaine campagne. Regroupe-les dans un groupe <code>equipe</code>."},
              "desc": "Créez le groupe <code>equipe</code> et ajoutez-y <code>alice</code> et <code>bob</code>.",
              "hints": ["<code>sudo groupadd</code> puis <code>sudo usermod -aG</code>."],
              "checks": [
@@ -615,6 +637,7 @@ own $H/scripts
                  ('id -nG alice | grep -qw equipe && id -nG bob | grep -qw equipe', "alice et bob doivent tous deux être membres du groupe equipe."),
              ]},
             {"id": "10.3", "points": 4, "title": "Dossier d'équipe",
+             "ticket": {"from": "sophie", "body": "L'équipe marketing a besoin d'un dossier partagé. Tout le monde dans l'équipe doit pouvoir y déposer des fichiers, et personne d'autre ne doit même voir ce qu'il contient."},
              "desc": "Créez <code>/home/partage</code>. Les membres d'<code>equipe</code> doivent pouvoir y créer des fichiers ; les autres utilisateurs (comme <code>intrus</code>) ne doivent même pas pouvoir le lister.",
              "hints": ["Changez le groupe du dossier avec <code>chgrp</code>.", "Groupe : rwx, autres : --- → quel code octal ?"],
              "checks": [
@@ -624,6 +647,7 @@ own $H/scripts
                  ('! run_as intrus "ls /home/partage"', "L'utilisateur intrus peut lister /home/partage."),
              ]},
             {"id": "10.4", "points": 4, "title": "Fichier confidentiel",
+             "ticket": {"from": "sophie", "body": "Alice va rédiger le plan de la campagne, qui est confidentiel. Elle seule peut le modifier, le reste de l'équipe peut le lire, et les autres n'y ont aucun accès."},
              "desc": "Créez <code>/home/partage/secret.txt</code> appartenant à <code>alice</code> et au groupe <code>equipe</code> : alice peut le modifier, les membres du groupe peuvent seulement le lire, les autres n'ont aucun droit.",
              "hints": ["<code>sudo chown alice:equipe fichier</code>", "rw- r-- --- = ?"],
              "checks": [
@@ -634,12 +658,14 @@ own $H/scripts
                  ('[ "$(others /home/partage/secret.txt)" = "---" ]', "Les autres utilisateurs ont encore des droits sur le fichier."),
              ]},
             {"id": "10.5", "points": 3, "title": "chmod symbolique",
+             "ticket": {"from": "lea", "body": "Le script <code>~/scripts/deploy.sh</code> ne doit être exécutable que par toi. Et fais-le en notation symbolique, sans toucher aux autres droits : c'est un réflexe à prendre."},
              "desc": "Rendez <code>~/scripts/deploy.sh</code> exécutable <strong>par vous seul</strong>, sans modifier les autres droits. Utilisez la notation symbolique.",
              "hints": ["<code>u</code> = propriétaire, <code>+x</code> = ajouter l'exécution."],
              "checks": [
                  ('[ "$(perm $H/scripts/deploy.sh)" = 744 ]', "Les droits de deploy.sh devraient être rwxr--r-- (744)."),
              ]},
             {"id": "10.6", "points": 4, "title": "Héritage du groupe",
+             "ticket": {"from": "lea", "body": "Bob se plaint : les fichiers qu'il dépose dans le dossier partagé appartiennent à son groupe personnel, et Alice ne peut pas les lire. Fais en sorte que tout nouveau fichier du dossier appartienne automatiquement au groupe de l'équipe."},
              "desc": "Faites en sorte que tout fichier créé dans <code>/home/partage</code> appartienne automatiquement au groupe <code>equipe</code>, quel que soit son créateur.",
              "hints": ["C'est le rôle du bit <strong>setgid</strong> sur un dossier.", "<code>sudo chmod g+s /home/partage</code>"],
              "checks": [
@@ -680,6 +706,7 @@ emit SVC_PID "$(pgrep -x lab-service | head -n1)"
 ''',
         "exercises": [
             {"id": "11.1", "points": 3, "title": "Créer un sudoer",
+             "ticket": {"from": "sophie", "body": "On accueille un stagiaire en administration système. Crée-lui un compte <code>stagiaire</code> et donne-lui les droits <code>sudo</code>, Léa le surveillera de près."},
              "desc": "Créez l'utilisateur <code>stagiaire</code> et donnez-lui le droit d'utiliser <code>sudo</code>.",
              "hints": ["Sous Ubuntu, les membres du groupe <code>sudo</code> peuvent utiliser sudo."],
              "checks": [
@@ -687,6 +714,7 @@ emit SVC_PID "$(pgrep -x lab-service | head -n1)"
                  ('id -nG stagiaire | grep -qw sudo', "stagiaire n'est pas membre du groupe sudo."),
              ]},
             {"id": "11.2", "points": 3, "title": "Enquête",
+             "ticket": {"from": "lea", "body": "Le serveur est lent depuis ce matin et un processus <code>rogue-worker</code> que je ne connais pas tourne dessus. Trouve-moi son PID et qui l'a lancé, avant qu'on décide quoi en faire."},
              "desc": "Un processus nommé <code>rogue-worker</code> tourne sur la machine. Écrivez dans <code>~/rogue.txt</code> son <strong>PID</strong> et l'<strong>utilisateur</strong> qui l'a lancé (ex. <code>1234 bob</code>).",
              "hints": ["<code>ps aux | grep rogue</code> ou <code>ps -o pid,user,cmd -C rogue-worker</code>"],
              "checks": [
@@ -695,6 +723,7 @@ emit SVC_PID "$(pgrep -x lab-service | head -n1)"
                  ('grep -qw intrus $H/rogue.txt', "Le propriétaire du processus n'est pas indiqué dans ~/rogue.txt."),
              ]},
             {"id": "11.3", "points": 4, "title": "Arrêter le processus",
+             "ticket": {"from": "lea", "body": "Pas de doute, ce <code>rogue-worker</code> n'a rien à faire là. Arrête-le, mais proprement : on lui laisse une chance de se terminer correctement, pas de <code>kill -9</code>."},
              "desc": "Arrêtez <code>rogue-worker</code> proprement (signal TERM).",
              "hints": ["Ce processus appartient à un autre utilisateur : un simple <code>kill</code> sera refusé.", "<code>sudo kill &lt;PID&gt;</code>"],
              "checks": [
@@ -702,12 +731,14 @@ emit SVC_PID "$(pgrep -x lab-service | head -n1)"
                  ('! kill -0 "$LAB_PID" 2>/dev/null && ! pgrep -x rogue-worker', "rogue-worker tourne encore."),
              ]},
             {"id": "11.4", "points": 3, "title": "Processus gentil",
+             "ticket": {"from": "thomas", "body": "Je dois lancer un long calcul en tâche de fond sans ralentir la boutique. Tu peux me montrer comment le démarrer avec une priorité réduite ? On va tester avec un <code>sleep 1000</code>."},
              "desc": "Lancez <code>sleep 1000</code> en arrière-plan avec une gentillesse (<em>niceness</em>) de <code>10</code>, et laissez-le tourner.",
              "hints": ["<code>nice -n 10 sleep 1000 &amp;</code>"],
              "checks": [
                  ('ps -o ni=,user=,args= -C sleep | awk \'$1 == 10 && $2 == "etudiant" && $4 == 1000\' | grep -q .', "Aucun « sleep 1000 » lancé par etudiant avec une niceness de 10 n'est en cours."),
              ]},
             {"id": "11.5", "points": 4, "title": "Recharger un service",
+             "ticket": {"from": "thomas", "body": "J'ai modifié la configuration de <code>lab-service</code>. Il faut qu'il la relise, mais surtout pas de redémarrage : il sert des clients en ce moment même."},
              "desc": "Le service <code>lab-service</code> (lancé par root) recharge sa configuration quand il reçoit le signal <code>HUP</code>. Faites-le recharger <strong>sans l'arrêter</strong>. Son journal est <code>/var/log/lab-service.log</code>.",
              "hints": ["<code>kill -HUP</code> ou <code>kill -1</code>", "Le processus appartient à root."],
              "checks": [
@@ -723,6 +754,7 @@ emit SVC_PID "$(pgrep -x lab-service | head -n1)"
         "lesson": """<h3>Cas pratique</h3><p>Vous installez Linux pour une famille : <strong>papa</strong>, <strong>maman</strong>, <strong>fils</strong>, <strong>fille</strong>, et un compte <strong>invite</strong>.</p><ul><li>Chacun a un compte avec un dossier <code>Travail</code> et <code>Bazar</code> dans son dossier personnel, qui lui appartiennent.</li><li>Un dossier <code>/home/famille</code> partagé par les 4 membres.</li><li>Un dossier <code>/home/parents-only</code> réservé aux parents.</li><li>L'invité n'a accès à rien de tout ça, ni aux dossiers personnels.</li></ul><div class="tip">Ce sont les <strong>accès réels</strong> qui sont vérifiés (en se connectant en tant que chaque utilisateur), pas seulement les chiffres de <code>chmod</code>.</div><p>Rappels : <code>sudo -u papa mkdir ...</code> crée un dossier au nom de papa ; <code>chmod 750</code> interdit tout aux « autres ».</p>""",
         "exercises": [
             {"id": "12.1", "points": 4, "title": "La famille",
+             "ticket": {"from": "sophie", "body": "Un petit service perso, si tu as cinq minutes : j'installe un vieux PC pour la maison. Tu peux créer un compte pour chacun de nous quatre ? Chacun avec un dossier <code>Travail</code> et un dossier <code>Bazar</code>, les enfants insistent pour le deuxième."},
              "desc": "Créez <code>papa</code>, <code>maman</code>, <code>fils</code>, <code>fille</code>. Chacun a <code>~/Travail</code> et <code>~/Bazar</code>, qui lui appartiennent.",
              "hints": ["Une boucle <code>for u in papa maman fils fille; do ...; done</code> vous fera gagner du temps.", "<code>sudo -u $u mkdir /home/$u/Travail</code> crée le dossier directement au bon propriétaire."],
              "checks": [
@@ -730,12 +762,14 @@ emit SVC_PID "$(pgrep -x lab-service | head -n1)"
                  ('for u in papa maman fils fille; do for d in Travail Bazar; do [ "$(owner /home/$u/$d)" = $u ] || exit 1; done; done', "Chaque utilisateur doit avoir Travail et Bazar dans son dossier, lui appartenant."),
              ]},
             {"id": "12.2", "points": 3, "title": "Les groupes",
+             "ticket": {"from": "sophie", "body": "Pour s'y retrouver, il faudrait un groupe pour les parents et un groupe pour les enfants."},
              "desc": "Créez les groupes <code>parents</code> (papa, maman) et <code>enfants</code> (fils, fille).",
              "checks": [
                  ('getent group parents && getent group enfants', "Les groupes parents et enfants doivent exister."),
                  ('id -nG papa | grep -qw parents && id -nG maman | grep -qw parents && id -nG fils | grep -qw enfants && id -nG fille | grep -qw enfants', "Les membres des groupes ne sont pas corrects."),
              ]},
             {"id": "12.3", "points": 4, "title": "Espace commun",
+             "ticket": {"from": "sophie", "body": "Il nous faut un dossier commun pour les photos de vacances : toute la famille peut y déposer des fichiers, et personne d'autre."},
              "desc": "Créez <code>/home/famille</code> (groupe <code>famille</code>) où les 4 membres peuvent créer des fichiers, et où les autres n'ont aucun droit.",
              "hints": ["Il faut un groupe qui rassemble les 4 membres."],
              "checks": [
@@ -744,12 +778,14 @@ emit SVC_PID "$(pgrep -x lab-service | head -n1)"
                  ('[ "$(others /home/famille)" = "---" ]', "Les autres utilisateurs ont encore des droits sur /home/famille."),
              ]},
             {"id": "12.4", "points": 4, "title": "Espace parents",
+             "ticket": {"from": "sophie", "body": "Et un dossier réservé aux parents, pour les papiers administratifs… et les idées de cadeaux de Noël. Les enfants ne doivent même pas pouvoir voir ce qu'il y a dedans."},
              "desc": "Créez <code>/home/parents-only</code> : papa et maman peuvent y écrire, les enfants ne peuvent même pas le lister.",
              "checks": [
                  ('run_as papa "touch /home/parents-only/.t && rm -f /home/parents-only/.t" && run_as maman "touch /home/parents-only/.t && rm -f /home/parents-only/.t"', "papa et maman doivent pouvoir écrire dans /home/parents-only."),
                  ('! run_as fils "ls /home/parents-only" && ! run_as fille "ls /home/parents-only"', "Les enfants peuvent lister /home/parents-only."),
              ]},
             {"id": "12.5", "points": 4, "title": "Compte invité",
+             "ticket": {"from": "sophie", "body": "Dernière chose : un compte invité pour la baby-sitter. Il ne doit avoir accès à aucun de nos dossiers, ni communs, ni personnels."},
              "desc": "Créez <code>invite</code>. Il ne doit pouvoir lister ni <code>/home/famille</code>, ni <code>/home/parents-only</code>, ni les dossiers personnels des membres de la famille.",
              "hints": ["Testez : <code>sudo -u invite ls /home/papa</code>", "Si un dossier personnel est lisible par tous, retirez les droits des « autres »."],
              "checks": [
@@ -766,24 +802,28 @@ emit SVC_PID "$(pgrep -x lab-service | head -n1)"
         "lesson": """<div class="tip">Ces exercices nécessitent un accès à Internet depuis le lab.</div><h3>apt : le gestionnaire de paquets</h3><table class="lesson-table"><tr><th>Commande</th><th>Action</th></tr><tr><td><code>sudo apt update</code></td><td>Mettre à jour la liste des paquets disponibles</td></tr><tr><td><code>apt search mot</code></td><td>Chercher un paquet</td></tr><tr><td><code>sudo apt install p</code></td><td>Installer</td></tr><tr><td><code>sudo apt remove p</code></td><td>Désinstaller (<code>purge</code> : avec la config)</td></tr></table><h3>dpkg : la base des paquets installés</h3><ul><li><code>dpkg -l</code> — lister les paquets installés</li><li><code>dpkg -L paquet</code> — fichiers installés par un paquet</li><li><code>dpkg -S /chemin/fichier</code> — quel paquet a installé ce fichier ?</li></ul><h3>Télécharger</h3><pre>wget -O fichier.html https://example.com<br>curl -o fichier.html https://example.com</pre><p>L'historique d'apt est dans <code>/var/log/apt/history.log</code>.</p>""",
         "exercises": [
             {"id": "13.1", "points": 3, "title": "Installer un programme",
+             "ticket": {"from": "julien", "body": "Léa affiche toujours l'arborescence des dossiers avec une jolie commande <code>tree</code>, mais chez moi elle n'existe pas. Tu peux l'installer ?"},
              "desc": "Installez le programme <code>tree</code>, puis essayez <code>tree ~</code>.",
              "hints": ["Avant d'installer, mettez à jour la liste des paquets : <code>sudo apt update</code>."],
              "checks": [
                  ('command -v tree', "tree n'est pas installé."),
              ]},
             {"id": "13.2", "points": 3, "title": "D'où vient ce fichier ?",
+             "ticket": {"from": "lea", "body": "On prépare la mise à jour du serveur et je veux savoir de quel paquet vient <code>/usr/bin/pgrep</code>, pour vérifier qu'il ne sera pas supprimé par erreur."},
              "desc": "Quel paquet a installé la commande <code>/usr/bin/pgrep</code> ? Écrivez son nom dans <code>~/paquet.txt</code>.",
              "hints": ["<code>dpkg -S</code>"],
              "checks": [
                  ('[ "$(ans $H/paquet.txt)" = "$(dpkg -S /usr/bin/pgrep | cut -d: -f1)" ]', "Ce n'est pas le bon paquet."),
              ]},
             {"id": "13.3", "points": 3, "title": "Télécharger une page",
+             "ticket": {"from": "thomas", "body": "J'ai besoin d'une copie de la page d'accueil de <code>example.com</code> pour mes tests d'intégration. Tu peux la télécharger depuis le serveur ?"},
              "desc": "Téléchargez <code>https://example.com</code> dans <code>~/telechargements/page.html</code>.",
              "hints": ["Créez d'abord le dossier.", "L'option <code>-O</code> de wget choisit le fichier de sortie."],
              "checks": [
                  ('grep -qi "example domain" $H/telechargements/page.html', "~/telechargements/page.html est absent ou ne contient pas la page d'example.com."),
              ]},
             {"id": "13.4", "points": 3, "title": "Installer puis désinstaller",
+             "ticket": {"from": "julien", "body": "Quelqu'un m'a parlé d'une vache qui parle dans le terminal ! Tu peux me montrer ? Mais Léa veut qu'on la désinstalle juste après : pas de gadgets sur un serveur."},
              "desc": "Installez le paquet <code>cowsay</code>, essayez <code>/usr/games/cowsay Bonjour</code>, puis désinstallez-le.",
              "checks": [
                  ('grep -q "cowsay" /var/log/apt/history.log', "L'historique apt ne montre aucune installation de cowsay."),
@@ -811,23 +851,27 @@ emit BIGDIR "$big"
 ''',
         "exercises": [
             {"id": "14.1", "points": 3, "title": "Type de système de fichiers",
+             "ticket": {"from": "lea", "body": "Pour l'inventaire du serveur, j'ai besoin du type de système de fichiers de la partition racine."},
              "desc": "Quel est le <strong>type</strong> du système de fichiers monté sur <code>/</code> ? Écrivez-le dans <code>~/fs-racine.txt</code>.",
              "hints": ["<code>df -T /</code> ou <code>findmnt /</code>"],
              "checks": [
                  ('[ "$(ans $H/fs-racine.txt)" = "$(df -T / | awk \'NR==2{print $2}\')" ]', "Ce n'est pas le bon type."),
              ]},
             {"id": "14.2", "points": 4, "title": "Qui prend toute la place ?",
+             "ticket": {"from": "sophie", "body": "L'espace de stockage <code>/srv/data</code> se remplit à vue d'œil. Quel sous-dossier prend le plus de place ? Je veux savoir à qui aller parler."},
              "desc": "Quel sous-dossier de <code>/srv/data</code> occupe le plus d'espace disque ? Écrivez son nom dans <code>~/plus-gros.txt</code>.",
              "hints": ["<code>du -s /srv/data/* | sort -n</code>"],
              "checks": [
                  ('a=$(ans $H/plus-gros.txt); a=${a%/}; [ "$a" = "$LAB_BIGDIR" ] || [ "$a" = "/srv/data/$LAB_BIGDIR" ]', "Ce n'est pas le bon dossier."),
              ]},
             {"id": "14.3", "points": 3, "title": "Taille totale",
+             "ticket": {"from": "sophie", "body": "Et au total, combien occupe <code>/srv/data</code> ? Donne-moi le chiffre en mégaoctets, pour le budget du nouveau disque."},
              "desc": "Quelle est la taille totale de <code>/srv/data</code> en mégaoctets, telle qu'affichée par <code>du -sm</code> ? Écrivez le nombre dans <code>~/taille-data.txt</code>.",
              "checks": [
                  ('[ "$(ans $H/taille-data.txt)" = "$(du -sm /srv/data | cut -f1)" ]', "Ce n'est pas la bonne taille."),
              ]},
             {"id": "14.4", "points": 4, "title": "Préparer un montage",
+             "ticket": {"from": "lea", "body": "On va brancher un disque USB de sauvegarde sur le serveur. Prépare le point de montage et écris-moi la ligne <code>fstab</code> qui va bien, je la relirai avant de l'ajouter."},
              "desc": "Créez le point de montage <code>/mnt/usb</code>, puis écrivez dans <code>~/fstab-usb.txt</code> la ligne fstab qui monterait <code>/dev/sdb1</code> (ext4) sur <code>/mnt/usb</code> avec les options par défaut, sans dump, vérifiée après la racine (pass 2).",
              "hints": ["Un point de montage est un simple dossier vide.", "6 champs : périphérique, point de montage, type, options, dump, pass."],
              "checks": [
@@ -843,12 +887,14 @@ emit BIGDIR "$big"
         "lesson": """<h3>Variables</h3><pre>echo $HOME $USER $PATH<br>env                        # variables d'environnement</pre><h3>Locale ou exportée ?</h3><pre>PROJET=demo           # visible seulement dans ce shell<br>export PROJET=demo    # transmise aux programmes lancés depuis ce shell</pre><p>Testez : <code>bash -c 'echo $PROJET'</code> n'affiche la valeur que si elle est exportée.</p><h3>Le PATH</h3><p>Liste des dossiers où le shell cherche les commandes, séparés par <code>:</code>.</p><pre>export PATH="$PATH:$HOME/outils"<br>command -v macommande     # où la commande est-elle trouvée ?</pre><h3>Les alias</h3><pre>alias ll='ls -la'</pre><h3>Rendre permanent</h3><p>Tout ce qui est tapé dans le terminal disparaît à la fermeture. Pour le rendre permanent, ajoutez-le à <code>~/.bashrc</code>, puis rechargez :</p><pre>source ~/.bashrc</pre>""",
         "exercises": [
             {"id": "15.1", "points": 4, "title": "Variable permanente",
+             "ticket": {"from": "thomas", "body": "Nos scripts de déploiement lisent la variable <code>PROJET</code>. Il faudrait qu'elle soit définie dans tous tes futurs terminaux, pas juste dans celui-ci."},
              "desc": "Faites en sorte que la variable <code>PROJET</code> vaille <code>linux-lab</code> et soit <strong>exportée</strong> dans tous vos futurs terminaux.",
              "hints": ["Ajoutez la ligne dans <code>~/.bashrc</code>.", "Sans <code>export</code>, les programmes lancés ne la voient pas."],
              "checks": [
                  ('[ "$(etu_env \'printenv PROJET\')" = linux-lab ]', "Dans un nouveau terminal, PROJET n'est pas exportée avec la valeur linux-lab."),
              ]},
             {"id": "15.2", "points": 4, "title": "Mes propres commandes",
+             "ticket": {"from": "lea", "body": "Un bon admin se fabrique ses propres outils. Commence par une commande <code>bonjour</code> que tu pourras lancer depuis n'importe où, comme une vraie commande du système."},
              "desc": "Créez un script exécutable <code>~/outils/bonjour</code> qui affiche <code>Bonjour !</code>, et ajoutez <code>~/outils</code> au <code>PATH</code> de façon permanente, pour pouvoir taper <code>bonjour</code> depuis n'importe quel dossier.",
              "hints": ["Le script commence par <code>#!/bin/bash</code> et doit être exécutable (<code>chmod +x</code>).", "<code>export PATH=\"$PATH:$HOME/outils\"</code> dans ~/.bashrc"],
              "checks": [
@@ -856,6 +902,7 @@ emit BIGDIR "$big"
                  ('[ "$(etu_env \'command -v bonjour\')" = $H/outils/bonjour ]', "Dans un nouveau terminal, la commande bonjour n'est pas trouvée via le PATH."),
              ]},
             {"id": "15.3", "points": 3, "title": "Alias permanent",
+             "ticket": {"from": "lea", "body": "Je ne supporte pas le <code>ll</code> d'Ubuntu, il cache des informations. Redéfinis-le en <code>ls -la</code>, et de façon permanente."},
              "desc": "Ubuntu définit déjà un alias <code>ll</code>. Redéfinissez-le de façon permanente en <code>ls -la</code>.",
              "hints": ["Ajoutez <code>alias ll='ls -la'</code> à la <strong>fin</strong> de ~/.bashrc (la dernière définition l'emporte)."],
              "checks": [
@@ -880,6 +927,7 @@ emit CODE "$code"
 ''',
         "exercises": [
             {"id": "16.1", "points": 3, "title": "Créer une archive",
+             "ticket": {"from": "lea", "body": "Avant de toucher aux sauvegardes de production, on s'entraîne : prépare un petit dossier de test avec trois fichiers et archive-le au format <code>tar.gz</code>."},
              "desc": "Créez <code>~/archive-test/</code> contenant <code>a.txt</code>, <code>b.txt</code> et <code>c.txt</code>, puis archivez ce dossier dans <code>~/archive-test.tar.gz</code>.",
              "hints": ["<code>tar -czf destination.tar.gz dossier/</code>"],
              "checks": [
@@ -887,18 +935,21 @@ emit CODE "$code"
                  ('l=$(tar -tzf $H/archive-test.tar.gz); for f in a b c; do echo "$l" | grep -q "$f.txt$" || exit 1; done', "L'archive ne contient pas a.txt, b.txt et c.txt."),
              ]},
             {"id": "16.2", "points": 3, "title": "Extraire",
+             "ticket": {"from": "lea", "body": "Une sauvegarde qu'on n'a jamais restaurée n'est pas une sauvegarde. Extrais ton archive dans un dossier séparé pour vérifier qu'elle est complète."},
              "desc": "Extrayez <code>~/archive-test.tar.gz</code> dans le dossier <code>~/extraction/</code>.",
              "hints": ["Créez le dossier, puis utilisez l'option <code>-C</code> de tar."],
              "checks": [
                  ('find $H/extraction -name a.txt | grep -q .', "Aucun a.txt dans ~/extraction."),
              ]},
             {"id": "16.3", "points": 4, "title": "Colis reçu",
+             "ticket": {"from": "diallo", "body": "Le transporteur nous a envoyé une archive, <code>/srv/livraison/paquet.tar.gz</code>. Le code de livraison est quelque part dedans et j'en ai besoin pour réceptionner la marchandise."},
              "desc": "L'archive <code>/srv/livraison/paquet.tar.gz</code> contient un code de livraison. Trouvez-le et écrivez-le dans <code>~/code-livraison.txt</code>.",
              "hints": ["Listez d'abord son contenu avec <code>tar -tzf</code>.", "Vous ne pouvez pas écrire dans /srv/livraison : extrayez ailleurs (<code>-C</code>)."],
              "checks": [
                  ('grep -q "$LAB_CODE" $H/code-livraison.txt', "Ce n'est pas le bon code."),
              ]},
             {"id": "16.4", "points": 3, "title": "Compresser en gardant l'original",
+             "ticket": {"from": "thomas", "body": "Je dois envoyer un fichier compressé à un client, mais je veux garder la version d'origine sur le serveur. Tu peux me montrer comment faire avec <code>gzip</code> ?"},
              "desc": "Créez <code>~/compress-me.txt</code> (avec du contenu) puis compressez-le avec <code>gzip</code> en <strong>conservant</strong> l'original.",
              "hints": ["Cherchez l'option « keep » dans <code>man gzip</code>."],
              "checks": [
@@ -906,6 +957,7 @@ emit CODE "$code"
                  ('gzip -t $H/compress-me.txt.gz && zcat $H/compress-me.txt.gz | cmp -s - $H/compress-me.txt', "~/compress-me.txt.gz est absent ou ne correspond pas à l'original."),
              ]},
             {"id": "16.5", "points": 3, "title": "Archive zip",
+             "ticket": {"from": "diallo", "body": "Mon collègue sous Windows n'arrive pas à ouvrir les <code>.tar.gz</code>. Tu peux refaire l'archive de test en <code>.zip</code> ?"},
              "desc": "Créez <code>~/backup.zip</code> contenant le dossier <code>archive-test</code> et ses fichiers.",
              "hints": ["<code>zip -r</code>, en vous plaçant dans ~ pour avoir des chemins courts."],
              "checks": [
@@ -920,6 +972,7 @@ emit CODE "$code"
         "lesson": """<h3>Structure d'un script</h3><pre>#!/bin/bash<br># commentaire<br>echo "Mon script !"</pre><p>Rendre exécutable : <code>chmod +x script.sh</code> · lancer : <code>./script.sh</code></p><h3>Variables et arguments</h3><pre>NOM="Linux"             # pas d'espace autour du =<br>echo "Bonjour $NOM"<br>AUJOURDHUI=$(date +%F)  # résultat d'une commande<br>echo "1er argument : $1, nombre : $#"</pre><h3>Conditions</h3><pre>if [ -e "$1" ]; then<br>    echo "EXISTE"<br>else<br>    echo "ABSENT"<br>fi</pre><p>Tests utiles : <code>-e</code> existe, <code>-f</code> fichier, <code>-d</code> dossier, <code>-z "$x"</code> vide, <code>"$a" = "$b"</code>, <code>$n -gt 3</code>.</p><h3>Boucles</h3><pre>for i in 1 2 3; do echo "$i"; done<br>for i in $(seq 1 5); do ...; done<br>for f in *.txt; do ...; done</pre><h3>Code de retour</h3><p><code>exit 0</code> = succès, <code>exit 1</code> (ou autre) = erreur. Le code de la dernière commande est dans <code>$?</code>.</p><div class="tip">Ces exercices exécutent réellement vos scripts : cliquez sur <strong>Vérifier</strong> pour les tester.</div>""",
         "exercises": [
             {"id": "17.1", "points": 3, "title": "Premier script", "manual": True,
+             "ticket": {"from": "lea", "body": "On passe aux choses sérieuses : l'automatisation. Premier script, le classique. Un vrai script, avec un shebang, et exécutable."},
              "desc": "Créez <code>~/hello.sh</code>, exécutable, avec un shebang, qui affiche exactement <code>Bonjour depuis mon script !</code>.",
              "hints": ["Première ligne : <code>#!/bin/bash</code>", "<code>chmod +x ~/hello.sh</code>"],
              "checks": [
@@ -929,6 +982,7 @@ emit CODE "$code"
                  ('[ "$(run_as etudiant "timeout 5 $H/hello.sh")" = "Bonjour depuis mon script !" ]', "Le script n'affiche pas exactement « Bonjour depuis mon script ! »."),
              ]},
             {"id": "17.2", "points": 3, "title": "Infos système", "manual": True,
+             "ticket": {"from": "lea", "body": "Quand on intervient sur un serveur, on note toujours qui, quand et où. Écris un script qui affiche ces informations au moment où on le lance."},
              "desc": "Créez <code>~/info-system.sh</code> (exécutable) qui affiche, une par ligne : la date, votre nom d'utilisateur et le dossier courant <strong>au moment de l'exécution</strong>.",
              "hints": ["Utilisez les commandes <code>date</code>, <code>whoami</code> et <code>pwd</code>."],
              "checks": [
@@ -936,6 +990,7 @@ emit CODE "$code"
                  ('o=$(run_as etudiant "cd /tmp && timeout 5 $H/info-system.sh"); echo "$o" | grep -q "$(date +%Y)" && echo "$o" | grep -qx etudiant && echo "$o" | grep -qx /tmp', "Lancé depuis /tmp, le script doit afficher la date, « etudiant » et « /tmp » (chacun sur sa ligne)."),
              ]},
             {"id": "17.3", "points": 4, "title": "Tester un argument", "manual": True,
+             "ticket": {"from": "thomas", "body": "Mes scripts de déploiement plantent quand un fichier manque. Tu peux m'écrire un petit vérificateur qui dit si un fichier existe ? Et s'il est lancé sans argument, qu'il explique comment s'en servir."},
              "desc": "Créez <code>~/check-file.sh</code> : avec un chemin en argument, il affiche <code>EXISTE</code> ou <code>ABSENT</code>. Sans argument, il affiche un message contenant <code>Usage</code> et se termine avec un code d'erreur.",
              "hints": ["<code>$1</code> est le premier argument, <code>$#</code> le nombre d'arguments.", "<code>if [ $# -eq 0 ]; then echo \"Usage : $0 chemin\"; exit 1; fi</code>"],
              "checks": [
@@ -944,6 +999,7 @@ emit CODE "$code"
                  ('! run_as etudiant "timeout 5 $H/check-file.sh" && run_as etudiant "timeout 5 $H/check-file.sh 2>&1; true" | grep -qi usage', "Sans argument, le script doit afficher « Usage ... » et renvoyer un code d'erreur (exit 1)."),
              ]},
             {"id": "17.4", "points": 4, "title": "Boucle", "manual": True,
+             "ticket": {"from": "julien", "body": "Léa m'a demandé de créer cinq fichiers de test, et je les fais un par un… Il n'y aurait pas un moyen d'automatiser ça avec une boucle ?"},
              "desc": "Créez <code>~/create-users.sh</code> qui, avec une boucle <code>for</code>, crée <code>user1.txt</code> à <code>user5.txt</code> dans <code>~/users/</code> (le dossier est créé s'il n'existe pas).",
              "hints": ["<code>mkdir -p</code> ne râle pas si le dossier existe déjà.", "<code>for i in $(seq 1 5)</code> ou <code>for i in {1..5}</code>"],
              "checks": [
@@ -951,6 +1007,7 @@ emit CODE "$code"
                  ('touch /tmp/.lab-t && run_as etudiant "timeout 5 $H/create-users.sh" && [ "$(find $H/users -name "user[1-5].txt" -newer /tmp/.lab-t | wc -l)" -eq 5 ]', "En l'exécutant, le script ne crée (ou ne met à jour) pas les 5 fichiers ~/users/user1.txt à user5.txt."),
              ]},
             {"id": "17.5", "points": 5, "title": "Compteur", "manual": True,
+             "ticket": {"from": "diallo", "body": "Chaque mois, je compte à la main les fichiers texte de mes dossiers de factures. Un script qui le fait pour n'importe quel dossier me changerait la vie."},
              "desc": "Créez <code>~/compteur.sh</code> qui prend un dossier en argument et affiche le <strong>nombre de fichiers .txt</strong> qu'il contient (directement dedans, sans les sous-dossiers).",
              "hints": ["<code>ls \"$1\"/*.txt 2&gt;/dev/null | wc -l</code>", "ou <code>find \"$1\" -maxdepth 1 -name '*.txt' | wc -l</code>"],
              "checks": [
@@ -966,6 +1023,7 @@ emit CODE "$code"
         "lesson": """<h3>crontab personnelle</h3><pre>crontab -l    # lister<br>crontab -e    # éditer</pre><h3>Syntaxe</h3><pre>┌─ minute (0-59)<br>│ ┌─ heure (0-23)<br>│ │ ┌─ jour du mois (1-31)<br>│ │ │ ┌─ mois (1-12)<br>│ │ │ │ ┌─ jour de la semaine (0-7, 0 et 7 = dimanche)<br>* * * * * commande</pre><ul><li><code>*/15 * * * *</code> — toutes les 15 minutes</li><li><code>0 8 * * 1-5</code> — 8h, du lundi au vendredi</li></ul><h3>/etc/cron.d/ : les tâches système</h3><p>Même syntaxe, avec un <strong>6<sup>e</sup> champ : l'utilisateur</strong> qui exécute la commande :</p><pre>0 2 * * * root /usr/local/bin/sauvegarde.sh</pre><div class="tip"><strong>Pièges classiques :</strong> cron n'a presque pas de PATH → utilisez des chemins absolus ; les fichiers de <code>/etc/cron.d</code> et <code>/etc/cron.daily</code> dont le nom contient un <strong>point</strong> sont ignorés ; le fichier doit appartenir à root.</div><h3>/etc/cron.daily/</h3><p>Scripts exécutés une fois par jour. <code>run-parts --test /etc/cron.daily</code> affiche ceux qui seront réellement lancés.</p>""",
         "exercises": [
             {"id": "18.1", "points": 4, "title": "Tic-tac",
+             "ticket": {"from": "lea", "body": "Avant de planifier les vraies tâches, vérifions que cron fonctionne pour toi : une tâche qui note l'heure chaque minute dans un journal. Attends deux minutes avant de me dire que c'est bon."},
              "desc": "Ajoutez à <strong>votre</strong> crontab une tâche qui ajoute la date à <code>~/tick.log</code> toutes les minutes. Attendez 2 minutes avant de valider.",
              "hints": ["<code>crontab -e</code>", "<code>* * * * * date &gt;&gt; /home/etudiant/tick.log</code>"],
              "checks": [
@@ -973,6 +1031,7 @@ emit CODE "$code"
                  ('[ "$(sort -u $H/tick.log | wc -l)" -ge 2 ]', "~/tick.log ne contient pas encore 2 horodatages différents : patientez un peu."),
              ]},
             {"id": "18.2", "points": 3, "title": "Tâche système",
+             "ticket": {"from": "sophie", "body": "Il nous faut une tâche système, exécutée par root, qui lance ton script chaque nuit à 2 heures, quand personne ne travaille."},
              "desc": "Créez <code>/etc/cron.d/backup-lab</code> qui exécute <code>/home/etudiant/hello.sh</code> en tant que <code>root</code>, tous les jours à 2h00.",
              "hints": ["N'oubliez pas le champ utilisateur entre l'horaire et la commande."],
              "checks": [
@@ -981,6 +1040,7 @@ emit CODE "$code"
                  ('[ "$(owner /etc/cron.d/backup-lab)" = root ] && ! stat -c %A /etc/cron.d/backup-lab | cut -c6,9 | grep -q w', "Le fichier doit appartenir à root et ne pas être modifiable par le groupe ou les autres (cron l'ignorerait)."),
              ]},
             {"id": "18.3", "points": 4, "title": "Nettoyage quotidien", "manual": True,
+             "ticket": {"from": "lea", "body": "<code>/tmp</code> se remplit de fichiers <code>.tmp</code> oubliés. Mets en place un nettoyage quotidien, mais qui ne supprime <strong>que</strong> ceux-là : certaines applications gardent d'autres fichiers dans <code>/tmp</code>."},
              "desc": "Placez dans <code>/etc/cron.daily/</code> un script <code>nettoyage-tmp</code> qui supprime les fichiers <code>*.tmp</code> de <code>/tmp</code> (et seulement eux). Vérifiez avec <code>run-parts --test /etc/cron.daily</code> qu'il sera bien exécuté.",
              "hints": ["run-parts ignore les noms contenant un point : pas de <code>.sh</code> !", "Le script doit être exécutable."],
              "checks": [
@@ -988,6 +1048,7 @@ emit CODE "$code"
                  ('touch /tmp/lab-a.tmp /tmp/lab-b.txt && timeout 10 /etc/cron.daily/nettoyage-tmp; r=0; [ ! -e /tmp/lab-a.tmp ] || r=1; [ -e /tmp/lab-b.txt ] || r=1; rm -f /tmp/lab-a.tmp /tmp/lab-b.txt; exit $r', "Le script doit supprimer les .tmp de /tmp sans toucher aux autres fichiers."),
              ]},
             {"id": "18.4", "points": 3, "title": "Lire l'heure en cron",
+             "ticket": {"from": "julien", "body": "Je dois programmer la réunion d'équipe dans cron : tous les lundis à 8h30. Je n'arrive jamais à me rappeler l'ordre des champs… Tu peux me l'écrire ?"},
              "desc": "Écrivez dans <code>~/cron-quiz.txt</code> les 5 champs cron correspondant à « <strong>tous les lundis à 8h30</strong> ».",
              "checks": [
                  ('a=$(tr -s " \\t" " " < $H/cron-quiz.txt | sed "s/^ //;s/ $//" | head -n1 | tr A-Z a-z); [ "$a" = "30 8 * * 1" ] || [ "$a" = "30 8 * * mon" ]', "Ce n'est pas la bonne expression."),
@@ -1014,6 +1075,7 @@ emit PID "$(pgrep -x data-cruncher | head -n1)"
 ''',
         "exercises": [
             {"id": "19.1", "points": 4, "title": "Rapport système", "manual": True,
+             "ticket": {"from": "sophie", "body": "J'aimerais un rapport sur l'état du serveur que je puisse consulter quand je veux : espace disque, mémoire et charge. Un script qui le régénère à chaque lancement serait parfait."},
              "desc": "Créez <code>~/rapport.sh</code> (exécutable) qui génère <code>~/rapport-systeme.txt</code> contenant la date, l'espace disque (<code>df -h</code>), la mémoire (<code>free -h</code>) et la charge (<code>uptime</code>). Chaque exécution remplace le rapport précédent.",
              "hints": ["Regroupez les commandes : <code>{ date; df -h; free -h; uptime; } &gt; fichier</code>"],
              "checks": [
@@ -1022,6 +1084,7 @@ emit PID "$(pgrep -x data-cruncher | head -n1)"
                  ('f=$H/rapport-systeme.txt; grep -q Mem $f && grep -qi filesystem $f && grep -q "load average" $f', "Le rapport doit contenir la sortie de df -h, free -h et uptime."),
              ]},
             {"id": "19.2", "points": 4, "title": "Le glouton",
+             "ticket": {"from": "thomas", "body": "La boutique est lente et je pense qu'un processus dévore toute la mémoire. Tu peux trouver lequel ? Donne-moi son PID."},
              "desc": "Un processus consomme beaucoup plus de mémoire que les autres. Écrivez son <strong>PID</strong> dans <code>~/gourmand.txt</code>.",
              "hints": ["<code>ps aux --sort=-%mem | head</code> ou <code>top</code> puis <kbd>M</kbd>."],
              "checks": [
@@ -1029,6 +1092,7 @@ emit PID "$(pgrep -x data-cruncher | head -n1)"
                  ('[ "$(ans $H/gourmand.txt)" = "$LAB_PID" ]', "Ce n'est pas le PID du processus le plus gourmand en mémoire."),
              ]},
             {"id": "19.3", "points": 3, "title": "Le plus gros de /var",
+             "ticket": {"from": "lea", "body": "<code>/var</code> grossit anormalement. Quel sous-dossier est le plus volumineux ? C'est par lui qu'on commencera l'enquête."},
              "desc": "Quel sous-dossier de <code>/var</code> est le plus volumineux ? Écrivez son chemin complet (ex. <code>/var/xxx</code>) dans <code>~/plus-gros-var.txt</code>.",
              "hints": ["<code>sudo du -s /var/* | sort -n | tail -1</code>"],
              "checks": [
@@ -1058,24 +1122,28 @@ emit NERR "$(grep -c '\[ERROR\]' $f)"
 ''',
         "exercises": [
             {"id": "20.1", "points": 3, "title": "Écrire dans syslog",
+             "ticket": {"from": "lea", "body": "Les scripts peuvent écrire dans le journal système eux aussi. Envoie un message de test avec <code>logger</code>, puis vérifie qu'il est bien arrivé."},
              "desc": "Avec <code>logger</code>, envoyez le message <code>Mon premier log</code> dans le journal système, puis retrouvez-le dans <code>/var/log/syslog</code>.",
              "hints": ["<code>sudo tail /var/log/syslog</code>"],
              "checks": [
                  ('grep -q "Mon premier log" /var/log/syslog', "Le message « Mon premier log » n'apparaît pas dans /var/log/syslog."),
              ]},
             {"id": "20.2", "points": 4, "title": "Compter les erreurs",
+             "ticket": {"from": "thomas", "body": "L'application a eu une mauvaise semaine. Combien d'erreurs contient son journal <code>/var/log/app/app.log</code> ?"},
              "desc": "Combien d'entrées de niveau <code>[ERROR]</code> contient <code>/var/log/app/app.log</code> ? Écrivez le nombre dans <code>~/error-count.txt</code>.",
              "hints": ["Le fichier n'est lisible qu'avec sudo (ou par le groupe adm).", "Attention : le mot ERROR apparaît aussi dans certains messages INFO ! Cherchez <code>\\[ERROR\\]</code>."],
              "checks": [
                  ('[ "$(ans $H/error-count.txt)" = "$LAB_NERR" ]', "Ce n'est pas le bon nombre. Avez-vous compté les lignes INFO qui contiennent le mot ERROR ?"),
              ]},
             {"id": "20.3", "points": 3, "title": "Les erreurs du 15 mars",
+             "ticket": {"from": "thomas", "body": "Un client s'est plaint d'un bug le 15 mars. Sors-moi toutes les erreurs de ce jour-là, que je les analyse."},
              "desc": "Extrayez toutes les lignes <code>[ERROR]</code> du <strong>15 mars 2026</strong> de <code>/var/log/app/app.log</code> dans <code>~/erreurs-15.txt</code>.",
              "hints": ["Les lignes commencent par la date au format <code>2026-03-15</code>.", "<code>grep '^2026-03-15.*\\[ERROR\\]'</code>"],
              "checks": [
                  ('test -s $H/erreurs-15.txt && diff -q $H/erreurs-15.txt <(grep "^2026-03-15 .*\\[ERROR\\]" /var/log/app/app.log)', "Le fichier ne contient pas exactement les erreurs du 15 mars."),
              ]},
             {"id": "20.4", "points": 5, "title": "Analyseur de logs", "manual": True,
+             "ticket": {"from": "lea", "body": "Je passe mon temps à compter les niveaux de gravité dans les journaux. Un script qui fait ce décompte pour n'importe quel fichier de log nous ferait gagner un temps fou."},
              "desc": "Créez <code>~/log-analyzer.sh</code> qui prend un fichier de log en argument et affiche trois lignes <code>INFO: n</code>, <code>WARNING: n</code>, <code>ERROR: n</code> (nombre d'entrées de chaque niveau, repéré par <code>[NIVEAU]</code>).",
              "hints": ["<code>grep -c '\\[INFO\\]' \"$1\"</code>", "Il sera testé sur un autre fichier que app.log."],
              "checks": [
@@ -1083,6 +1151,7 @@ emit NERR "$(grep -c '\[ERROR\]' $f)"
                  ('f=/tmp/lab-test.log; printf "%s\\n" "d [INFO] a" "d [INFO] b" "d [INFO] pas d\'ERROR ici" "d [WARNING] c" "d [WARNING] d" "d [ERROR] e" "d [ERROR] f" "d [ERROR] g" "d [ERROR] h" > $f; chmod 644 $f; o=$(run_as etudiant "timeout 5 $H/log-analyzer.sh $f"); rm -f $f; echo "$o" | grep -qE "INFO\\s*:\\s*3\\b" && echo "$o" | grep -qE "WARNING\\s*:\\s*2\\b" && echo "$o" | grep -qE "ERROR\\s*:\\s*4\\b"', "Sur un fichier de test (3 INFO, 2 WARNING, 4 ERROR), le script n'affiche pas les bons comptes."),
              ]},
             {"id": "20.5", "points": 4, "title": "Rotation des logs",
+             "ticket": {"from": "lea", "body": "Les journaux de l'application ne sont jamais archivés et vont finir par remplir le disque. Mets en place une rotation quotidienne : on garde une semaine d'archives, compressées."},
              "desc": "Créez <code>/etc/logrotate.d/app-lab</code> pour que <code>/var/log/app/*.log</code> tourne <strong>chaque jour</strong>, en gardant <strong>7</strong> archives <strong>compressées</strong>.",
              "hints": ["Inspirez-vous du modèle du cours, puis testez avec <code>sudo logrotate -d /etc/logrotate.d/app-lab</code>."],
              "checks": [
@@ -1107,17 +1176,20 @@ emit PORT "$port"
 ''',
         "exercises": [
             {"id": "21.1", "points": 3, "title": "Mon adresse IP",
+             "ticket": {"from": "sophie", "body": "Le prestataire du pare-feu a besoin de l'adresse IP du serveur. Note-la-moi, sans le masque."},
              "desc": "Écrivez l'adresse IPv4 de la machine (interface <code>eth0</code>, sans le masque) dans <code>~/mon-ip.txt</code>.",
              "hints": ["<code>ip a show eth0</code> ou <code>hostname -I</code>"],
              "checks": [
                  ('[ "$(ans $H/mon-ip.txt)" = "$(hostname -I | awk \'{print $1}\')" ]', "Ce n'est pas l'adresse IP de la machine (sans /16 ou /24)."),
              ]},
             {"id": "21.2", "points": 2, "title": "Nom d'hôte",
+             "ticket": {"from": "sophie", "body": "Et il me demande aussi le nom de la machine, pour son inventaire."},
              "desc": "Écrivez le nom d'hôte de la machine dans <code>~/hostname.txt</code>.",
              "checks": [
                  ('[ "$(ans $H/hostname.txt)" = "$(hostname)" ]', "Ce n'est pas le nom d'hôte."),
              ]},
             {"id": "21.3", "points": 4, "title": "Le port mystère",
+             "ticket": {"from": "lea", "body": "Un programme écoute sur toutes les interfaces réseau du serveur alors qu'on n'a rien ouvert de tel. Sur quel port ? C'est peut-être une porte d'entrée pour un attaquant."},
              "desc": "Un programme écoute sur un port TCP <strong>sur toutes les interfaces</strong> (adresse <code>0.0.0.0</code>). Écrivez ce numéro de port dans <code>~/port-mystere.txt</code>.",
              "hints": ["<code>ss -tln</code> : regardez la colonne « Local Address:Port ».", "Les ports liés à <code>127.0.0.x</code> ne sont joignables que depuis la machine elle-même (SSH du lab, DNS interne de Docker)."],
              "checks": [
@@ -1125,12 +1197,14 @@ emit PORT "$port"
                  ('[ "$(ans $H/port-mystere.txt)" = "$LAB_PORT" ]', "Ce n'est pas le bon port."),
              ]},
             {"id": "21.4", "points": 3, "title": "Résolution locale",
+             "ticket": {"from": "thomas", "body": "Pour mes tests, <code>serveur-local</code> doit désigner <code>192.168.1.100</code> sur cette machine. On n'a pas la main sur le DNS de l'entreprise, il faut faire ça localement."},
              "desc": "Faites en sorte que le nom <code>serveur-local</code> soit résolu en <code>192.168.1.100</code> sur cette machine.",
              "hints": ["Éditez <code>/etc/hosts</code> avec sudo.", "Testez avec <code>getent hosts serveur-local</code>."],
              "checks": [
                  ('timeout 5 getent ahostsv4 serveur-local | grep -q "^192\\.168\\.1\\.100\\b"', "serveur-local n'est pas résolu en 192.168.1.100."),
              ]},
             {"id": "21.5", "points": 3, "title": "Serveur DNS",
+             "ticket": {"from": "lea", "body": "Des noms de domaine se résolvent mal depuis le serveur. Quel serveur DNS la machine utilise-t-elle ?"},
              "desc": "Quel est le serveur DNS utilisé par la machine ? Écrivez son adresse dans <code>~/dns.txt</code>.",
              "checks": [
                  ('[ "$(ans $H/dns.txt)" = "$(awk \'/^nameserver/{print $2; exit}\' /etc/resolv.conf)" ]', "Ce n'est pas l'adresse du serveur DNS."),
@@ -1151,6 +1225,7 @@ own $H/a-envoyer
 ''',
         "exercises": [
             {"id": "22.1", "points": 3, "title": "Générer une paire de clés",
+             "ticket": {"from": "lea", "body": "On va arrêter les mots de passe pour les connexions entre serveurs. Première étape : génère ta paire de clés, en <code>ed25519</code>, c'est le standard aujourd'hui."},
              "desc": "Générez une paire de clés <code>ed25519</code> dans <code>~/.ssh/</code>, sans passphrase.",
              "hints": ["<code>ssh-keygen -t ed25519</code>, puis Entrée à chaque question."],
              "checks": [
@@ -1158,12 +1233,14 @@ own $H/a-envoyer
                  ('[ "$(owner $H/.ssh/id_ed25519)" = etudiant ] && [ "$(perm $H/.ssh/id_ed25519)" = 600 ]', "La clé privée doit vous appartenir et avoir les droits 600."),
              ]},
             {"id": "22.2", "points": 4, "title": "Connexion sans mot de passe",
+             "ticket": {"from": "thomas", "body": "Le compte <code>deploy</code> sert à déployer la boutique. Ce serait pratique que tu puisses t'y connecter par clé, sans taper de mot de passe à chaque fois."},
              "desc": "Faites en sorte de pouvoir vous connecter en <code>deploy@localhost</code> <strong>par clé</strong>, sans taper de mot de passe.",
              "hints": ["<code>ssh-copy-id deploy@localhost</code> (mot de passe : deploy123)"],
              "checks": [
                  ('run_as etudiant "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 deploy@localhost true"', "La connexion par clé à deploy@localhost échoue."),
              ]},
             {"id": "22.3", "points": 3, "title": "Alias SSH",
+             "ticket": {"from": "thomas", "body": "Taper <code>ssh deploy@localhost</code> à longueur de journée, c'est pénible. Tu peux configurer un raccourci pour que <code>ssh prod</code> suffise ?"},
              "desc": "Configurez <code>~/.ssh/config</code> pour que <code>ssh prod</code> vous connecte en <code>deploy</code> sur <code>localhost</code>.",
              "hints": ["Voir le bloc <code>Host</code> dans le cours."],
              "checks": [
@@ -1171,6 +1248,7 @@ own $H/a-envoyer
                  ('run_as etudiant "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 prod true"', "ssh prod ne parvient pas à se connecter sans mot de passe."),
              ]},
             {"id": "22.4", "points": 3, "title": "Transfert scp",
+             "ticket": {"from": "thomas", "body": "Le livrable de la version est prêt dans <code>~/a-envoyer</code>. Copie-le chez <code>deploy</code> avec <code>scp</code>, c'est comme ça qu'on le fera sur les vrais serveurs."},
              "desc": "Avec <code>scp</code>, copiez <code>~/a-envoyer/livrable.txt</code> dans le dossier personnel de <code>deploy</code>.",
              "hints": ["<code>scp fichier prod:</code> (le « : » final désigne le dossier personnel distant)."],
              "checks": [
@@ -1178,6 +1256,7 @@ own $H/a-envoyer
                  ('[ "$(owner /home/deploy/livrable.txt)" = deploy ]', "Le fichier doit appartenir à deploy (copiez-le avec scp, pas avec sudo cp)."),
              ]},
             {"id": "22.5", "points": 5, "title": "Durcir le serveur",
+             "ticket": {"from": "sophie", "body": "L'assureur exige qu'on durcisse SSH : plus de connexion par mot de passe, et plus de connexion directe en root. Attention à ne pas te couper l'accès : ta clé doit continuer à fonctionner !"},
              "desc": "Configurez sshd pour <strong>refuser</strong> l'authentification par mot de passe et la connexion directe de root, puis rechargez le service. Votre connexion par clé doit continuer à fonctionner.",
              "hints": ["Éditez <code>/etc/ssh/sshd_config</code> avec sudo.", "Rechargez : <code>sudo service ssh reload</code>"],
              "checks": [
@@ -1203,6 +1282,7 @@ echo 'securise:Motdepasse1!' | chpasswd
 ''',
         "exercises": [
             {"id": "23.1", "points": 3, "title": "Inventaire SUID",
+             "ticket": {"from": "sophie", "body": "L'audit de sécurité commence. Première demande de l'auditeur : la liste complète des fichiers SUID du système."},
              "desc": "Listez tous les fichiers SUID du système (chemins complets) dans <code>~/suid-files.txt</code>.",
              "hints": ["<code>find / -perm -4000 -type f 2&gt;/dev/null</code>"],
              "checks": [
@@ -1210,12 +1290,14 @@ echo 'securise:Motdepasse1!' | chpasswd
                  ('grep -qx /usr/local/bin/lecteur-root $H/suid-files.txt', "La liste est incomplète : un fichier SUID suspect manque."),
              ]},
             {"id": "23.2", "points": 4, "title": "Neutraliser le SUID suspect",
+             "ticket": {"from": "lea", "body": "Dans ta liste SUID, il y a un <code>lecteur-root</code> que je ne connais pas. Essaie <code>lecteur-root /etc/shadow</code>… Si ça marche, c'est une faille béante. Neutralise-le."},
              "desc": "Un des fichiers SUID n'a rien à faire là : c'est une copie de <code>cat</code> qui permet à n'importe qui de lire n'importe quel fichier. Essayez <code>lecteur-root /etc/shadow</code>, puis retirez-lui son bit SUID.",
              "checks": [
                  ('test ! -u /usr/local/bin/lecteur-root', "/usr/local/bin/lecteur-root est toujours SUID."),
                  ('! run_as etudiant "/usr/local/bin/lecteur-root /etc/shadow"', "lecteur-root permet encore de lire /etc/shadow."),
              ]},
             {"id": "23.3", "points": 3, "title": "Secret exposé",
+             "ticket": {"from": "lea", "body": "L'auditeur a trouvé dans <code>/etc</code> un fichier qui contient un mot de passe et que n'importe qui peut modifier. Trouve-le avant qu'il ne l'écrive dans son rapport, et verrouille-le."},
              "desc": "Un fichier de <code>/etc</code> contenant un mot de passe est modifiable par tout le monde. Trouvez-le et faites en sorte que seul root puisse le lire et le modifier.",
              "hints": ["<code>find /etc -type f -perm -o+w</code>", "Seul root : rw------- = ?"],
              "checks": [
@@ -1224,6 +1306,7 @@ echo 'securise:Motdepasse1!' | chpasswd
                  ('[ "$(perm /etc/app-secret.conf)" = 600 ] && [ "$(owner /etc/app-secret.conf)" = root ]', "Le fichier secret doit appartenir à root avec les droits 600."),
              ]},
             {"id": "23.4", "points": 5, "title": "Le faux root",
+             "ticket": {"from": "sophie", "body": "Alerte de l'auditeur : il y aurait plusieurs comptes avec l'UID 0, donc plusieurs root ! Liste-les, et neutralise celui qui ne devrait pas exister."},
              "desc": "Listez dans <code>~/uid-zero.txt</code> les comptes d'UID 0. L'un d'eux n'est pas <code>root</code> : neutralisez-le (mot de passe verrouillé <strong>et</strong> shell <code>/usr/sbin/nologin</code>) ou supprimez-le.",
              "hints": ["<code>awk -F: '$3 == 0 {print $1}' /etc/passwd</code>", "<code>userdel</code> peut refuser car des processus tournent avec l'UID 0 : verrouillez plutôt avec <code>passwd -l</code> et <code>usermod -s</code>."],
              "checks": [
@@ -1231,6 +1314,7 @@ echo 'securise:Motdepasse1!' | chpasswd
                  ('! getent passwd toor || { [ "$(passwd -S toor | awk \'{print $2}\')" = L ] && getent passwd toor | cut -d: -f7 | grep -qE "(nologin|false)$"; }', "Le compte toor est encore utilisable (mot de passe non verrouillé ou shell actif)."),
              ]},
             {"id": "23.5", "points": 4, "title": "Politique de mot de passe",
+             "ticket": {"from": "sophie", "body": "Le compte <code>securise</code> doit respecter la politique de l'entreprise : changement de mot de passe au moins tous les 90 jours. Son propriétaire est en congé, verrouille le compte en attendant son retour."},
              "desc": "Le compte <code>securise</code> doit changer de mot de passe au moins tous les 90 jours. Configurez-le, puis verrouillez le compte en attendant le retour de son propriétaire.",
              "hints": ["<code>chage -M</code>", "<code>passwd -l</code>"],
              "checks": [
@@ -1290,6 +1374,7 @@ rm -rf /var/log/mon-service
 ''',
         "exercises": [
             {"id": "24.1", "points": 4, "title": "Le script qui ne démarre pas", "manual": True,
+             "ticket": {"from": "thomas", "body": "J'ai écrit <code>deploy.sh</code> sur mon PC Windows et il refuse de démarrer sur le serveur. J'ai tout vérifié, je ne comprends pas… Tu peux jeter un œil ?"},
              "desc": "Un collègue a écrit <code>~/depannage/deploy.sh</code> sous Windows. Il doit afficher <code>DEPLOY OK</code> quand on lance <code>~/depannage/deploy.sh</code>. Réparez-le (il y a plusieurs problèmes).",
              "hints": ["Lancez-le et lisez l'erreur. Puis regardez-le avec <code>cat -A</code> : que sont ces <code>^M</code> ?", "Trois problèmes : droits, shebang, fins de ligne."],
              "checks": [
@@ -1299,6 +1384,7 @@ rm -rf /var/log/mon-service
                  ('run_as etudiant "timeout 5 $H/depannage/deploy.sh" | grep -qx "DEPLOY OK"', "Le script ne produit pas la ligne « DEPLOY OK »."),
              ]},
             {"id": "24.2", "points": 4, "title": "Disque plein",
+             "ticket": {"from": "sophie", "body": "URGENT : le disque est plein et la boutique ne peut plus enregistrer les commandes ! Un journal a dû exploser dans <code>/var/log</code>. Attention, l'application le garde ouvert : ne le supprime pas, vide-le."},
              "desc": "Un fichier de log énorme remplit <code>/var/log</code>. Trouvez-le, écrivez son chemin dans <code>~/gros-log.txt</code>, puis <strong>videz-le sans le supprimer</strong> (l'application le garde ouvert).",
              "hints": ["<code>sudo du -ah /var/log | sort -h | tail</code>", "<code>sudo truncate -s 0 fichier</code>"],
              "checks": [
@@ -1307,6 +1393,7 @@ rm -rf /var/log/mon-service
                  ('[ "$(stat -c %s "$LAB_BIGLOG")" -lt 1048576 ]', "Le fichier fait encore plus de 1 Mo."),
              ]},
             {"id": "24.3", "points": 5, "title": "SSH refusé",
+             "ticket": {"from": "lea", "body": "L'équipe ops n'arrive plus à se connecter avec sa clé. La clé publique est pourtant bien dans <code>authorized_keys</code>… sshd est très pointilleux, cherche ce qui le gêne."},
              "desc": "La commande <code>ssh -i ~/depannage/cle_ops ops@localhost</code> devrait fonctionner : la clé publique est bien dans <code>/home/ops/.ssh/authorized_keys</code>… mais sshd la refuse. Trouvez pourquoi et réparez.",
              "hints": ["sshd refuse les clés si les droits sont trop ouverts (StrictModes). Regardez <code>sudo tail /var/log/auth.log</code>.", "Vérifiez les droits et le propriétaire de /home/ops, de .ssh et de authorized_keys (<code>namei -l</code>)."],
              "checks": [
@@ -1314,12 +1401,14 @@ rm -rf /var/log/mon-service
                  ('run_as etudiant "ssh -i $H/depannage/cle_ops -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 ops@localhost true"', "La connexion par clé en ops@localhost échoue toujours."),
              ]},
             {"id": "24.4", "points": 5, "title": "La tâche cron fantôme",
+             "ticket": {"from": "diallo", "body": "Le rapport qui devait arriver chaque minute dans <code>/var/log/rapport-cron.log</code> n'est jamais apparu. Marc avait configuré ça juste avant de partir… Tu peux regarder ?"},
              "desc": "La tâche <code>/etc/cron.d/rapport.cron</code> devrait écrire chaque minute dans <code>/var/log/rapport-cron.log</code>, mais le fichier n'apparaît jamais. Réparez (plusieurs erreurs), puis attendez qu'il soit alimenté.",
              "hints": ["Relisez les « pièges classiques » de l'étape cron : nom du fichier, champ utilisateur, chemin absolu…", "…et le script lui-même est-il exécutable ?"],
              "checks": [
                  ('f=/var/log/rapport-cron.log; test -f $f && [ $(( $(date +%s) - $(stat -c %Y $f) )) -lt 150 ]', "/var/log/rapport-cron.log n'est pas alimenté (attendez 1 à 2 minutes après votre correction)."),
              ]},
             {"id": "24.5", "points": 4, "title": "Le service qui refuse de démarrer",
+             "ticket": {"from": "thomas", "body": "<code>mon-service</code> refuse de démarrer depuis la mise à jour. Son mode <code>--check</code> affiche des messages, mais je n'y comprends rien. Le port attendu est 8080."},
              "desc": "Le service <code>mon-service</code> tourne sous l'utilisateur <code>monsvc</code>. La commande <code>sudo -u monsvc mon-service --check</code> échoue : lisez les messages et corrigez jusqu'à obtenir <code>Configuration OK</code>. Le port attendu est <code>8080</code>.",
              "hints": ["La configuration est dans <code>/etc/mon-service.conf</code>.", "Le dossier de logs doit exister et appartenir à monsvc."],
              "checks": [
@@ -1338,6 +1427,7 @@ mkuser intrus
 ''',
         "exercises": [
             {"id": "25.1", "points": 5, "title": "Environnement web",
+             "ticket": {"from": "sophie", "body": "Grand projet : on héberge nous-mêmes le nouveau site vitrine ! Prépare un compte <code>webmaster</code> et l'arborescence du site. L'équipe web doit pouvoir travailler partout dedans, et le reste du monde seulement lire."},
              "desc": "Créez <code>webmaster</code> (membre de <code>www</code>) et l'arborescence <code>/var/www/monsite/{html,logs,backup}</code> appartenant au groupe <code>www</code>. Les membres de <code>www</code> peuvent écrire partout dedans, les autres peuvent seulement lire, et les fichiers créés héritent du groupe <code>www</code>.",
              "hints": ["<code>sudo chgrp -R www</code>, <code>sudo chmod -R 2775</code>"],
              "checks": [
@@ -1347,6 +1437,7 @@ mkuser intrus
                  ('run_as intrus "ls /var/www/monsite/html" && ! run_as intrus "touch /var/www/monsite/html/.t"', "Un utilisateur quelconque doit pouvoir lire mais pas écrire dans html/."),
              ]},
             {"id": "25.2", "points": 3, "title": "Contenu web",
+             "ticket": {"from": "thomas", "body": "Pour tester l'hébergement, mets une première page d'accueil et quelques lignes de journal d'accès. Fais-le en tant que <code>webmaster</code>, pour vérifier que ses droits sont bons."},
              "desc": "En tant que <code>webmaster</code>, créez <code>html/index.html</code> contenant <code>&lt;h1&gt;Bienvenue&lt;/h1&gt;</code> et <code>logs/access.log</code> avec au moins 5 lignes.",
              "hints": ["<code>sudo -u webmaster bash</code> ouvre un shell en tant que webmaster."],
              "checks": [
@@ -1355,6 +1446,7 @@ mkuser intrus
                  ('[ "$(wc -l < /var/www/monsite/logs/access.log)" -ge 5 ]', "logs/access.log doit contenir au moins 5 lignes."),
              ]},
             {"id": "25.3", "points": 5, "title": "Sauvegarde horodatée", "manual": True,
+             "ticket": {"from": "sophie", "body": "Le site doit être sauvegardé. Il me faut un script qui crée une archive horodatée du site, avec un état de l'espace disque à côté."},
              "desc": "Écrivez <code>/home/webmaster/backup.sh</code> (exécutable) qui : crée <code>/var/www/monsite/backup/site-AAAAMMJJ-HHMMSS.tar.gz</code> contenant le dossier <code>html</code>, et écrit la sortie de <code>df -h</code> dans <code>backup/disk-report.txt</code>.",
              "hints": ["<code>tar -czf /var/www/monsite/backup/site-$(date +%Y%m%d-%H%M%S).tar.gz -C /var/www/monsite html</code>"],
              "checks": [
@@ -1363,17 +1455,20 @@ mkuser intrus
                  ('[ /var/www/monsite/backup/disk-report.txt -nt /tmp/.lab-t ] && grep -qi filesystem /var/www/monsite/backup/disk-report.txt', "backup/disk-report.txt n'est pas (re)généré avec la sortie de df -h."),
              ]},
             {"id": "25.4", "points": 3, "title": "Planifier la sauvegarde",
+             "ticket": {"from": "sophie", "body": "Et cette sauvegarde doit tourner toute seule, chaque nuit à 3 heures, sous le compte <code>webmaster</code>."},
              "desc": "Créez <code>/etc/cron.d/backup-web</code> pour que <code>webmaster</code> exécute <code>backup.sh</code> chaque jour à 3h00.",
              "checks": [
                  ('grep -qE "^0\\s+3\\s+\\*\\s+\\*\\s+\\*\\s+webmaster\\s+/home/webmaster/backup\\.sh" /etc/cron.d/backup-web', "La ligne cron n'est pas correcte (horaire, utilisateur webmaster, chemin absolu)."),
              ]},
             {"id": "25.5", "points": 5, "title": "Rotation des sauvegardes", "manual": True,
+             "ticket": {"from": "lea", "body": "Attention, à une archive par nuit, le disque sera plein dans quelques mois. Fais en sorte que la sauvegarde ne garde que les 7 plus récentes."},
              "desc": "Complétez <code>backup.sh</code> pour qu'il ne conserve que les <strong>7 archives les plus récentes</strong> dans <code>backup/</code>.",
              "hints": ["<code>ls -1t .../site-*.tar.gz | tail -n +8 | xargs -r rm -f</code>"],
              "checks": [
                  ('b=/var/www/monsite/backup; for i in 0 1 2 3 4 5 6 7 8 9; do f=$b/site-2020010$i-000000.tar.gz; cp /dev/null $f; touch -d "$((20 - i)) days ago" $f; chgrp www $f; done; run_as webmaster "cd /tmp && timeout 20 /home/webmaster/backup.sh"; [ "$(ls $b/site-*.tar.gz | wc -l)" -le 7 ] && ls $b | grep -q "site-$(date +%Y%m%d)" && [ ! -e $b/site-20200100-000000.tar.gz ]', "Après ajout de 10 vieilles archives et exécution, il reste plus de 7 archives (ou la plus récente a disparu)."),
              ]},
             {"id": "25.6", "points": 5, "title": "Supervision avec seuil", "manual": True,
+             "ticket": {"from": "lea", "body": "Dernière brique : la supervision. Un script qui lève une alerte quand le disque dépasse un seuil donné, et qui garde un historique de ses contrôles."},
              "desc": "Écrivez <code>/home/webmaster/monitoring.sh SEUIL</code> : si le taux d'occupation de <code>/</code> (en %) dépasse <code>SEUIL</code>, il affiche une ligne contenant <code>ALERTE</code>, sinon une ligne contenant <code>OK</code>. Dans les deux cas, il ajoute cette ligne, horodatée, à <code>/var/www/monsite/logs/monitoring.txt</code>.",
              "hints": ["<code>u=$(df / | awk 'NR==2{print $5}' | tr -d %)</code>", "<code>if [ \"$u\" -gt \"$1\" ]; then ...</code>"],
              "checks": [
@@ -1382,6 +1477,7 @@ mkuser intrus
                  ('f=/var/www/monsite/logs/monitoring.txt; n=$(cat $f 2>/dev/null | wc -l); run_as webmaster "timeout 10 /home/webmaster/monitoring.sh 100" >/dev/null; [ "$(wc -l < $f)" -eq $((n + 1)) ] && tail -n1 $f | grep -q "$(date +%Y)"', "Chaque exécution doit ajouter une ligne horodatée à logs/monitoring.txt."),
              ]},
             {"id": "25.7", "points": 4, "title": "Accès SSH du webmaster",
+             "ticket": {"from": "sophie", "body": "Pour finir, tu dois pouvoir intervenir sur le compte <code>webmaster</code> avec ta clé SSH. Bravo pour tout ce travail : Marc n'a qu'à bien se tenir !"},
              "desc": "Faites en sorte que vous (etudiant) puissiez vous connecter en <code>webmaster@localhost</code> avec votre clé SSH.",
              "hints": ["Si vous avez désactivé les mots de passe dans sshd, <code>ssh-copy-id</code> ne marchera pas : installez la clé à la main (avec sudo), en respectant les droits exigés par sshd."],
              "checks": [

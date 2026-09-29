@@ -34,6 +34,14 @@ h1 { font-size:26px; margin-bottom:6px; }
 .join button { padding:10px 16px; border:none; border-radius:8px; background:var(--accent); color:#fff; font-weight:600; cursor:pointer; }
 .classes { font-size:12px; color:var(--dim); margin-top:6px; }
 .admin-note { font-size:12px; color:#fdcb6e; margin-bottom:16px; }
+.deadline { margin-top:8px; font-size:12px; color:var(--dim); background:var(--card); border-radius:6px; padding:6px 10px; }
+.deadline.late { color:var(--err); background:rgba(225,112,85,.1); }
+.cert-form { display:flex; gap:8px; }
+.cert { flex:1; display:block; text-align:center; padding:9px; border-radius:10px; border:1px solid #fdcb6e; background:none; color:#fdcb6e; font-weight:600; font-size:13px; cursor:pointer; font-family:inherit; }
+.cert:hover { background:rgba(253,203,110,.08); text-decoration:none; }
+.cert-update { padding:9px 12px; border-radius:10px; border:1px solid var(--border); background:none; color:var(--dim); font-size:12px; cursor:pointer; }
+.cert-update:hover { border-color:#fdcb6e; color:#fdcb6e; }
+.cert-hint { font-size:11px; color:var(--dim); text-align:center; }
 {% endblock %}
 {% block body %}
 <div class="page">
@@ -45,6 +53,7 @@ h1 { font-size:26px; margin-bottom:6px; }
             <a class="btn-link" href="/dashboard">Tableau de bord</a>
             <a class="btn-link" href="/admin/classes">Classes</a>
             {% endif %}
+            <a class="btn-link" href="/compte">Mon compte</a>
             <a class="btn-link" href="/logout">Déconnexion</a>
         </div>
     </div>
@@ -75,10 +84,29 @@ h1 { font-size:26px; margin-bottom:6px; }
                 <div class="progress-line" style="margin-top:4px">
                     <span>📖 Mémo : {{ c.memo_found }}/{{ c.memo_total }} fiches découvertes</span>
                 </div>
+                {% if c.next_deadline %}
+                {% set d = c.next_deadline %}
+                <div class="deadline {% if c.late %}late{% endif %}">
+                    {% if c.late %}⚠ {{ c.late }} étape{{ 's' if c.late > 1 }} en retard · {% endif %}
+                    📅 Étape {{ d.step }} « {{ d.title }} » à terminer pour le {{ d.due[8:10] }}/{{ d.due[5:7] }}/{{ d.due[0:4] }}{% if d.due < today %} (dépassée){% endif %}
+                </div>
+                {% endif %}
             </div>
             <a class="go {% if c.done == c.total %}done{% endif %}" href="/lab/{{ c.key }}">
                 {% if c.done == 0 %}Commencer{% elif c.done == c.total %}Terminé ✓ — revoir{% else %}Continuer{% endif %}
             </a>
+            {% if c.certificate %}
+            <form method="post" action="/attestation/{{ c.key }}" class="cert-form">
+                <a class="cert" href="/attestation/{{ c.certificate }}">🎓 Mon attestation</a>
+                <button type="submit" class="cert-update" title="Met à jour le score de l'attestation (le lien ne change pas)">Mettre à jour</button>
+            </form>
+            {% elif c.certificate_ok %}
+            <form method="post" action="/attestation/{{ c.key }}" class="cert-form">
+                <button type="submit" class="cert">🎓 Obtenir mon attestation</button>
+            </form>
+            {% else %}
+            <div class="cert-hint">🎓 Attestation disponible à partir de {{ certificate_pct }} % des points</div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>

@@ -7,7 +7,7 @@ Pour chaque étape (dans l'ordre du parcours, comme un étudiant) :
   4. vérifie que TOUS les exercices passent.
 
 Usage (depuis la racine du dépôt, images construites avec
-`docker build -t linux-lab ./images/linux` et `docker build -t jest-lab ./images/jest`) :
+`docker build -t linux-lab ./images/linux`, `docker build -t jest-lab ./images/jest`, etc.) :
     python platform/tests/run_lab_tests.py              # toutes les étapes du parcours Linux
     python platform/tests/run_lab_tests.py --course jest
     python platform/tests/run_lab_tests.py --skip 13    # sans l'étape qui a besoin d'Internet
@@ -24,6 +24,9 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
+# Sortie redirigée sous Windows (cp1252) : les caractères « ─ » ou « É » feraient planter l'affichage
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from app import runner  # noqa: E402
 from app.courses import COURSES  # noqa: E402

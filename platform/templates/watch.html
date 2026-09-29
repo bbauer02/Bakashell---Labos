@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal de {{ target.first_name }} {{ target.last_name }} — {{ course.short }}</title>
+    <link rel="stylesheet" href="/static/vendor/xterm/css/xterm.css">
+    <style>
+        :root { --bg:#0f1117; --bg2:#161822; --card:#232639; --border:#2a2d3e; --text:#e1e4ed; --dim:#8b8fa3; --accent:#6c5ce7; --ok:#00b894; --err:#e17055; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        html, body { height:100%; }
+        body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--bg); color:var(--text); display:flex; flex-direction:column; }
+        header { display:flex; align-items:center; gap:14px; padding:10px 16px; background:var(--bg2); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+        header h1 { font-size:15px; }
+        header .dim { color:var(--dim); font-size:12px; }
+        .badge { font-size:11px; padding:2px 8px; border-radius:10px; background:rgba(253,203,110,.15); color:#fdcb6e; }
+        .status { margin-left:auto; font-size:12px; color:var(--dim); display:flex; align-items:center; gap:6px; }
+        .status .dot { width:8px; height:8px; border-radius:50%; background:var(--dim); }
+        .status.on .dot { background:var(--ok); }
+        .tabs { display:flex; gap:4px; padding:6px 16px 0; background:var(--bg2); }
+        .tabs button { padding:6px 14px; border:1px solid var(--border); border-bottom:none; border-radius:8px 8px 0 0; background:var(--card); color:var(--dim); font-size:12px; cursor:pointer; }
+        .tabs button.active { background:#0a0c10; color:var(--text); }
+        .tabs button.closed { text-decoration:line-through; opacity:.6; }
+        main { flex:1; position:relative; background:#0a0c10; min-height:0; }
+        .term { position:absolute; inset:8px; display:none; overflow:auto; }
+        .term.active { display:block; }
+        .empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; color:var(--dim); font-size:14px; line-height:1.6; padding:20px; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>👁 {{ target.first_name }} {{ target.last_name }}</h1>
+        <span class="dim">{{ course.title }}</span>
+        <span class="badge">Lecture seule : vos frappes ne sont pas transmises</span>
+        <span class="status" id="status"><span class="dot"></span><span id="status-label">Connexion…</span></span>
+    </header>
+    <nav class="tabs" id="tabs"></nav>
+    <main id="main">
+        <div class="empty" id="empty">Aucun terminal ouvert pour le moment.<br>L'écran apparaîtra dès que l'étudiant·e ouvrira le labo {{ course.short }}.</div>
+    </main>
+    <script src="/static/vendor/xterm/lib/xterm.js"></script>
+    <script src="/static/vendor/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <script>
+        const USER = {{ target.id | tojson }};
+        const COURSE = {{ course.key | tojson }};
+        const terms = new Map();   // id -> { term, fit, el, tab }
+        let active = null;
+
+        function show(id) {
+            active = id;
+            for (const [tid, t] of terms) {
+                t.el.classList.toggle('active', tid === id);
+                t.tab.classList.toggle('active', tid === id);
+            }
+            const t = terms.get(id);
+            if (t) setTimeout(() => layout(t), 0);
+        }
+
+        // Même taille que le terminal de l'étudiant (sinon les lignes se replient autrement et nano, less ou
+        // htop s'affichent en désordre) ; tant qu'elle est inconnue, on s'adapte à la fenêtre.
+        function layout(t) {
+            if (t.dims) t.term.resize(t.dims.cols, t.dims.rows);
+            else t.fit.fit();
+        }
+
+        function ensure(id) {
+            if (terms.has(id)) return terms.get(id);
+            document.getElementById('empty').style.display = 'none';
+            const el = document.createElement('div');
+            el.className = 'term';
+            document.getElementById('main').appendChild(el);
+            const term = new Terminal({
+                disableStdin: true, cursorBlink: false, fontSize: 14, scrollback: 5000,
+                fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+                theme: { background: '#0a0c10', foreground: '#e1e4ed', cursor: '#6c5ce7' },
+            });
+            const fit = new FitAddon.FitAddon();
+            term.loadAddon(fit);
+            term.open(el);
+            const tab = document.createElement('button');
+            tab.textContent = `Terminal ${terms.size + 1}`;
+            tab.onclick = () => show(id);
+            document.getElementById('tabs').appendChild(tab);
+            const t = { term, fit, el, tab, dims: null };
+            terms.set(id, t);
+            if (active === null || terms.get(active)?.tab.classList.contains('closed')) show(id);
+            return t;
+        }
+
+        function setStatus(on, label) {
+            document.getElementById('status').className = `status${on ? ' on' : ''}`;
+            document.getElementById('status-label').textContent = label;
+        }
+
+        function clearAll() {
+            // À chaque (re)connexion, le serveur renvoie l'écran récent : on repart de zéro
+            for (const t of terms.values()) { t.term.dispose(); t.el.remove(); t.tab.remove(); }
+            terms.clear();
+            active = null;
+            document.getElementById('empty').style.display = '';
+        }
+
+        function connect() {
+            clearAll();
+            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${proto}//${location.host}/ws/watch?user=${USER}&course=${encodeURIComponent(COURSE)}`);
+            ws.binaryType = 'arraybuffer';
+            ws.onopen = () => setStatus(true, 'En direct');
+            ws.onmessage = (event) => {
+                if (event.data instanceof ArrayBuffer) {
+                    const view = new DataView(event.data);
+                    const id = view.getUint32(0);
+                    ensure(id).term.write(new Uint8Array(event.data, 4));
+                    return;
+                }
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'open') ensure(msg.term).tab.classList.remove('closed');
+                else if (msg.type === 'size') {
+                    const t = ensure(msg.term);
+                    t.dims = { cols: msg.cols, rows: msg.rows };
+                    layout(t);
+                }
+                else if (msg.type === 'close' && terms.has(msg.term)) {
+                    const t = terms.get(msg.term);
+                    t.tab.classList.add('closed');
+                    t.term.write('\r\n\x1b[33m[Terminal fermé par l\'étudiant·e]\x1b[0m\r\n');
+                }
+            };
+            ws.onclose = (event) => {
+                if (event.code === 4001) { location.href = '/login'; return; }  // session expirée
+                setStatus(false, 'Déconnecté, nouvelle tentative…');
+                setTimeout(connect, 3000);
+            };
+        }
+
+        window.addEventListener('resize', () => { const t = terms.get(active); if (t) layout(t); });
+        connect();
+    </script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+# Intégration continue : tests unitaires de la plateforme, image de la plateforme, puis banc de test de
+# chaque parcours dans un vrai conteneur (aucun exercice ne passe avant d'être fait, tous passent avec le corrigé).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plateforme:
+    name: Tests unitaires de la plateforme
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: platform/requirements*.txt
+      - run: pip install -r platform/requirements.txt -r platform/requirements-dev.txt
+      - run: python -m pytest platform/tests -q
+
+  image-plateforme:
+    name: Image de la plateforme
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t linux-lab-platform ./platform
+      - name: Les bibliothèques du navigateur sont servies localement
+        run: |
+          docker run --rm linux-lab-platform sh -c \
+            'test -f /app/static/vendor/xterm/lib/xterm.js && test -f /app/static/vendor/monaco-editor/min/vs/loader.js'
+
+  parcours:
+    name: Banc de test — ${{ matrix.course }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { course: linux, dir: images/linux, image: linux-lab }
+          - { course: jest, dir: images/jest, image: jest-lab }
+          - { course: docker, dir: images/docker, image: docker-lab }
+          - { course: git, dir: images/git, image: git-lab }
+          - { course: ansible, dir: images/ansible, image: ansible-lab }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: docker build -t ${{ matrix.image }} ${{ matrix.dir }}
+      # Parcours Docker : pas de Sysbox sur les runners GitHub, conteneur privilégié (défaut du banc)
+      - run: python platform/tests/run_lab_tests.py --course ${{ matrix.course }}

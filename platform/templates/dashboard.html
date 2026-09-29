@@ -20,7 +20,7 @@
 .stat-card .num.ok { color:var(--ok); }
 .stat-card .label { font-size:12px; color:var(--dim); margin-top:4px; }
 .layout { display:grid; grid-template-columns:minmax(0, 1fr) 320px; gap:20px; align-items:start; }
-@media (max-width: 1100px) { .layout { grid-template-columns:1fr; } }
+@media (max-width: 1100px) { .layout { grid-template-columns:minmax(0, 1fr); } }
 .table-wrap { overflow-x:auto; border-radius:12px; border:1px solid var(--border); }
 table { width:100%; border-collapse:collapse; background:var(--bg2); }
 th { background:var(--card); padding:12px; text-align:left; font-size:11px; font-weight:600; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid var(--border); white-space:nowrap; }
@@ -45,7 +45,10 @@ tr.flash td { animation:flash 2.5s ease-out; }
 .cell.done { background:var(--ok); }
 .cell.here { outline:2px solid #fdcb6e; outline-offset:1px; }
 .empty { text-align:center; padding:60px; color:var(--dim); font-size:16px; }
-.actions { display:flex; gap:6px; }
+/* Quatre actions sur deux lignes : la colonne reste étroite et visible sans défilement */
+.actions { display:grid; grid-template-columns:repeat(2, auto); gap:4px; justify-content:start; }
+.actions form { margin:0; }
+.actions .btn-sm { width:100%; white-space:nowrap; text-align:center; }
 .btn-sm { padding:4px 10px; border:1px solid var(--border); border-radius:6px; font-size:11px; cursor:pointer; background:none; color:var(--dim); transition:.2s; }
 .btn-sm:hover { border-color:var(--accent); color:var(--accent-l); }
 .btn-sm.danger:hover { border-color:var(--err); color:var(--err); }
@@ -60,13 +63,26 @@ tr.flash td { animation:flash 2.5s ease-out; }
 .feed li.attempt b { color:#e17055; }
 .feed li.hint b { color:#fdcb6e; }
 .feed .none { color:var(--dim); font-style:italic; }
+.late-badge { display:inline-block; margin-top:4px; font-size:11px; color:var(--err); background:rgba(225,112,85,.12); border-radius:4px; padding:1px 6px; }
+.cell.late { box-shadow:inset 0 -3px 0 var(--err); }
+.btn-sm.watch { text-decoration:none; display:inline-flex; align-items:center; }
+.btn-sm.watch.live { border-color:var(--ok); color:var(--ok); }
+.modal-back { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:50; padding:16px; }
+.modal-back.open { display:flex; }
+.modal { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:24px; max-width:560px; width:100%; }
+.modal h3 { font-size:17px; margin-bottom:10px; }
+.modal p { font-size:13px; color:var(--dim); line-height:1.5; margin-bottom:12px; }
+.modal input { width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12px; }
+.modal .row { display:flex; gap:8px; margin-top:14px; justify-content:flex-end; }
 @keyframes appear { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
 {% endblock %}
 {% block body %}
 <div class="dashboard">
     <div class="dash-header">
         <h1>&gt;_ Tableau des scores <span class="live-badge" id="live-badge"><span class="dot"></span><span id="live-label">connexion…</span></span></h1>
-        <div style="display:flex; gap:8px">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end">
+            <a href="/admin/export.csv?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}" class="back-btn" title="Notes du parcours{% if classe %} pour cette classe{% endif %}, à ouvrir dans un tableur">⬇ Exporter les notes (CSV)</a>
+            <a href="/admin/stats?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}" class="back-btn">📊 Statistiques par exercice</a>
             <a href="/admin/classes" class="back-btn">Classes</a>
             <a href="/catalogue" class="back-btn">Catalogue</a>
         </div>
@@ -90,6 +106,7 @@ tr.flash td { animation:flash 2.5s ease-out; }
         <div class="stat-card"><div class="num" id="stat-online">0</div><div class="label">Connectés</div></div>
         <div class="stat-card"><div class="num">{{ students | length }}</div><div class="label">{% if classe %}Étudiants de la classe{% else %}Étudiants inscrits{% endif %}</div></div>
         <div class="stat-card"><div class="num" id="stat-avg">{% if students %}{{ (students | map(attribute='score') | sum / students | length) | round(1) }}{% else %}0{% endif %}</div><div class="label">Score moyen / {{ max_score }}</div></div>
+        <div class="stat-card"><div class="num" style="{% if late_total %}color:var(--err){% endif %}">{{ late_total }}</div><div class="label">En retard sur une échéance</div></div>
         <div class="stat-card"><div class="num">{{ running }}</div><div class="label">Conteneurs démarrés ({{ containers | length }} au total)</div></div>
     </div>
 
@@ -118,23 +135,27 @@ tr.flash td { animation:flash 2.5s ease-out; }
                 {% for s in students %}
                 {% set pct = (s.score * 100 / max_score) if max_score else 0 %}
                 <tr data-user="{{ s.id }}" data-score="{{ s.score }}" data-last-seen="{{ s.last_seen or '' }}">
-                    <td><div class="name">{{ s.first_name }} {{ s.last_name }}</div><div class="email">{{ s.email }}</div></td>
+                    <td><div class="name">{{ s.first_name }} {{ s.last_name }}</div><div class="email">{{ s.email }}</div>
+                        {% if s.late %}<span class="late-badge" title="Échéance dépassée">⏰ En retard : étape{{ 's' if s.late | length > 1 }} {{ s.late | join(', ') }}</span>{% endif %}</td>
                     <td class="live"><div class="status offline"><span class="dot"></span><span class="label">Hors ligne</span></div><div class="where"></div></td>
                     <td class="score-cell {% if pct >= 70 %}score-high{% elif pct >= 30 %}score-mid{% else %}score-low{% endif %}"><span class="score">{{ s.score }}</span>/{{ max_score }}</td>
                     <td>
                         <div class="steps-grid">
                         {% for st in steps %}
                             {% set n = s.per_step.get(st.num, 0) %}
-                            <div class="cell {% if n >= st.total %}done{% elif n > 0 %}partial{% endif %}" data-step="{{ st.num }}" data-count="{{ n }}" data-total="{{ st.total }}" title="Étape {{ st.num }} — {{ st.title }} : {{ n }}/{{ st.total }}"></div>
+                            {% set due = s.deadlines.get(st.num) %}
+                            <div class="cell {% if n >= st.total %}done{% elif n > 0 %}partial{% endif %}{% if st.num in s.late %} late{% endif %}" data-step="{{ st.num }}" data-count="{{ n }}" data-total="{{ st.total }}" title="Étape {{ st.num }} — {{ st.title }} : {{ n }}/{{ st.total }}{% if due %} (échéance : {{ due[8:10] }}/{{ due[5:7] }}){% endif %}"></div>
                         {% endfor %}
                         </div>
                     </td>
                     <td style="color:var(--dim)"><span class="done-count">{{ s.exercises_done }}</span>/{{ total_exercises }}</td>
                     <td class="actions">
-                        <form method="post" action="/admin/reset-user/{{ s.id }}?course={{ course.key }}" onsubmit="return confirm('Remettre à zéro le parcours {{ course.short }} de {{ s.first_name }} et recréer son conteneur ?')">
+                        <a class="btn-sm watch" href="/admin/terminal/{{ s.id }}?course={{ course.key }}" target="_blank" title="Voir son terminal en direct (lecture seule)">👁 Terminal</a>
+                        <button type="button" class="btn-sm" onclick="resetLink({{ s.id }})" title="Créer un lien pour choisir un nouveau mot de passe">🔑 Mot de passe</button>
+                        <form method="post" action="/admin/reset-user/{{ s.id }}?course={{ course.key }}" data-confirm="Remettre à zéro le parcours {{ course.short }} de {{ s.first_name }} {{ s.last_name }} et recréer son conteneur ?" onsubmit="return confirm(this.dataset.confirm)">
                             <button type="submit" class="btn-sm">Reset</button>
                         </form>
-                        <form method="post" action="/admin/delete-user/{{ s.id }}" onsubmit="return confirm('Supprimer le compte de {{ s.first_name }} {{ s.last_name }} (tous parcours confondus) ? Cette action est irréversible.')">
+                        <form method="post" action="/admin/delete-user/{{ s.id }}" data-confirm="Supprimer le compte de {{ s.first_name }} {{ s.last_name }} (tous parcours confondus) ? Cette action est irréversible." onsubmit="return confirm(this.dataset.confirm)">
                             <button type="submit" class="btn-sm danger">Supprimer</button>
                         </form>
                     </td>
@@ -211,6 +232,9 @@ tr.flash td { animation:flash 2.5s ease-out; }
             const st = stuck.get(Number(tr.dataset.user));
             if (st && st.count >= 3) html += `<br><span class="stuck" title="${esc(whereLabel(st.course, st.step))}">⚠ Bloqué : ${st.count} vérifications sans progrès</span>`;
             where.innerHTML = html;
+            // terminal ouvert dans le parcours affiché : le bouton « Terminal » passe en vert
+            const here = presence.get(`${tr.dataset.user}|${COURSE}`);
+            tr.querySelector('.watch')?.classList.toggle('live', !!here && here.terminals > 0);
             // étape ouverte en ce moment (dans le parcours affiché)
             tr.querySelectorAll('.cell').forEach((c) => {
                 c.classList.toggle('here', !!e && cls !== 'offline' && e.course === COURSE && Number(c.dataset.step) === e.step);
@@ -246,7 +270,8 @@ tr.flash td { animation:flash 2.5s ease-out; }
         if (cell) {
             const n = Number(cell.dataset.count) + 1;
             cell.dataset.count = n;
-            cell.className = `cell ${n >= Number(cell.dataset.total) ? 'done' : 'partial'}`;
+            const finished = n >= Number(cell.dataset.total);
+            cell.className = `cell ${finished ? 'done' : 'partial'}${!finished && cell.classList.contains('late') ? ' late' : ''}`;
             cell.title = cell.title.replace(/: \d+\//, `: ${n}/`);
         }
         tr.dataset.score = e.score;
@@ -296,7 +321,61 @@ tr.flash td { animation:flash 2.5s ease-out; }
         });
     }
 
+    async function resetLink(uid) {
+        if (!confirm(`Créer un lien de réinitialisation du mot de passe pour ${names.get(uid) || 'cet étudiant'} ?\nL'ancien mot de passe reste valable jusqu'à ce que le lien soit utilisé.`)) return;
+        try {
+            const res = await fetch(`/api/admin/reset-link/${uid}`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || res.status);
+            document.getElementById('reset-name').textContent = data.name;
+            document.getElementById('reset-hours').textContent = data.hours;
+            document.getElementById('reset-url').value = data.link;
+            document.getElementById('reset-modal').classList.add('open');
+            document.getElementById('reset-url').select();
+        } catch (e) {
+            alert(`Lien impossible à créer : ${e.message}`);
+        }
+    }
+
+
+    // Copie dans le presse-papiers ; en HTTP (hors localhost), navigator.clipboard n'existe pas : repli sur
+    // la sélection du texte et execCommand, sinon on invite à copier au clavier.
+    function copyText(text, input, done) {
+        const fallback = () => {
+            let el = input, temp = null;
+            if (!el) {
+                temp = el = document.createElement('textarea');
+                el.value = text; el.setAttribute('readonly', ''); el.style.position = 'fixed'; el.style.opacity = '0';
+                document.body.appendChild(el);
+            }
+            el.focus(); el.select();
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            if (temp) temp.remove();
+            if (ok) done(); else alert('Copie automatique impossible : copiez avec Ctrl+C.');
+        };
+        if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback);
+        else fallback();
+    }
+
+    function copyResetLink(btn) {
+        const input = document.getElementById('reset-url');
+        copyText(input.value, input, () => { btn.textContent = 'Copié ✓'; setTimeout(() => (btn.textContent = 'Copier'), 1500); });
+    }
+
     connect();
     setInterval(renderPresence, 5000);  // les durées d'inactivité évoluent même sans événement
 </script>
+<div class="modal-back" id="reset-modal" onclick="if (event.target === this) this.classList.remove('open')">
+    <div class="modal">
+        <h3>Lien de réinitialisation — <span id="reset-name"></span></h3>
+        <p>Transmettez ce lien à l'étudiant·e (messagerie de l'établissement, en main propre…). Il permet de choisir un
+            nouveau mot de passe, une seule fois, pendant <span id="reset-hours"></span> h. Créer un nouveau lien annule le précédent.</p>
+        <input id="reset-url" readonly onclick="this.select()">
+        <div class="row">
+            <button class="btn-sm" onclick="copyResetLink(this)">Copier</button>
+            <button class="btn-sm" onclick="document.getElementById('reset-modal').classList.remove('open')">Fermer</button>
+        </div>
+    </div>
+</div>
 {% endblock %}

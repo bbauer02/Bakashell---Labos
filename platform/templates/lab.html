@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ course.short }} — Linux CLI Lab</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+    <link rel="stylesheet" href="/static/vendor/xterm/css/xterm.css">
     <style>
         :root {
             --bg-primary: #0f1117;
@@ -332,6 +332,26 @@
             border: 1px solid var(--border);
             color: var(--text-dim);
         }
+
+        /* Schémas des cours (SVG en ligne) */
+        .lesson-content .schema { margin: 14px 0 18px; text-align: center; }
+        .lesson-content .schema svg { width: 100%; max-width: 640px; height: auto; }
+        .lesson-content .schema figcaption { font-size: 12px; color: var(--text-dim); margin-top: 6px; font-style: italic; }
+        .schema text { fill: var(--text); font-size: 13px; font-family: 'Segoe UI', system-ui, sans-serif; }
+        .schema .t2 { fill: var(--text-dim); font-size: 11px; }
+        .schema .mono { fill: var(--cyan); font-size: 11px; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+        .schema .ttl { fill: var(--accent-light); font-weight: 700; }
+        .schema .b { fill: var(--bg-card); stroke: var(--border); stroke-width: 1.5; }
+        .schema .a { fill: rgba(108, 92, 231, 0.15); stroke: var(--accent); stroke-width: 1.5; }
+        .schema .g { fill: var(--success-bg); stroke: var(--success); stroke-width: 1.5; }
+        .schema .w { fill: rgba(253, 203, 110, 0.12); stroke: var(--warning); stroke-width: 1.5; }
+        .schema .r { fill: var(--danger-bg); stroke: var(--danger); stroke-width: 1.5; }
+        .schema .l { fill: none; stroke: var(--text-dim); stroke-width: 1.5; }
+        .schema .la { fill: none; stroke: var(--accent-light); stroke-width: 1.8; }
+        .schema .ld { fill: none; stroke: var(--warning); stroke-width: 1.5; stroke-dasharray: 5 4; }
+        .schema .pt { fill: var(--text-dim); }
+        .schema .pa { fill: var(--accent-light); }
+        .schema .pw { fill: var(--warning); }
 
         .lesson-content strong { color: var(--text); }
         .lesson-content em { color: var(--text-dim); font-style: italic; }
@@ -661,6 +681,26 @@
         .btn-reset-step { display: block; margin: 8px auto 0; background: none; border: none; color: var(--text-dim); font-size: 11px; cursor: pointer; text-decoration: underline; }
         .btn-reset-step:hover { color: var(--danger); }
 
+        /* ─── Échéances, historique, démarrage de l'environnement ── */
+        .step-due { margin-top: 6px; font-size: 12px; color: #fdcb6e; }
+        .step-due.late { color: var(--error, #e17055); font-weight: 600; }
+        .step-due.hidden { display: none; }
+        .step-dot.due { outline: 1px dashed #fdcb6e; outline-offset: 2px; }
+        .step-dot.late { outline: 2px solid #e17055; outline-offset: 2px; }
+        .history { margin-top: 8px; font-size: 12px; }
+        .history summary { cursor: pointer; color: var(--text-dim); }
+        .history ol { list-style: none; margin: 6px 0 0; padding: 0; max-height: 180px; overflow-y: auto; }
+        .history li { padding: 4px 0; border-top: 1px solid var(--border); line-height: 1.45; }
+        .history li.ok { color: #00b894; }
+        .history li.ko { color: var(--text-dim); }
+        .history li.more { color: var(--text-dim); font-style: italic; }
+        .history .when { display: inline-block; min-width: 92px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+        .env-banner { position: fixed; left: 50%; top: 64px; transform: translate(-50%, -20px); opacity: 0; pointer-events: none;
+            background: #232639; border: 1px solid #6c5ce7; color: #e1e4ed; padding: 10px 18px; border-radius: 10px;
+            font-size: 13px; z-index: 60; transition: .3s; max-width: calc(100% - 32px); box-shadow: 0 8px 30px rgba(0,0,0,.4); }
+        .env-banner.show { opacity: 1; transform: translate(-50%, 0); }
+        .env-banner span::before { content: '⏳ '; }
+
         /* ─── Scénario et tickets ─────────────────── */
         .lesson-content .scenario { background: var(--bg-primary); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; }
         .lesson-content .scenario h3 { margin-top: 0; }
@@ -676,8 +716,16 @@
         /* ─── Responsive ───────────────────────────── */
         @media (max-width: 768px) {
             .main { flex-direction: column; }
-            .panel-left { width: 100%; height: 45vh; border-right: none; border-bottom: 1px solid var(--border); }
+            .panel-left { width: 100%; height: 55vh; border-right: none; border-bottom: 1px solid var(--border); }
             .resize-handle { display: none; }
+            /* Barre du haut sur plusieurs lignes : rien ne dépasse de l'écran */
+            .topbar { flex-wrap: wrap; height: auto; padding: 8px 12px; row-gap: 8px; }
+            .topbar-left { flex-wrap: wrap; gap: 8px; }
+            .logo { font-size: 16px; }
+            .topbar-right { flex-wrap: wrap; gap: 8px; white-space: normal; flex-shrink: 1; min-width: 0; }
+            .topbar-right .user-name { display: none; }
+            .topbar-center { order: 3; flex-basis: 100%; margin: 0; }
+            .score-display { padding: 4px 10px; }
         }
     </style>
 </head>
@@ -710,7 +758,7 @@
                     <div class="score-label">/ <span id="score-max">…</span> pts</div>
                 </div>
             </div>
-            <span style="font-size:13px;color:var(--text-dim)">{{ user.first_name }} {{ user.last_name }}{% if user.is_admin %} <span style="color:var(--accent-light);font-size:10px;background:var(--bg-primary);padding:2px 6px;border-radius:4px">ADMIN</span>{% endif %}</span>
+            <span class="user-name" style="font-size:13px;color:var(--text-dim)">{{ user.first_name }} {{ user.last_name }}{% if user.is_admin %} <span style="color:var(--accent-light);font-size:10px;background:var(--bg-primary);padding:2px 6px;border-radius:4px">ADMIN</span>{% endif %}</span>
             {% if user.is_admin %}<a href="/dashboard?course={{ course.key }}" class="btn-reset" style="text-decoration:none">Dashboard</a>{% endif %}
             <a href="/catalogue" class="btn-reset" style="text-decoration:none">Mes labos</a>
             <a href="/logout" class="btn-reset" style="text-decoration:none">Déconnexion</a>
@@ -725,6 +773,7 @@
                 <span class="step-tag" id="step-tag">Étape 1</span>
                 <h2 id="step-title">Chargement...</h2>
                 <p id="step-desc"></p>
+                <p class="step-due hidden" id="step-due"></p>
             </div>
             <div class="tab-bar">
                 <button class="tab-btn active" id="tab-lesson" onclick="switchTab('lesson')">Cours</button>
@@ -786,10 +835,11 @@
 
     <!-- Toast -->
     <div class="toast" id="toast"></div>
+    <div class="env-banner" id="env-banner" role="status"><span></span></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+    <script src="/static/vendor/xterm/lib/xterm.js"></script>
+    <script src="/static/vendor/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <script src="/static/vendor/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
     <script>
         // ─── State ─────────────────────────────────────
         const COURSE = {{ course.key | tojson }};
@@ -922,6 +972,9 @@
         async function fetchSteps() {
             stepsData = await api(`/api/${COURSE}/steps`);
             renderStepDots();
+            // Étape terminée (par exemple avec « Vérifier cet exercice ») : son échéance ne s'affiche plus
+            const cur = stepsData.find((s) => s.num === currentStep);
+            if (cur && cur.total > 0 && cur.completed === cur.total) document.getElementById('step-due').className = 'step-due hidden';
         }
 
         async function fetchStep(num) {
@@ -933,6 +986,11 @@
         }
 
         // ─── Render Functions ──────────────────────────
+        const todayIso = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+        const frDate = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+        // Dates SQLite (UTC, « AAAA-MM-JJ HH:MM:SS ») -> heure locale lisible
+        const frDateTime = (sql) => new Date(sql.replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
         function renderStepDots() {
             const container = document.getElementById('step-dots');
             container.innerHTML = stepsData.map(s => {
@@ -940,7 +998,10 @@
                 if (s.num === currentStep) cls = 'active';
                 else if (s.completed === s.total && s.total > 0) cls = 'done';
                 else if (s.completed > 0) cls = 'partial';
-                return `<div class="step-dot ${cls}" onclick="selectStep(${s.num})" title="Étape ${s.num}: ${s.title}">${s.num}</div>`;
+                const finished = s.completed === s.total && s.total > 0;
+                if (s.due && !finished) cls += s.due < todayIso() ? ' late' : ' due';
+                const due = s.due ? ` — à terminer pour le ${frDate(s.due)}` : '';
+                return `<div class="step-dot ${cls}" onclick="selectStep(${s.num})" title="Étape ${s.num}: ${escHtml(s.title)}${due}">${s.num}</div>`;
             }).join('');
             const active = container.querySelector('.step-dot.active');
             if (active) {
@@ -974,6 +1035,16 @@
             document.getElementById('step-tag').textContent = `Étape ${stepData.num}`;
             document.getElementById('step-title').textContent = stepData.title;
             document.getElementById('step-desc').textContent = stepData.description;
+            const dueEl = document.getElementById('step-due');
+            const allDone = stepData.exercises.every((ex) => ex.completed);
+            if (stepData.due && !allDone) {
+                const late = stepData.due < todayIso();
+                dueEl.textContent = late ? `⏰ Échéance dépassée : étape à terminer pour le ${frDate(stepData.due)}`
+                                         : `📅 À terminer pour le ${frDate(stepData.due)}`;
+                dueEl.className = `step-due${late ? ' late' : ''}`;
+            } else {
+                dueEl.className = 'step-due hidden';
+            }
 
             // Render lesson
             const lessonEl = document.getElementById('lesson-content');
@@ -1002,6 +1073,7 @@
                     <div class="hint-zone" id="hints-${ex.id}" data-ticket="${ex.ticket ? 1 : ''}">${renderHints(ex.id, ex.hints, ex.hints_total, ex.completed, !!ex.ticket)}</div>
                     <div class="exercise-result">${ex.completed ? '<div class="exercise-status pass">&#10003; Validé</div>' : ''}</div>
                     ${ex.completed ? '' : `<button class="btn-check" onclick="validateExercise('${ex.id}', this)">▶ Vérifier cet exercice</button>`}
+                    <div class="history-zone" id="history-${ex.id}">${renderHistory(ex.attempts, ex.attempts_total)}</div>
                 </div>
             `).join('');
 
@@ -1012,6 +1084,26 @@
         }
 
         let mentorName = 'Léa';
+
+        // ─── Historique des vérifications ─────────────
+        function renderHistory(items, total) {
+            if (!total) return '';
+            const rows = items.map((a) => `<li class="${a.passed ? 'ok' : 'ko'}"><span class="when">${frDateTime(a.at)}</span>`
+                + (a.passed ? '✓ Réussi' : `✗ ${a.message || 'Échec'}`) + '</li>').join('');
+            const more = total > items.length ? `<li class="more">… et ${total - items.length} vérification(s) plus ancienne(s)</li>` : '';
+            return `<details class="history"><summary>Historique : ${total} vérification${total > 1 ? 's' : ''}</summary><ol>${rows}${more}</ol></details>`;
+        }
+
+        async function refreshHistory(id) {
+            const zone = document.getElementById(`history-${id}`);
+            if (!zone) return;
+            const open = zone.querySelector('details')?.open;
+            try {
+                const h = await api(`/api/${COURSE}/attempts/${encodeURIComponent(id)}`);
+                zone.innerHTML = renderHistory(h.attempts, h.attempts_total);
+                if (open) zone.querySelector('details').open = true;
+            } catch (e) { /* l'historique n'est qu'un complément */ }
+        }
 
         function renderHints(id, hints, total, completed, ticket) {
             const intro = ticket ? `<div class="ticket-role" style="margin-top:8px">${mentorName} vous glisse :</div>` : '';
@@ -1179,6 +1271,7 @@ ${s.preamble}
                 const r = data.validation.results[0];
                 if (!r) return;
                 setResult(card, r);
+                if (!r.already) refreshHistory(id);
                 updateScore(data.progress);
                 announceDiscoveries(data.progress);
                 fetchSteps().catch(() => {});
@@ -1276,6 +1369,32 @@ ${s.preamble}
             `;
         }
 
+        // Premier chargement : on prévient si l'environnement doit être créé ou redémarré (quelques secondes)
+        let envChecked = false;
+
+        async function announceEnvironment() {
+            if (envChecked) return;
+            envChecked = true;
+            let s;
+            try { s = await api(`/api/${COURSE}/status`); } catch (e) { return; }
+            const messages = {
+                absent: "Création de votre environnement (première visite) : quelques secondes…",
+                stopped: 'Réveil de votre environnement, qui était arrêté (inactivité ou redémarrage du serveur). Vos fichiers sont conservés.',
+                outdated: "Le labo a été mis à jour : votre environnement est recréé avec la nouvelle version.",
+            };
+            if (messages[s.status]) showBanner(messages[s.status]);
+        }
+
+        function showBanner(text) {
+            const el = document.getElementById('env-banner');
+            el.querySelector('span').textContent = text;
+            el.classList.add('show');
+        }
+
+        function hideBanner() {
+            document.getElementById('env-banner').classList.remove('show');
+        }
+
         async function prepareStep(num) {
             preparing = true;
             const btn = document.getElementById('btn-validate');
@@ -1283,10 +1402,13 @@ ${s.preamble}
             btn.className = 'btn-validate validating';
             btn.innerHTML = '<span class="validating-anim">Préparation de votre environnement…</span>';
             try {
+                await announceEnvironment();
                 await api(`/api/${COURSE}/prepare/${num}`, { method: 'POST' });
+                hideBanner();
                 if (currentStep !== num) return;
                 if (HAS_EDITOR) refreshFiles();
             } catch (e) {
+                hideBanner();
                 if (currentStep === num) showToast(`Préparation de l'étape impossible : ${e.message}`, 'error');
             } finally {
                 if (currentStep === num) {
@@ -1316,6 +1438,7 @@ ${s.preamble}
                     const card = document.getElementById(`card-${r.id}`);
                     if (!card) continue;
                     setResult(card, r);
+                    if (!r.already && !r.skipped) refreshHistory(r.id);
                     if (r.passed && !r.already) newPoints += r.earned;
                     if (!r.passed) allPassed = false;
                 }
@@ -1473,7 +1596,7 @@ ${s.preamble}
         }
 
         function initEditor() {
-            const base = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min';
+            const base = `${location.origin}/static/vendor/monaco-editor/min`;
             window.MonacoEnvironment = {
                 getWorkerUrl: () => `data:text/javascript;charset=utf-8,${encodeURIComponent(
                     `self.MonacoEnvironment = { baseUrl: '${base}/' }; importScripts('${base}/vs/base/worker/workerMain.js');`)}`,
@@ -1499,7 +1622,7 @@ ${s.preamble}
                     refreshFiles(true);
                 });
             };
-            loader.onerror = () => setEditorStatus("Éditeur indisponible (pas d'accès au CDN) : utilisez nano dans le terminal");
+            loader.onerror = () => setEditorStatus("Éditeur indisponible : utilisez nano dans le terminal");
             document.body.appendChild(loader);
             window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
             setTimeout(() => fitAddon.fit(), 100);

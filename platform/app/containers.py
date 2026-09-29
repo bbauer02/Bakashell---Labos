@@ -12,7 +12,16 @@ NETWORK_NAME = os.environ.get("LAB_NETWORK", "linux-lab-students")
 STUDENT_USER = "etudiant"
 STUDENT_HOME = "/home/etudiant"
 
-client = docker.from_env()
+_client = None
+
+
+def client():
+    """Client Docker, créé à la première utilisation (les tests importent l'application sans Docker)."""
+    global _client
+    if _client is None:
+        _client = docker.from_env()
+    return _client
+
 
 # Un verrou par conteneur : le terminal et la préparation d'étape peuvent le demander en même temps
 _create_locks: dict = {}
@@ -26,9 +35,9 @@ def _lock_for(name: str) -> threading.Lock:
 
 def get_or_create_network():
     try:
-        return client.networks.get(NETWORK_NAME)
+        return client().networks.get(NETWORK_NAME)
     except docker.errors.NotFound:
-        return client.networks.create(
+        return client().networks.create(
             NETWORK_NAME,
             driver="bridge",
             options={"com.docker.network.bridge.enable_icc": "false"},
@@ -52,9 +61,21 @@ def get_or_create_container(user_id: int, course: dict) -> str:
         return _get_or_create(user_id, course, name)
 
 
+def container_status(user_id: int, course: dict) -> str:
+    """État de l'environnement avant son ouverture : « running », « stopped » (arrêté après inactivité,
+    le travail est conservé), « outdated » (nouvelle version du parcours : il sera recréé) ou « absent »."""
+    try:
+        container = client().containers.get(get_container_name(user_id, course))
+    except docker.errors.NotFound:
+        return "absent"
+    if container.labels.get("linux-lab.version") != course["version"]:
+        return "outdated"
+    return "running" if container.status == "running" else "stopped"
+
+
 def _get_or_create(user_id: int, course: dict, name: str) -> str:
     try:
-        container = client.containers.get(name)
+        container = client().containers.get(name)
         if container.labels.get("linux-lab.version") != course["version"]:
             container.remove(force=True)
         else:
@@ -74,7 +95,7 @@ def _get_or_create(user_id: int, course: dict, name: str) -> str:
             extra["privileged"] = True
         else:
             extra["runtime"] = dind
-    container = client.containers.run(
+    container = client().containers.run(
         course["image"],
         name=name,
         hostname="linux-lab",
@@ -111,7 +132,7 @@ def exec_in_container(container_id: str, cmd, env: dict = None, user: str = "roo
     if isinstance(cmd, str):
         cmd = ["bash", "-c", cmd]
     try:
-        container = client.containers.get(container_id)
+        container = client().containers.get(container_id)
         result = container.exec_run(cmd, demux=True, environment=env or {}, user=user, workdir=workdir)
         stdout = result.output[0].decode(errors="replace") if result.output and result.output[0] else ""
         return result.exit_code, stdout
@@ -121,8 +142,8 @@ def exec_in_container(container_id: str, cmd, env: dict = None, user: str = "roo
 
 def create_exec_stream(container_id: str):
     """Ouvre un shell de connexion interactif (PTY) en tant qu'étudiant."""
-    container = client.containers.get(container_id)
-    exec_instance = client.api.exec_create(
+    container = client().containers.get(container_id)
+    exec_instance = client().api.exec_create(
         container.id,
         ["bash", "-l"],
         stdin=True,
@@ -133,13 +154,13 @@ def create_exec_stream(container_id: str):
         workdir=STUDENT_HOME,
         environment={"TERM": "xterm-256color", "HOME": STUDENT_HOME, "USER": STUDENT_USER},
     )
-    sock = client.api.exec_start(exec_instance["Id"], socket=True, tty=True)
+    sock = client().api.exec_start(exec_instance["Id"], socket=True, tty=True)
     return exec_instance["Id"], sock
 
 
 def resize_exec(exec_id: str, rows: int, cols: int):
     try:
-        client.api.exec_resize(exec_id, height=rows, width=cols)
+        client().api.exec_resize(exec_id, height=rows, width=cols)
     except Exception:
         pass
 
@@ -148,12 +169,12 @@ def remove_container(user_id: int, course: dict = None):
     """Supprime le conteneur d'un parcours, ou de tous les parcours si course est None."""
     for c in ([course] if course else COURSES.values()):
         try:
-            client.containers.get(get_container_name(user_id, c)).remove(force=True)
+            client().containers.get(get_container_name(user_id, c)).remove(force=True)
         except docker.errors.NotFound:
             pass
         if c.get("docker_in_docker"):
             try:
-                client.volumes.get(docker_volume_name(user_id, c)).remove(force=True)
+                client().volumes.get(docker_volume_name(user_id, c)).remove(force=True)
             except docker.errors.NotFound:
                 pass
 
@@ -163,7 +184,7 @@ def stop_idle_containers(last_activity: dict, active: set, max_idle_seconds: int
     plus de max_idle_seconds et sans terminal ouvert. Clés : (user_id, parcours)."""
     now = time.time()
     stopped = []
-    for c in client.containers.list(filters={"label": "linux-lab=student", "status": "running"}):
+    for c in client().containers.list(filters={"label": "linux-lab=student", "status": "running"}):
         try:
             key = (int(c.labels.get("linux-lab.user", "")), c.labels.get("linux-lab.course", "linux"))
         except ValueError:
@@ -179,7 +200,7 @@ def stop_idle_containers(last_activity: dict, active: set, max_idle_seconds: int
 def list_student_containers():
     seen = {}
     for prefix in {c["container_prefix"] for c in COURSES.values()}:
-        for c in client.containers.list(all=True, filters={"name": prefix}):
+        for c in client().containers.list(all=True, filters={"name": prefix}):
             seen[c.name] = {"name": c.name, "status": c.status, "id": c.short_id,
                             "course": c.labels.get("linux-lab.course", "linux")}
     return list(seen.values())

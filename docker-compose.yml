@@ -7,10 +7,14 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - platform-data:/data
+      # Sauvegardes automatiques de la base, lisibles directement sur l'hôte
+      - ./backups:/backups
     environment:
       - LAB_IMAGE=linux-lab
       - JEST_IMAGE=jest-lab
       - DOCKER_LAB_IMAGE=docker-lab
+      - GIT_LAB_IMAGE=git-lab
+      - ANSIBLE_LAB_IMAGE=ansible-lab
       # Parcours Docker : chaque étudiant a son propre moteur Docker.
       # sysbox-runc (recommandé, nécessite Sysbox sur l'hôte) ou privileged (machine dédiée / développement)
       - DOCKER_LAB_RUNTIME=${DOCKER_LAB_RUNTIME:-sysbox-runc}
@@ -25,6 +29,18 @@ services:
       - IDLE_TIMEOUT=${IDLE_TIMEOUT:-7200}
       # Mettre à 1 derrière un reverse proxy HTTPS
       - COOKIE_SECURE=${COOKIE_SECURE:-0}
+      # Adresse publique (ex. https://lab.mon-lycee.fr) des liens transmis : réinitialisation, attestation
+      - PUBLIC_URL=${PUBLIC_URL:-}
+      # Fuseau horaire des échéances
+      - TZ=${TZ:-Europe/Paris}
+      # Adresse du reverse proxy, pour connaître l'IP réelle des étudiants (limitation des tentatives de connexion)
+      - FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      # Sauvegarde de la base toutes les BACKUP_HOURS heures dans ./backups, en gardant les BACKUP_KEEP dernières
+      - BACKUP_DIR=/backups
+      - BACKUP_HOURS=${BACKUP_HOURS:-24}
+      - BACKUP_KEEP=${BACKUP_KEEP:-14}
+      # Part des points (en %) à atteindre pour obtenir l'attestation de fin de parcours
+      - CERTIFICATE_MIN_PCT=${CERTIFICATE_MIN_PCT:-70}
     restart: unless-stopped
     depends_on:
       lab-image:
@@ -32,6 +48,10 @@ services:
       jest-image:
         condition: service_completed_successfully
       docker-image:
+        condition: service_completed_successfully
+      git-image:
+        condition: service_completed_successfully
+      ansible-image:
         condition: service_completed_successfully
 
   # Ce service construit seulement l'image des conteneurs étudiants (parcours Linux), puis s'arrête
@@ -51,6 +71,18 @@ services:
     build: ./images/docker
     image: docker-lab
     entrypoint: ["echo", "Docker lab image built"]
+
+  # Idem pour l'image du parcours Git (git, dépôt partagé local dans /srv/git)
+  git-image:
+    build: ./images/git
+    image: git-lab
+    entrypoint: ["echo", "Git lab image built"]
+
+  # Idem pour l'image du parcours Ansible (poste de contrôle + serveurs gérés + dépôt APT interne)
+  ansible-image:
+    build: ./images/ansible
+    image: ansible-lab
+    entrypoint: ["echo", "Ansible lab image built"]
 
 volumes:
   platform-data:

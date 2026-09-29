@@ -6,11 +6,13 @@ la correction d'un exercice aux comptes admin.
 """
 import re
 
+from .courses.ansible import solutions as ansible
 from .courses.docker import solutions as docker
+from .courses.git import solutions as git
 from .courses.jest import solutions as jest
 from .courses.linux import solutions as linux
 
-SCRIPTS = {"linux": linux.SOLUTIONS, "jest": jest.SOLUTIONS, "docker": docker.SOLUTIONS}
+SCRIPTS = {"linux": linux.SOLUTIONS, "jest": jest.SOLUTIONS, "docker": docker.SOLUTIONS, "git": git.SOLUTIONS, "ansible": ansible.SOLUTIONS}
 
 _MARKER = re.compile(r"^#@\s*(\S+)\s*$")
 

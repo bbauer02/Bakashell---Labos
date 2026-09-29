@@ -38,6 +38,8 @@ summary { cursor:pointer; font-size:13px; color:var(--accent-l); }
 .tools { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; border-top:1px solid var(--border); padding-top:14px; }
 .empty { color:var(--dim); font-size:13px; }
 .orphans { font-size:13px; color:var(--dim); }
+.member.past { opacity:.6; }
+select, input[type=date] { padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; max-width:260px; color-scheme:dark; }
 {% endblock %}
 {% block body %}
 <div class="page">
@@ -90,6 +92,38 @@ summary { cursor:pointer; font-size:13px; color:var(--accent-l); }
         </div>
 
         <div class="section">
+            <h3>Échéances</h3>
+            {% set class_deadlines = deadlines.get(c.id, []) %}
+            {% if class_deadlines %}
+            <div class="members" style="margin-bottom:10px">
+                {% for d in class_deadlines %}
+                {% set ck = all_courses | selectattr('key', 'equalto', d.course_key) | first %}
+                <span class="member {% if d.due_date < today %}past{% endif %}" title="{{ ck.title if ck else d.course_key }}">
+                    {{ ck.short if ck else d.course_key }} · étape {{ d.step }} · {{ d.due_date[8:10] }}/{{ d.due_date[5:7] }}/{{ d.due_date[0:4] }}
+                    <form method="post" action="/admin/classes/{{ c.id }}/deadlines/delete">
+                        <input type="hidden" name="course" value="{{ d.course_key }}">
+                        <input type="hidden" name="step" value="{{ d.step }}">
+                        <button type="submit" title="Supprimer l'échéance">×</button>
+                    </form>
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% set open_courses = all_courses | selectattr('key', 'in', c.courses) | list %}
+            {% if open_courses %}
+            <form method="post" action="/admin/classes/{{ c.id }}/deadlines" class="row deadline-form" data-steps='{{ open_courses | tojson }}'>
+                <select name="course" onchange="fillSteps(this.form)">
+                    {% for k in open_courses %}<option value="{{ k.key }}">{{ k.short }}</option>{% endfor %}
+                </select>
+                <label class="meta">étape</label><select name="step"></select>
+                <label class="meta">jusqu'à</label><select name="step_to"><option value="">(la même)</option></select>
+                <label class="meta">à terminer pour le</label><input type="date" name="due_date" required>
+                <button type="submit" class="small">Ajouter l'échéance</button>
+            </form>
+            {% else %}<p class="empty">Ouvrez d'abord un labo à cette classe.</p>{% endif %}
+        </div>
+
+        <div class="section">
             <h3>Étudiants</h3>
             {% if c.members %}
             <div class="members">
@@ -127,7 +161,7 @@ summary { cursor:pointer; font-size:13px; color:var(--accent-l); }
                 <button type="submit" class="small">Nouveau code</button>
             </form>
             <a class="btn-link" style="font-size:11px;padding:4px 9px" href="/dashboard?classe={{ c.id }}">Suivre cette classe</a>
-            <form method="post" action="/admin/classes/{{ c.id }}/delete" onsubmit="return confirm('Supprimer la classe « {{ c.name }} » ? Les comptes et leur progression sont conservés, mais ces étudiants perdent l\'accès aux labos de cette classe.')">
+            <form method="post" action="/admin/classes/{{ c.id }}/delete" data-confirm="Supprimer la classe « {{ c.name }} » ? Les comptes et leur progression sont conservés, mais ces étudiants perdent l'accès aux labos de cette classe." onsubmit="return confirm(this.dataset.confirm)">
                 <button type="submit" class="small danger">Supprimer la classe</button>
             </form>
         </div>
@@ -136,4 +170,15 @@ summary { cursor:pointer; font-size:13px; color:var(--accent-l); }
     <div class="box"><p class="empty">Aucune classe : créez-en une ci-dessus.</p></div>
     {% endfor %}
 </div>
+<script>
+    // Liste des étapes du parcours choisi, dans les formulaires d'échéance
+    function fillSteps(form) {
+        const courses = JSON.parse(form.dataset.steps);
+        const course = courses.find((c) => c.key === form.course.value) || courses[0];
+        const opts = course.steps.map((s) => `<option value="${s.num}">${s.num}. ${s.title.replace(/[<&]/g, '')}</option>`).join('');
+        form.step.innerHTML = opts;
+        form.step_to.innerHTML = '<option value="">(la même)</option>' + opts;
+    }
+    document.querySelectorAll('.deadline-form').forEach(fillSteps);
+</script>
 {% endblock %}
