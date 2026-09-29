@@ -7,7 +7,7 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 |---|---|---|
 | **Linux en ligne de commande** | `/lab/linux` | 25 étapes, 119 exercices, 422 points — terminal Ubuntu |
 | **Tests unitaires avec Jest** (niveau avancé) | `/lab/jest` | 10 journées, 21 exercices, 103 points — éditeur de code + terminal Node |
-| **Docker : conteneuriser la boutique** (révision des bases) | `/lab/docker` | 8 journées, 21 exercices, 87 points — un moteur Docker par étudiant + éditeur |
+| **Docker : conteneuriser la boutique** | `/lab/docker` | 11 journées, 34 exercices, 141 points — un moteur Docker par étudiant + éditeur |
 | **Git : travailler en équipe** | `/lab/git` | 8 journées, 21 exercices, 77 points — terminal + dépôt partagé de l'équipe |
 | **Ansible : automatiser l'infrastructure** | `/lab/ansible` | 8 journées, 21 exercices, 88 points — poste de contrôle + vrais serveurs joignables en SSH + éditeur |
 
@@ -113,10 +113,18 @@ tournent dans un bac à sable, sous un utilisateur dédié, sans accès au code 
 
 L'étudiant conteneurise la boutique : 1. Image, conteneur, processus (run, ps -a, rm, PID vu de l'hôte) ·
 2. Enquête sur les conteneurs de Marc (logs, stop, exec, inspect) · 3. Vitrine en ligne (ports, bind mount en lecture
-seule) · 4. Données persistantes (volume nommé, sauvegarde) · 5. Dockerfile de l'API (build, EXPOSE, CMD, USER,
-`.dockerignore`, politique de redémarrage) · 6. Réseau utilisateur et résolution par nom · 7. docker compose (build,
-volume, proxy nginx, healthcheck + `depends_on`, `.env`) · 8. Incident en production (pile cassée à réparer, images
-pendantes).
+seule) · 4. Données persistantes (volume nommé, sauvegarde) · 5. Les pièges des données (volume pré-rempli ou bind
+mount qui masque, restauration, volumes anonymes et `volume prune`, `--read-only` + `--tmpfs`) · 6. Dockerfile de l'API
+(build, EXPOSE, CMD, USER, `.dockerignore`, politique de redémarrage) · 7. Subtilités du Dockerfile (ordre des couches
+et cache avec `npm ci`, forme exec et PID 1 face à `docker stop`, ENTRYPOINT et CMD, ARG, ENV et LABEL) · 8. Images
+légères et sans secrets (multi-stage, mot de passe lisible dans `docker history`, fichier « supprimé » retrouvé dans
+une couche avec `docker save`, `RUN --mount=type=secret`) · 9. Réseaux (réseau utilisateur, résolution par nom,
+`network connect` à chaud) · 10. docker compose (build, volume, proxy nginx, healthcheck + `depends_on`, `.env`) ·
+11. Incident en production (pile cassée à réparer, images pendantes).
+
+Les vérifications des jours 7 et 8 testent le **comportement** : l'étape `npm ci` doit être reprise du cache après une
+modification du code, `docker stop` doit arrêter la pointeuse proprement en moins de 3 s, la licence ne doit
+apparaître dans aucune couche de l'image…
 
 Les vérifications interrogent le moteur Docker de l'étudiant : `docker inspect`, appels HTTP aux services,
 reconstruction de l'image depuis son Dockerfile, contrôle du contenu de l'image, `docker compose config`…
@@ -238,7 +246,7 @@ docker build -t linux-lab ./images/linux && docker build -t jest-lab ./images/je
 python platform/tests/run_lab_tests.py                  # parcours Linux (~5 min, dont cron)
 python platform/tests/run_lab_tests.py --only 1-8 --skip 13
 python platform/tests/run_lab_tests.py --course jest    # parcours Jest (~1,5 min)
-python platform/tests/run_lab_tests.py --course docker  # parcours Docker (~2 min, conteneur privilégié par défaut)
+python platform/tests/run_lab_tests.py --course docker  # parcours Docker (~2,5 min, conteneur privilégié par défaut)
 python platform/tests/run_lab_tests.py --course git     # parcours Git (~15 s)
 python platform/tests/run_lab_tests.py --course ansible # parcours Ansible (~5 min, conteneur privilégié par défaut)
 ```
