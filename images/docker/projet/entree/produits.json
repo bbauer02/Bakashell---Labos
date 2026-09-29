@@ -1,0 +1,6 @@
+[
+  { "ref": "SAC-40L", "libelle": "Sac à dos 40 L", "prixHT": 74.9 },
+  { "ref": "GOURDE-1L", "libelle": "Gourde isotherme 1 L", "prixHT": 19.9 },
+  { "ref": "FRONTALE", "libelle": "Lampe frontale 400 lm", "prixHT": 32.5 },
+  { "ref": "BATONS", "libelle": "Bâtons de marche (paire)", "prixHT": 44 }
+]

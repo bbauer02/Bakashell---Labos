@@ -5,11 +5,11 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 
 | Parcours | URL | Contenu |
 |---|---|---|
-| **Linux en ligne de commande** | `/lab/linux` | 25 étapes, 119 exercices, 422 points — terminal Ubuntu |
-| **Tests unitaires avec Jest** (niveau avancé) | `/lab/jest` | 10 journées, 21 exercices, 103 points — éditeur de code + terminal Node |
-| **Docker : conteneuriser la boutique** | `/lab/docker` | 11 journées, 34 exercices, 141 points — un moteur Docker par étudiant + éditeur |
-| **Git : travailler en équipe** | `/lab/git` | 8 journées, 21 exercices, 77 points — terminal + dépôt partagé de l'équipe |
-| **Ansible : automatiser l'infrastructure** | `/lab/ansible` | 8 journées, 21 exercices, 88 points — poste de contrôle + vrais serveurs joignables en SSH + éditeur |
+| **Linux en ligne de commande** | `/lab/linux` | 25 étapes, 207 exercices, 834 points — terminal Ubuntu |
+| **Tests unitaires avec Jest** (niveau avancé) | `/lab/jest` | 11 journées, 38 exercices, 198 points — éditeur de code + terminal Node |
+| **Docker : conteneuriser la boutique** | `/lab/docker` | 11 journées, 65 exercices, 280 points — un moteur Docker par étudiant + éditeur |
+| **Git : travailler en équipe** | `/lab/git` | 9 journées, 40 exercices, 178 points — terminal + dépôt partagé de l'équipe |
+| **Ansible : automatiser l'infrastructure** | `/lab/ansible` | 10 journées, 39 exercices, 188 points — poste de contrôle + vrais serveurs joignables en SSH + éditeur |
 
 ## Organisation : catalogue et classes
 
@@ -51,7 +51,7 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 | `platform/app/terminals.py` | Diffusion du terminal d'un étudiant vers l'enseignant qui le regarde |
 | `platform/app/ratelimit.py` | Limitation des tentatives (connexion, inscription, mot de passe) |
 | `images/linux/` | Image `linux-lab` : utilisateur `etudiant` (sudoer), sshd, cron, rsyslog |
-| `images/jest/` | Image `jest-lab` : Node 20 + Jest, code de référence, mutants, tests cachés, correcteur (`verifier.js`) |
+| `images/jest/` | Image `jest-lab` : Node 24 + Jest, code de référence, mutants, tests cachés, correcteur (`verifier.js`) |
 | `images/docker/` | Image `docker-lab` : moteur Docker complet (docker:dind), images de base préchargées, projet de la boutique |
 | `images/git/` | Image `git-lab` : Git, invite qui affiche la branche courante, dépôt partagé de l'équipe dans `/srv/git` |
 | `images/ansible/` | Image `ansible-lab` : poste de contrôle (ansible-core) + moteur Docker interne qui fait tourner les serveurs gérés (Debian + SSH) et le dépôt APT interne |
@@ -94,6 +94,11 @@ sans clé `ticket` s'affiche au format classique.
 24. **Dépannage** (script CRLF, disque plein, SSH refusé, cron fantôme, service en échec) ·
 25. Intégration finale (serveur web, sauvegardes avec rotation, supervision, accès SSH)
 
+Chaque étape mêle des exercices d'application et des exercices de diagnostic ou d'enquête (pièges classiques,
+pannes à réparer), avec des données tirées au sort à chaque mise en place. Les fiches du mémo ne donnent jamais
+la réponse d'un exercice, et les messages d'échec ne révèlent pas la valeur attendue. L'étape 13 comporte des
+exercices faisables sans Internet (paquets `.deb` locaux).
+
 ## Parcours Jest
 
 L'étudiant teste le code métier de la boutique (`~/boutique`) : 1. La CI est rouge (toBe, toBeCloseTo, scripts
@@ -101,7 +106,9 @@ npm, arrondis) · 2. Le panier (matchers, toThrow, encapsulation) · 3. Livraiso
 beforeEach, `--randomize`) · 4. TDD des codes promo (tests d'après une spécification, puis implémentation) ·
 5. Doublures (jest.fn, jest.mock) · 6. Erreurs asynchrones (rejects, reprise après panne) · 7. Faux minuteurs ·
 8. Couverture (seuils, 100 % des branches) · 9. Bug #218 (test de reproduction puis correction) ·
-10. Mise en production (.only/.skip, suite complète, workflow GitHub Actions).
+10. Mise en production (.only/.skip, suite complète, workflow GitHub Actions) · 11. Instantanés (snapshots, et
+le snapshot qui fige un bug). Chaque journée comporte aussi des exercices de diagnostic : tests qui ne testent
+rien, mock qui fuit d'un test à l'autre, test instable à stabiliser, cas limite manquant dans une spécification…
 
 **Évaluation par mutation** : les tests de l'étudiant doivent passer sur le code de référence, puis **échouer**
 contre chaque version volontairement boguée (« mutant ») décrite dans `images/jest/mutants.json`. Un test trop
@@ -137,8 +144,10 @@ L'étudiant met en place Git dans l'équipe web : 1. Premiers pas (config, init,
 `rm --cached`) · 2. Enquête dans les archives de Marc (log, `log -S`, show, restauration d'un fichier supprimé,
 revert) · 3. Le dépôt de l'équipe (clone, push) · 4. À plusieurs sur la même branche (push refusé, pull,
 `pull.rebase`) · 5. Branches (switch, `push -u`, merge, suppression locale et distante) · 6. Conflits (résolution,
-`merge --abort`) · 7. Réécrire son histoire locale (stash, `commit --amend`, rebase) · 8. Enquêtes et mise en
-production (bisect, étiquette annotée, reflog).
+`merge --abort`, revert d'une fusion) · 7. Réécrire son histoire locale (stash, `commit --amend`, rebase interactif,
+reset soft/mixed) · 8. Enquêtes et mise en
+production (bisect, étiquette annotée, reflog) · 9. Secrets et garde-fous (`.env` déjà suivi,
+`.gitignore` piégeux, clé effacée de tout l'historique, hook pre-commit).
 
 Le dépôt partagé est un dépôt nu local (`/srv/git/boutique.git`) : pas besoin de GitHub ni d'Internet. Pendant le
 parcours, les collègues y publient leurs propres commits : un commit de Nadia qui fait refuser le push, une branche de
@@ -150,8 +159,14 @@ marqueurs de conflit, historique conservé (un `push --force` qui efface le trav
 
 L'étudiant automatise l'infrastructure de la boutique : 1. Ce que fait Ansible (inventaire, clés SSH, `ping`) ·
 2. Modules et commandes ad hoc · 3. Premier playbook (idempotence) · 4. Variables, facts et modèles Jinja2 ·
-5. Configurer un service : les handlers · 6. Boucles et conditions · 7. La chasse aux dérives, puis les rôles ·
-8. Secrets (Ansible Vault) et mise en production (arrivée de `web3`, `site.yml` qui décrit toute l'infrastructure).
+5. Configurer un service : les handlers (validate, handler perdu, flush_handlers) · 6. Boucles, conditions et filtres ·
+7. La chasse aux dérives, puis les rôles · 8. Secrets (Ansible Vault) et mise en production (arrivée de `web3`,
+`site.yml` qui décrit toute l'infrastructure) · 9. Fiabiliser ses playbooks (register, changed_when/failed_when,
+assert, block/rescue) · 10. Déployer sans couper (serial, tags, incident à diagnostiquer).
+
+Les exercices où l'enjeu est d'utiliser Ansible ne se valident pas par une modification faite à la main : les
+vérifications cassent l'état du serveur (ou le réinstallent) puis rejouent le playbook de l'étudiant, ou lisent le
+journal sudo des serveurs, où les commandes lancées par Ansible sont reconnaissables.
 
 L'étudiant travaille sur un **poste de contrôle** sans `sudo`. Les serveurs `web1`, `web2`, `db1` (puis `web3`) sont
 de vrais conteneurs Debian avec SSH (compte `admin`, mot de passe `cimes` pour le premier contact), qui tournent dans
@@ -243,12 +258,12 @@ de référence est dans `images/jest/ref/`, les fichiers livrés aux étudiants 
 
 ```bash
 docker build -t linux-lab ./images/linux && docker build -t jest-lab ./images/jest && docker build -t docker-lab ./images/docker && docker build -t git-lab ./images/git && docker build -t ansible-lab ./images/ansible
-python platform/tests/run_lab_tests.py                  # parcours Linux (~5 min, dont cron)
+python platform/tests/run_lab_tests.py                  # parcours Linux (~8 min, dont cron)
 python platform/tests/run_lab_tests.py --only 1-8 --skip 13
-python platform/tests/run_lab_tests.py --course jest    # parcours Jest (~1,5 min)
-python platform/tests/run_lab_tests.py --course docker  # parcours Docker (~2,5 min, conteneur privilégié par défaut)
-python platform/tests/run_lab_tests.py --course git     # parcours Git (~15 s)
-python platform/tests/run_lab_tests.py --course ansible # parcours Ansible (~5 min, conteneur privilégié par défaut)
+python platform/tests/run_lab_tests.py --course jest    # parcours Jest (~3,5 min)
+python platform/tests/run_lab_tests.py --course docker  # parcours Docker (~7 min, conteneur privilégié par défaut)
+python platform/tests/run_lab_tests.py --course git     # parcours Git (~30 s)
+python platform/tests/run_lab_tests.py --course ansible # parcours Ansible (~17 min, conteneur privilégié par défaut)
 ```
 
 Le banc vérifie, pour chaque étape jouée dans l'ordre du parcours, qu'**aucun exercice ne passe avant d'être

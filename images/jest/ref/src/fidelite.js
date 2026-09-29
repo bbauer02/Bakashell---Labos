@@ -1,8 +1,9 @@
 const PLAFOND = 1000;
 const BONUS_ANNIVERSAIRE = 100;
 
+/** Les dates 'AAAA-MM-JJ' sont interprétées en UTC : on compare donc les mois UTC (quel que soit le fuseau). */
 function estMoisAnniversaire(anniversaire, dateAchat) {
-  return new Date(anniversaire).getMonth() === new Date(dateAchat).getMonth();
+  return new Date(anniversaire).getUTCMonth() === new Date(dateAchat).getUTCMonth();
 }
 
 /**

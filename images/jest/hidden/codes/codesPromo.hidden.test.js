@@ -1,5 +1,5 @@
 // Tests cachés : spécification complète des codes promo (SPEC-codes-promo.md)
-const { validerCode } = require('../src/codesPromo');
+const { validerCode } = require('../../src/codesPromo');
 
 const LE_1ER_JUIN_2026 = new Date('2026-06-01T10:00:00');
 

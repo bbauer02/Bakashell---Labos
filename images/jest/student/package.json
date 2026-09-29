@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "Code métier de la boutique en ligne Cimes & Sentiers",
   "private": true,
-  "scripts": {},
+  "scripts": {
+    "test": "jest --watchAll",
+    "test:watch": "jest --watch"
+  },
   "devDependencies": {
     "jest": "^29.7.0"
   }

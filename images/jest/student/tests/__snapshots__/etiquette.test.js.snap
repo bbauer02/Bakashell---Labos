@@ -1,0 +1,9 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`étiquette d'un colis pour la Belgique 1`] = `
+"CHLOÉ DUBOIS
+8 avenue Louise
+1050 BRUXELLES
+BE
+Articles : 2"
+`;

@@ -12,9 +12,9 @@ for _ in $(seq 1 90); do
 done
 
 # Image des serveurs gérés (une seule fois : /var/lib/docker est un volume)
-if ! docker image inspect noeud-cimes:1 > /dev/null 2>&1; then
+if ! docker image inspect noeud-cimes:2 > /dev/null 2>&1; then
     tar -C /opt/ansible-lab/noeud -c . | docker import \
-        --change 'CMD ["/usr/local/sbin/demarrer-noeud"]' --change 'ENV LANG=C.UTF-8' - noeud-cimes:1 > /dev/null
+        --change 'CMD ["/usr/local/sbin/demarrer-noeud"]' --change 'ENV LANG=C.UTF-8' - noeud-cimes:2 > /dev/null
 fi
 # Réseau des serveurs : adresses fixes, la passerelle 10.10.0.1 est ce poste
 docker network inspect cimes > /dev/null 2>&1 || \

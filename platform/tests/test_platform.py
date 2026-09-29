@@ -289,3 +289,20 @@ def test_sessions_stockees_hachees(app_client):
     conn.close()
     assert token not in stored and db._token_hash(token) in stored
     assert db.get_session(token)["email"] == "ada@lab.test"
+
+
+# ─── Étapes modifiées après leur préparation ────────────────────────────
+
+def test_etape_modifiee_depuis_sa_preparation():
+    from app import runner
+    course = COURSES["linux"]
+    num, step = next((n, s) for n, s in course["steps"].items() if runner.has_setup(s))
+    a_jour = {"CLE": "x", "_empreinte": runner.setup_fingerprint(step)}
+    assert not runner.setup_outdated(course, num, step, a_jour)
+    assert runner.setup_outdated(course, num, step, {**a_jour, "_empreinte": "ancienne"})
+    assert not runner.setup_outdated(course, num, step, None)  # jamais préparée
+    # L'empreinte n'est pas transmise aux vérifications
+    assert runner.check_env(a_jour) == {"LAB_CLE": "x"}
+    # Données enregistrées avant les empreintes : comparées à la version publiée auparavant
+    legacy = runner._LEGACY_FINGERPRINTS.get(f"linux:{num}")
+    assert runner.setup_outdated(course, num, step, {"CLE": "x"}) == (legacy is not None and legacy != runner.setup_fingerprint(step))

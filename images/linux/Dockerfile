@@ -42,7 +42,8 @@ RUN apt-get update && apt-get install -y \
     openssh-client \
     openssh-server \
     sshpass \
-    && apt-get install -y --reinstall coreutils findutils grep sed tar gzip passwd procps util-linux \
+    && apt-get install -y --reinstall coreutils findutils grep sed tar gzip passwd procps util-linux mount e2fsprogs \
+       bash dpkg apt adduser debianutils login \
     && rm -rf /var/lib/apt/lists/*
 
 # Utilisateur étudiant : sudoer avec mot de passe (on apprend à utiliser sudo)

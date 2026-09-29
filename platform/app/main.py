@@ -765,6 +765,7 @@ def ensure_setup(user_id: int, course: dict, container_id: str, step_num: int, f
                     return data
         code, out = containers.exec_in_container(container_id, runner.setup_command(course, step_num, step))
         data = runner.parse_setup_output(out)
+        data["_empreinte"] = runner.setup_fingerprint(step)
         if code != 0:
             log.error("Échec de la mise en place %s/%s (étudiant %s, code %s) :\n%s",
                       course["key"], step_num, user_id, code, out[-2000:])
@@ -936,6 +937,8 @@ async def api_step(request: Request, course_key: str, num: int):
         "description": step["description"],
         "lesson": step.get("lesson", ""),
         "has_setup": runner.has_setup(step),
+        # Étape modifiée depuis sa préparation : l'étudiant est invité à la réinitialiser
+        "setup_outdated": runner.setup_outdated(course, num, step, db.get_setup(user["user_id"], course["key"], num)),
         "mentor": CHARACTERS[course["mentor"]]["name"].split()[0],
         "due": db.user_deadlines(user["user_id"], course["key"]).get(num),
         "exercises": [exercise_payload(ex, progress, hints, attempts) for ex in step["exercises"]],

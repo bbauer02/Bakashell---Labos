@@ -685,6 +685,8 @@
         .step-due { margin-top: 6px; font-size: 12px; color: #fdcb6e; }
         .step-due.late { color: var(--error, #e17055); font-weight: 600; }
         .step-due.hidden { display: none; }
+        .step-outdated { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--warning); border-radius: 8px; font-size: 12px; line-height: 1.5; color: var(--text); background: rgba(253, 203, 110, 0.08); }
+        .step-outdated button { margin-top: 6px; background: var(--warning); color: #2d3436; border: none; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
         .step-dot.due { outline: 1px dashed #fdcb6e; outline-offset: 2px; }
         .step-dot.late { outline: 2px solid #e17055; outline-offset: 2px; }
         .history { margin-top: 8px; font-size: 12px; }
@@ -1054,7 +1056,11 @@
 
             // Render exercises
             const list = document.getElementById('exercises-list');
-            list.innerHTML = stepData.exercises.map(ex => `
+            const outdated = stepData.setup_outdated ? `
+                <div class="step-outdated">⚠ Cette étape a été mise à jour depuis votre dernier passage (nouveaux exercices ou fichiers).
+                Réinitialisez-la pour recevoir les fichiers à jour : vos points sont conservés, mais les fichiers fournis pour cette étape reviennent à leur état initial.<br>
+                <button onclick="resetStep()">Mettre l'étape à jour</button></div>` : '';
+            list.innerHTML = outdated + stepData.exercises.map(ex => `
                 <div class="exercise-card ${ex.completed ? 'passed' : ''}" id="card-${ex.id}">
                     <div class="exercise-top">
                         <span class="exercise-id">${ex.ticket ? 'Ticket #' + ex.ticket.num : 'Exercice ' + ex.id}${ex.manual ? '<span class="badge-manual" title="Vos scripts sont exécutés : cliquez sur Vérifier">manuel</span>' : ''}</span>
@@ -1251,6 +1257,7 @@ ${s.preamble}
                 await api(`/api/${COURSE}/reset-step/${currentStep}`, { method: 'POST' });
                 if (HAS_EDITOR) { await refreshFiles(); if (currentFile) await openFile(currentFile, true); }
                 showToast('Étape réinitialisée', 'info');
+                document.querySelector('.step-outdated')?.remove();
             } catch (e) {
                 showToast('Réinitialisation impossible : ' + e.message, 'error');
             }

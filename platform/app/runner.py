@@ -3,7 +3,10 @@
 Module sans dépendance à Docker ni à la base : utilisé par la plateforme et par les tests.
 Chaque fonction reçoit le parcours (dict de courses.COURSES) pour ses préludes et délais.
 """
+import hashlib
 import html
+import json
+import pathlib
 import posixpath
 import re
 
@@ -51,7 +54,27 @@ def parse_setup_output(output: str) -> dict:
 
 
 def check_env(setup_data: dict) -> dict:
-    return {f"LAB_{k}": v for k, v in (setup_data or {}).items()}
+    # Les clés « _… » sont des métadonnées de la plateforme (empreinte), pas des valeurs attendues
+    return {f"LAB_{k}": v for k, v in (setup_data or {}).items() if not k.startswith("_")}
+
+
+# Empreintes des mises en place publiées avant leur enregistrement en base (données sans « _empreinte »)
+_LEGACY_FINGERPRINTS = json.loads(
+    (pathlib.Path(__file__).with_name("empreintes_mises_en_place.json")).read_text(encoding="utf-8")
+)
+
+
+def setup_fingerprint(step: dict) -> str:
+    """Empreinte du script de mise en place d'une étape : change quand l'étape est modifiée."""
+    return hashlib.sha256(step.get("setup", "").encode()).hexdigest()[:16]
+
+
+def setup_outdated(course: dict, step_num: int, step: dict, setup_data) -> bool:
+    """Vrai si l'étape a été préparée par une ancienne version de sa mise en place."""
+    if setup_data is None or not has_setup(step):
+        return False
+    done_with = setup_data.get("_empreinte") or _LEGACY_FINGERPRINTS.get(f"{course['key']}:{step_num}")
+    return done_with is not None and done_with != setup_fingerprint(step)
 
 
 def check_command(course: dict, exercise: dict) -> list:

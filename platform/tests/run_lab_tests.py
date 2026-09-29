@@ -32,7 +32,8 @@ from app import runner  # noqa: E402
 from app.courses import COURSES  # noqa: E402
 from app.solutions import SCRIPTS, check_coverage  # noqa: E402
 
-CONTAINER = "lab-test-runner"
+# Nom du conteneur de test : à changer (LAB_TEST_CONTAINER) pour faire tourner plusieurs bancs en parallèle
+CONTAINER = os.environ.get("LAB_TEST_CONTAINER", "lab-test-runner")
 NETWORK = "linux-lab-test"
 
 

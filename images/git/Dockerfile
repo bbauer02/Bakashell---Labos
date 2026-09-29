@@ -5,9 +5,12 @@ ENV LANG=C.UTF-8
 ENV TERM=xterm-256color
 ENV EDITOR=nano
 ENV VISUAL=nano
+# git filter-branch (jour 9) : pas d'attente de 10 s avant de commencer (son avertissement reste dans le cours)
+ENV FILTER_BRANCH_SQUELCH_WARNING=1
 
+# git-filter-repo : l'outil recommandé pour purger un fichier de tout l'historique (jour 9)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash bash-completion git nano vim-tiny less tree procps ca-certificates \
+    bash bash-completion git git-filter-repo nano vim-tiny less tree procps ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Invite qui affiche la branche courante (et * / + s'il y a des modifications)

@@ -1,4 +1,5 @@
-FROM node:20-bookworm-slim
+# Node 24 : version LTS maintenue (Node 20 est en fin de vie depuis avril 2026)
+FROM node:24-bookworm-slim
 
 ENV LANG=C.UTF-8
 ENV TERM=xterm-256color
@@ -14,10 +15,10 @@ RUN useradd -m -s /bin/bash etudiant && \
     useradd -r -m -d /var/lib/correcteur -s /usr/sbin/nologin correcteur && \
     chmod 700 /var/lib/correcteur
 
-# Jest installé une fois pour toutes (pas besoin d'Internet en cours)
+# Jest installé une fois pour toutes (pas besoin d'Internet en cours), versions figées par package-lock.json
 WORKDIR /opt/jest-lab
-COPY package.json package-lock.json* ./
-RUN npm install --no-audit --no-fund && npm cache clean --force && chmod -R a+rX /opt/jest-lab
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund && npm cache clean --force && chmod -R a+rX /opt/jest-lab
 
 # Fichiers privés : code de référence, mutants, tests cachés, correcteur (root uniquement)
 COPY ref/ private/ref/

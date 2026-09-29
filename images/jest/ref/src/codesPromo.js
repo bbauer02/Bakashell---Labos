@@ -5,10 +5,13 @@ const FORMAT = /^[A-Z0-9]{4,10}$/;
 /**
  * Vérifie un code promo.
  * Retourne { valide: true, remise } ou { valide: false, raison }.
- * Ordre des vérifications : FORMAT, INCONNU, EXPIRE, EPUISE.
+ * Ordre des vérifications : FORMAT (dont tout ce qui n'est pas une chaîne), INCONNU, EXPIRE, EPUISE.
  */
 function validerCode(code, maintenant = new Date()) {
-  const saisi = String(code).trim().toUpperCase();
+  if (typeof code !== 'string') {
+    return { valide: false, raison: 'FORMAT' };
+  }
+  const saisi = code.trim().toUpperCase();
   if (!FORMAT.test(saisi)) {
     return { valide: false, raison: 'FORMAT' };
   }

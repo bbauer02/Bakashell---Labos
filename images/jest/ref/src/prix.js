@@ -1,8 +1,12 @@
 const TVA_NORMALE = 0.2;
 
-/** Arrondi commercial au centime (1,005 € -> 1,01 €). */
+/**
+ * Arrondi commercial au centime le plus proche, les demi-centimes vers le haut (1,005 € -> 1,01 €).
+ * Le montant en centimes est d'abord ramené à 6 décimales : on efface ainsi l'erreur de représentation
+ * binaire (1.005 * 100 vaut 100.49999999999999) avant d'arrondir.
+ */
 function arrondir(montant) {
-  return Math.round((montant + Number.EPSILON) * 100) / 100;
+  return Math.round(Number((montant * 100).toFixed(6))) / 100;
 }
 
 /** Prix TTC arrondi au centime. */

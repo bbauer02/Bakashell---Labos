@@ -1,6 +1,6 @@
 // Tests cachés : comportement attendu de genererFacture
-const { Panier } = require('../src/panier');
-const { genererFacture } = require('../src/facture');
+const { Panier } = require('../../src/panier');
+const { genererFacture } = require('../../src/facture');
 
 const panierDe = (prixHT, quantite = 1) =>
   new Panier().ajouter({ ref: 'SAC-40L', libelle: 'Sac à dos 40 L', prixHT }, quantite);
@@ -29,5 +29,12 @@ describe('genererFacture', () => {
   test('hors de France, le seuil est de 100 € après remise', () => {
     // 90 € HT -> 108 € TTC -> -10 % = 97,20 € < 100 -> port Belgique 2 kg = 11,90 €
     expect(genererFacture(panierDe(90), { pays: 'BE', poidsKg: 2, remise: 10 })).toEqual({ produitsTTC: 97.2, port: 11.9, total: 109.1 });
+  });
+
+  test('les frais de port suivent le poids exact du colis (bug #219)', () => {
+    // 40 € HT -> 48 € TTC < 60 € ; 4,6 kg -> tranche « moins de 5 kg » : 8,90 €
+    expect(genererFacture(panierDe(40), { pays: 'FR', poidsKg: 4.6 })).toEqual({ produitsTTC: 48, port: 8.9, total: 56.9 });
+    // 0,6 kg -> tranche « moins de 1 kg » : 4,90 €
+    expect(genererFacture(panierDe(40), { pays: 'FR', poidsKg: 0.6 })).toEqual({ produitsTTC: 48, port: 4.9, total: 52.9 });
   });
 });

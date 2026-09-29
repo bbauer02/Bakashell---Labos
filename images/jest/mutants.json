@@ -1,18 +1,29 @@
 {
   "prix-ttc": [
     {"file": "src/prix.js", "from": "return arrondir(prixHT * (1 + taux));", "to": "return prixHT * (1 + taux);", "desc": "calculerTTC n'arrondit plus au centime"},
-    {"file": "src/prix.js", "from": "taux = TVA_NORMALE", "to": "taux = 0.196", "desc": "TVA par défaut à 19,6 % au lieu de 20 %"}
+    {"file": "src/prix.js", "from": "taux = TVA_NORMALE", "to": "taux = 0.196", "desc": "TVA par défaut à 19,6 % au lieu de 20 %"},
+    {"file": "src/prix.js", "from": "return arrondir(prixHT * (1 + taux));", "to": "return Math.floor(prixHT * (1 + taux) * 100) / 100;", "desc": "calculerTTC tronque au centime inférieur au lieu d'arrondir"}
   ],
   "arrondir": [
-    {"file": "src/prix.js", "from": "return Math.round((montant + Number.EPSILON) * 100) / 100;", "to": "return Math.round(montant * 100) / 100;", "desc": "arrondi sans correction des flottants (1,005 € devient 1,00 € au lieu de 1,01 €)"},
-    {"file": "src/prix.js", "from": "return Math.round((montant + Number.EPSILON) * 100) / 100;", "to": "return Math.floor((montant + Number.EPSILON) * 100) / 100;", "desc": "troncature au lieu d'un arrondi (2,678 € devient 2,67 €)"},
-    {"file": "src/prix.js", "from": "return Math.round((montant + Number.EPSILON) * 100) / 100;", "to": "return Math.ceil((montant + Number.EPSILON) * 100) / 100;", "desc": "arrondi toujours vers le haut (2,671 € devient 2,68 €)"},
-    {"file": "src/prix.js", "from": "return Math.round((montant + Number.EPSILON) * 100) / 100;", "to": "return Math.round((montant + Number.EPSILON) * 10) / 10;", "desc": "arrondi au dixième au lieu du centime"},
-    {"file": "src/prix.js", "from": "return Math.round((montant + Number.EPSILON) * 100) / 100;", "to": "return montant;", "desc": "aucun arrondi"}
+    {"file": "src/prix.js", "from": "return Math.round(Number((montant * 100).toFixed(6))) / 100;", "to": "return Math.round(montant * 100) / 100;", "desc": "arrondi sans correction des flottants (1,005 € devient 1,00 € au lieu de 1,01 €)"},
+    {"file": "src/prix.js", "from": "return Math.round(Number((montant * 100).toFixed(6))) / 100;", "to": "return Math.floor(Number((montant * 100).toFixed(6))) / 100;", "desc": "troncature au lieu d'un arrondi (2,678 € devient 2,67 €)"},
+    {"file": "src/prix.js", "from": "return Math.round(Number((montant * 100).toFixed(6))) / 100;", "to": "return Math.ceil(Number((montant * 100).toFixed(6))) / 100;", "desc": "arrondi toujours vers le haut (2,671 € devient 2,68 €)"},
+    {"file": "src/prix.js", "from": "return Math.round(Number((montant * 100).toFixed(6))) / 100;", "to": "return Math.round(Number((montant * 10).toFixed(6))) / 10;", "desc": "arrondi au dixième au lieu du centime"},
+    {"file": "src/prix.js", "from": "return Math.round(Number((montant * 100).toFixed(6))) / 100;", "to": "return montant;", "desc": "aucun arrondi"}
+  ],
+  "arrondir-epsilon": [
+    {"file": "src/prix.js", "from": "return Math.round(Number((montant * 100).toFixed(6))) / 100;", "to": "return Math.round((montant + Number.EPSILON) * 100) / 100;", "desc": "la version du prestataire, Math.round((montant + Number.EPSILON) * 100) / 100"}
+  ],
+  "remise": [
+    {"file": "src/prix.js", "from": "return arrondir(prix * (1 - pourcentage / 100));", "to": "return arrondir(prix * (pourcentage / 100));", "desc": "renvoie le montant de la remise au lieu du prix remisé"},
+    {"file": "src/prix.js", "from": "return arrondir(prix * (1 - pourcentage / 100));", "to": "return arrondir(prix * (1 - pourcentage / 1000));", "desc": "la remise appliquée est dix fois trop petite"},
+    {"file": "src/prix.js", "from": "return arrondir(prix * (1 - pourcentage / 100));", "to": "return prix * (1 - pourcentage / 100);", "desc": "le prix remisé n'est plus arrondi au centime"},
+    {"file": "src/prix.js", "from": "pourcentage > 100", "to": "pourcentage > 1000", "desc": "une remise de plus de 100 % est acceptée"}
   ],
   "panier-base": [
     {"file": "src/panier.js", "from": "t + l.prixHT * l.quantite", "to": "t + l.prixHT", "desc": "totalHT ignore les quantités"},
     {"file": "src/panier.js", "from": "if (ligne) {", "to": "if (false) {", "desc": "ajouter deux fois la même référence crée deux lignes au lieu de cumuler"},
+    {"file": "src/panier.js", "from": "ligne.quantite += quantite;", "to": "ligne.quantite = quantite;", "desc": "ajouter une référence déjà présente remplace sa quantité au lieu de la cumuler"},
     {"file": "src/panier.js", "from": "reduce((n, l) => n + l.quantite, 0)", "to": "reduce((n) => n + 1, 0)", "desc": "nombreArticles compte les lignes au lieu des quantités"},
     {"file": "src/panier.js", "from": "return this._lignes.length === 0;", "to": "return this._lignes.length <= 1;", "desc": "estVide répond vrai pour un panier d'une seule ligne"},
     {"file": "src/panier.js", "from": "ajouter(produit, quantite = 1)", "to": "ajouter(produit, quantite = 2)", "desc": "la quantité par défaut vaut 2"},
@@ -21,66 +32,155 @@
   "panier-erreurs": [
     {"file": "src/panier.js", "from": "quantite <= 0", "to": "quantite < 0", "desc": "une quantité nulle est acceptée"},
     {"file": "src/panier.js", "from": "!Number.isInteger(quantite) || ", "to": "", "desc": "une quantité décimale (1,5) est acceptée"},
+    {"file": "src/panier.js", "from": "throw new RangeError('Quantité invalide');", "to": "throw new Error('Quantité invalide');", "desc": "une quantité invalide lève une Error générique au lieu d'une RangeError"},
     {"file": "src/panier.js", "from": "if (this._lignes.length === avant) {", "to": "if (false) {", "desc": "retirer une référence absente ne signale rien"},
     {"file": "src/prix.js", "from": "throw new RangeError('Remise invalide');", "to": "throw new Error('Remise invalide');", "desc": "appliquerRemise lève une Error générique au lieu d'une RangeError"},
     {"file": "src/prix.js", "from": "pourcentage > 100", "to": "pourcentage > 1000", "desc": "une remise de plus de 100 % est acceptée"},
+    {"file": "src/prix.js", "from": "pourcentage > 100", "to": "pourcentage >= 100", "desc": "une remise de 100 % pile est refusée"},
     {"file": "src/prix.js", "from": "pourcentage < 0 || ", "to": "", "desc": "une remise négative est acceptée"},
+    {"file": "src/prix.js", "from": "pourcentage < 0", "to": "pourcentage <= 0", "desc": "une remise de 0 % est refusée"},
     {"file": "src/prix.js", "from": "|| prixHT < 0)", "to": "|| prixHT < -1000)", "desc": "un prix HT négatif est accepté par calculerTTC"}
   ],
   "panier-lignes": [
     {"file": "src/panier.js", "from": "return this._lignes.map((l) => ({ ...l }));", "to": "return this._lignes;", "desc": "lignes() expose le tableau interne du panier"},
     {"file": "src/panier.js", "from": "return this._lignes.map((l) => ({ ...l }));", "to": "return this._lignes.map((l) => l);", "desc": "lignes() renvoie un nouveau tableau mais les mêmes objets : modifier une ligne modifie le panier"},
-    {"file": "src/panier.js", "from": "libelle: produit.libelle, ", "to": "", "desc": "le libellé du produit n'est plus conservé dans la ligne"}
+    {"file": "src/panier.js", "from": "libelle: produit.libelle, ", "to": "", "desc": "le libellé du produit n'est plus conservé dans la ligne"},
+    {"file": "src/panier.js", "from": "return this._lignes.map((l) => ({ ...l }));", "to": "return this._lignes.map((l) => ({ ...l, total: l.prixHT * l.quantite }));", "desc": "lignes() ajoute une propriété « total » qui ne fait pas partie de la structure d'une ligne"}
+  ],
+  "panier-strict": [
+    {"file": "src/panier.js", "from": "prixHT: produit.prixHT, quantite });", "to": "prixHT: produit.prixHT, quantite, remise: undefined });", "desc": "chaque ligne porte une propriété « remise » valant undefined"},
+    {"file": "src/panier.js", "from": "return this._lignes.map((l) => ({ ...l }));", "to": "return this._lignes.map((l) => Object.assign(new (class Ligne {})(), l));", "desc": "les lignes renvoyées sont des instances d'une classe Ligne au lieu d'objets simples"}
+  ],
+  "catalogue": [
+    {"file": "src/catalogue.js", "from": "p.libelle.toLowerCase().includes(t)", "to": "p.libelle.toLowerCase().startsWith(t)", "desc": "seul le début du libellé est comparé au terme"},
+    {"file": "src/catalogue.js", "from": "String(terme).trim().toLowerCase()", "to": "String(terme).toLowerCase()", "desc": "les espaces autour du terme ne sont plus ignorés"},
+    {"file": "src/catalogue.js", "from": "String(terme).trim().toLowerCase()", "to": "String(terme).trim()", "desc": "un terme saisi avec des majuscules ne trouve plus rien"},
+    {"file": "src/catalogue.js", "from": "t.length < 2", "to": "t.length < 3", "desc": "un terme de 2 caractères ne renvoie plus rien"},
+    {"file": "src/catalogue.js", "from": "produits.filter((p) => p.libelle", "to": "produits.filter((p, i) => i === 0 || p.libelle", "desc": "le premier produit du catalogue fait toujours partie des résultats"},
+    {"file": "src/catalogue.js", "from": "t.length < 2", "to": "t.length < 1", "desc": "un terme d'un seul caractère renvoie des résultats"}
+  ],
+  "catalogue-ordre": [
+    {"file": "src/catalogue.js", "from": "return produits.filter((p) => p.libelle.toLowerCase().includes(t));", "to": "return produits.filter((p) => p.libelle.toLowerCase().includes(t)).reverse();", "desc": "résultats renvoyés dans l'ordre inverse du catalogue"},
+    {"file": "src/catalogue.js", "from": "return produits.filter((p) => p.libelle.toLowerCase().includes(t));", "to": "return produits.filter((p) => p.libelle.toLowerCase().includes(t)).sort((a, b) => b.prixHT - a.prixHT);", "desc": "résultats classés du plus cher au moins cher"}
   ],
   "livraison": [
     {"file": "src/livraison.js", "from": "if (poidsKg < 1) {", "to": "if (poidsKg <= 1) {", "desc": "un colis d'1 kg pile est facturé 4,90 € au lieu de 8,90 €"},
     {"file": "src/livraison.js", "from": "} else if (poidsKg < 5) {", "to": "} else if (poidsKg <= 5) {", "desc": "un colis de 5 kg pile est facturé 8,90 € au lieu de 14,90 €"},
     {"file": "src/livraison.js", "from": "BE: 3,", "to": "BE: 0,", "desc": "plus de supplément pour la Belgique"},
+    {"file": "src/livraison.js", "from": "LU: 3,", "to": "LU: 0,", "desc": "plus de supplément pour le Luxembourg"},
     {"file": "src/livraison.js", "from": "DE: 8,", "to": "DE: 3,", "desc": "supplément de 3 € au lieu de 8 € pour l'Allemagne"},
+    {"file": "src/livraison.js", "from": "ES: 8,", "to": "ES: 3,", "desc": "supplément de 3 € au lieu de 8 € pour l'Espagne"},
+    {"file": "src/livraison.js", "from": "IT: 8,", "to": "IT: 3,", "desc": "supplément de 3 € au lieu de 8 € pour l'Italie"},
+    {"file": "src/livraison.js", "from": "NL: 8,", "to": "NL: 3,", "desc": "supplément de 3 € au lieu de 8 € pour les Pays-Bas"},
     {"file": "src/livraison.js", "from": "totalTTC >= 60", "to": "totalTTC > 60", "desc": "la livraison n'est pas offerte à 60 € pile en France"},
     {"file": "src/livraison.js", "from": "totalTTC >= 100", "to": "totalTTC >= 60", "desc": "livraison offerte dès 60 € hors de France"},
+    {"file": "src/livraison.js", "from": "totalTTC >= 100", "to": "totalTTC > 100", "desc": "la livraison n'est pas offerte à 100 € pile hors de France"},
     {"file": "src/livraison.js", "from": "throw new Error(`Livraison impossible vers ${pays}`);", "to": "return 0;", "desc": "un pays non desservi donne une livraison gratuite au lieu d'une erreur"},
     {"file": "src/livraison.js", "from": "poidsKg <= 0", "to": "poidsKg < 0", "desc": "un poids nul est accepté"}
+  ],
+  "panier-thomas": [
+    {"file": "src/panier.js", "from": "t + l.prixHT * l.quantite", "to": "t + l.prixHT", "desc": "totalHT ignore les quantités"},
+    {"file": "src/panier.js", "from": "reduce((n, l) => n + l.quantite, 0)", "to": "reduce((n) => n + 1, 0)", "desc": "nombreArticles compte les lignes au lieu des quantités"},
+    {"file": "src/panier.js", "from": "this._lignes = this._lignes.filter((l) => l.ref !== ref);", "to": "this._lignes = this._lignes.filter(() => false);", "desc": "retirer vide tout le panier au lieu d'une seule référence"}
+  ],
+  "numerotation": [
+    {"file": "src/numerotation.js", "from": "let dernier = 0;", "to": "let dernier = 1;", "desc": "la toute première commande porte le numéro CMD-0002"},
+    {"file": "src/numerotation.js", "from": "dernier += 1;", "to": "dernier = 1;", "desc": "le compteur n'avance plus : toutes les commandes portent le numéro CMD-0001"},
+    {"file": "src/numerotation.js", "from": "padStart(4, '0')", "to": "padStart(3, '0')", "desc": "le numéro est écrit sur 3 chiffres (CMD-001)"}
   ],
   "codes": [
     {"file": "src/codesPromo.js", "from": ".trim().toUpperCase()", "to": ".trim()", "desc": "un code saisi en minuscules est refusé"},
     {"file": "src/codesPromo.js", "from": ".trim().toUpperCase()", "to": ".toUpperCase()", "desc": "les espaces autour du code ne sont plus ignorés"},
     {"file": "src/codesPromo.js", "from": "`${entree.expire}T23:59:59.999`", "to": "`${entree.expire}T00:00:00`", "desc": "un code n'est plus valable le jour même de son expiration"},
     {"file": "src/codesPromo.js", "from": "{4,10}", "to": "{3,10}", "desc": "un code de 3 caractères est considéré comme bien formé"},
+    {"file": "src/codesPromo.js", "from": "{4,10}", "to": "{4,11}", "desc": "un code de 11 caractères est considéré comme bien formé"},
+    {"file": "src/codesPromo.js", "from": "[A-Z0-9]", "to": "[A-Z0-9-]", "desc": "un code contenant un tiret est considéré comme bien formé"},
     {"file": "src/codesPromo.js", "from": "remise: entree.remise }", "to": "remise: entree.remise / 100 }", "desc": "la remise est renvoyée en fraction (0.1) au lieu d'un pourcentage (10)"},
     {"file": "src/codesPromo.js", "from": "entree.restants <= 0", "to": "entree.restants < 0", "desc": "un code épuisé reste utilisable"},
     {"file": "src/codesPromo.js", "from": "  if (maintenant > finValidite) {\n    return { valide: false, raison: 'EXPIRE' };\n  }\n  if (entree.restants <= 0) {\n    return { valide: false, raison: 'EPUISE' };\n  }", "to": "  if (entree.restants <= 0) {\n    return { valide: false, raison: 'EPUISE' };\n  }\n  if (maintenant > finValidite) {\n    return { valide: false, raison: 'EXPIRE' };\n  }", "desc": "un code à la fois expiré et épuisé est signalé EPUISE au lieu d'EXPIRE"}
+  ],
+  "bug-null": [
+    {"file": "src/codesPromo.js", "from": "  if (typeof code !== 'string') {\n    return { valide: false, raison: 'FORMAT' };\n  }\n  const saisi = code.trim()", "to": "  const saisi = String(code).trim()", "desc": "validerCode(null) répond INCONNU au lieu de FORMAT"}
+  ],
+  "codes-minuit": [
+    {"file": "src/codesPromo.js", "from": "`${entree.expire}T23:59:59.999`", "to": "`${entree.expire}T23:59:59`", "desc": "la dernière seconde du jour d'expiration est refusée"},
+    {"file": "src/codesPromo.js", "from": "maintenant > finValidite", "to": "maintenant >= finValidite", "desc": "le tout dernier instant du jour d'expiration est refusé"},
+    {"file": "src/codesPromo.js", "from": "`${entree.expire}T23:59:59.999`", "to": "`${entree.expire}T23:59:59.999Z`", "desc": "la fin de validité est calculée en heure UTC au lieu de l'heure locale"}
   ],
   "stock": [
     {"file": "src/stock.js", "from": "disponible < ligne.quantite", "to": "disponible <= ligne.quantite", "desc": "une ligne est signalée manquante alors que le stock est tout juste suffisant"},
     {"file": "src/stock.js", "from": "stockApi.quantiteDisponible(ligne.ref)", "to": "stockApi.quantiteDisponible(ligne.libelle)", "desc": "l'API de stock est interrogée avec le libellé au lieu de la référence"},
     {"file": "src/stock.js", "from": "for (const ligne of panier.lignes())", "to": "for (const ligne of panier.lignes().slice(0, 1))", "desc": "seule la première ligne du panier est vérifiée"},
     {"file": "src/stock.js", "from": "{ ref: ligne.ref, demande: ligne.quantite, disponible }", "to": "{ ref: ligne.ref, demande: ligne.quantite }", "desc": "le stock disponible n'est plus indiqué dans le résultat"},
-    {"file": "src/stock.js", "from": "const disponible = await stockApi", "to": "const disponible = stockApi", "desc": "la promesse de l'API n'est plus attendue (await oublié)"}
+    {"file": "src/stock.js", "from": "const disponible = await stockApi", "to": "const disponible = stockApi", "desc": "la promesse de l'API n'est plus attendue (await oublié)"},
+    {"file": "src/stock.js", "from": "const disponible = await stockApi.quantiteDisponible(ligne.ref);", "to": "await stockApi.quantiteDisponible(ligne.ref);\n    const disponible = await stockApi.quantiteDisponible(ligne.ref);", "desc": "l'API de stock est interrogée deux fois par ligne"}
   ],
   "commande-ok": [
     {"file": "src/commande.js", "from": "calculerTTC(panier.totalHT())", "to": "panier.totalHT()", "desc": "le montant HT est débité au lieu du TTC"},
     {"file": "src/commande.js", "from": "await mailer.envoyer(client.email,", "to": "await (async () => {})(client.email,", "desc": "l'e-mail de confirmation n'est plus envoyé"},
     {"file": "src/commande.js", "from": "mailer.envoyer(client.email,", "to": "mailer.envoyer(client.carte,", "desc": "l'e-mail de confirmation part à une mauvaise adresse"},
     {"file": "src/commande.js", "from": "return { numero: resultat.transaction, montant };", "to": "return { numero: null, montant };", "desc": "le numéro de transaction n'est plus renvoyé"},
-    {"file": "src/commande.js", "from": "return await paiement.debiter(carte, montant);\n  } catch (premiereErreur) {", "to": "return await paiement.debiter('0000', montant);\n  } catch (premiereErreur) {", "desc": "la mauvaise carte est débitée"}
+    {"file": "src/commande.js", "from": "return await paiement.debiter(carte, montant);\n  } catch (premiereErreur) {", "to": "return await paiement.debiter('0000', montant);\n  } catch (premiereErreur) {", "desc": "la mauvaise carte est débitée"},
+    {"file": "src/commande.js", "from": "'Confirmation de commande'", "to": "'Votre commande'", "desc": "le sujet de l'e-mail de confirmation a changé"},
+    {"file": "src/commande.js", "from": "`Montant débité : ${montant} €`", "to": "`Montant débité : ${panier.totalHT()} €`", "desc": "l'e-mail annonce le montant HT au lieu du montant débité"},
+    {"file": "src/commande.js", "from": "  const resultat = await debiterAvecReprise(client.carte, montant);", "to": "  await debiterAvecReprise(client.carte, montant);\n  const resultat = await debiterAvecReprise(client.carte, montant);", "desc": "le client est débité deux fois"}
+  ],
+  "concours": [
+    {"file": "src/concours.js", "from": "Math.floor(Math.random() * participants.length)", "to": "Math.round(Math.random() * participants.length)", "desc": "arrondi au plus proche : le tirage peut sortir de la liste"},
+    {"file": "src/concours.js", "from": "Math.random() * participants.length", "to": "Math.random() * (participants.length - 1)", "desc": "le dernier participant ne peut jamais gagner"},
+    {"file": "src/concours.js", "from": "  if (participants.length === 0) {\n    throw new Error('Aucun participant');\n  }\n", "to": "", "desc": "une liste vide renvoie undefined au lieu de lever une erreur"},
+    {"file": "src/concours.js", "from": "Math.random()", "to": "0.5", "desc": "le tirage n'est plus aléatoire : c'est toujours le participant du milieu"}
+  ],
+  "commande-fuite": [
+    {"file": "src/commande.js", "from": "calculerTTC(panier.totalHT())", "to": "panier.totalHT()", "desc": "le montant HT est débité au lieu du TTC"},
+    {"file": "src/commande.js", "from": "await mailer.envoyer(client.email,", "to": "await (async () => {})(client.email,", "desc": "l'e-mail de confirmation n'est plus envoyé"},
+    {"file": "src/commande.js", "from": "if (!resultat.accepte) {", "to": "if (false) {", "desc": "un paiement refusé est traité comme accepté"},
+    {"file": "src/commande.js", "from": "  } catch (premiereErreur) {\n    try {\n      return await paiement.debiter(carte, montant);\n    } catch (secondeErreur) {\n      throw new Error('Service de paiement indisponible');\n    }\n  }", "to": "  } catch (premiereErreur) {\n    throw new Error('Service de paiement indisponible');\n  }", "desc": "aucune nouvelle tentative après une erreur technique"}
+  ],
+  "commande-email": [
+    {"file": "src/commande.js", "from": "'Confirmation de commande'", "to": "'Votre commande'", "desc": "le sujet de l'e-mail de confirmation a changé"},
+    {"file": "src/commande.js", "from": "`Montant débité : ${montant} €`", "to": "`Montant débité : ${panier.totalHT()} €`", "desc": "l'e-mail annonce le montant HT au lieu du montant débité"},
+    {"file": "src/commande.js", "from": "`Montant débité : ${montant} €`", "to": "'Merci pour votre commande !'", "desc": "le montant a disparu du corps de l'e-mail"},
+    {"file": "src/commande.js", "from": "mailer.envoyer(client.email,", "to": "mailer.envoyer(client.carte,", "desc": "l'e-mail de confirmation part à une mauvaise adresse"}
+  ],
+  "commande-email-variantes": [
+    {"file": "src/commande.js", "from": "`Montant débité : ${montant} €`", "to": "`Bonne nouvelle ! Nous avons débité ${montant} € sur votre carte. À bientôt sur les sentiers.`", "desc": "nouvelle formulation du marketing, n° 1"},
+    {"file": "src/commande.js", "from": "`Montant débité : ${montant} €`", "to": "`Merci ! Votre paiement de ${montant} € est confirmé.`", "desc": "nouvelle formulation du marketing, n° 2"}
   ],
   "commande-erreurs": [
     {"file": "src/commande.js", "from": "if (!resultat.accepte) {", "to": "if (false) {", "desc": "un paiement refusé est traité comme accepté"},
     {"file": "src/commande.js", "from": "throw new Error(`Paiement refusé : ${resultat.motif}`);", "to": "throw new Error('Paiement refusé');", "desc": "le motif du refus n'apparaît plus dans le message d'erreur"},
     {"file": "src/commande.js", "from": "  if (panier.estVide()) {\n    throw new Error('Panier vide');\n  }\n", "to": "", "desc": "un panier vide peut être commandé"},
-    {"file": "src/commande.js", "from": "  if (!resultat.accepte) {\n    throw new Error(`Paiement refusé : ${resultat.motif}`);\n  }\n  await mailer.envoyer(client.email, 'Confirmation de commande', `Montant débité : ${montant} €`);", "to": "  await mailer.envoyer(client.email, 'Confirmation de commande', `Montant débité : ${montant} €`);\n  if (!resultat.accepte) {\n    throw new Error(`Paiement refusé : ${resultat.motif}`);\n  }", "desc": "l'e-mail de confirmation part même quand le paiement est refusé"}
+    {"file": "src/commande.js", "from": "  if (!resultat.accepte) {\n    throw new Error(`Paiement refusé : ${resultat.motif}`);\n  }\n  await mailer.envoyer(client.email, 'Confirmation de commande', `Montant débité : ${montant} €`);", "to": "  await mailer.envoyer(client.email, 'Confirmation de commande', `Montant débité : ${montant} €`);\n  if (!resultat.accepte) {\n    throw new Error(`Paiement refusé : ${resultat.motif}`);\n  }", "desc": "l'e-mail de confirmation part même quand le paiement est refusé"},
+    {"file": "src/commande.js", "from": "  if (panier.estVide()) {\n    throw new Error('Panier vide');\n  }\n  const montant = calculerTTC(panier.totalHT());\n  const resultat = await debiterAvecReprise(client.carte, montant);\n", "to": "  const montant = calculerTTC(panier.totalHT());\n  const resultat = await debiterAvecReprise(client.carte, montant);\n  if (panier.estVide()) {\n    throw new Error('Panier vide');\n  }\n", "desc": "le panier vide n'est refusé qu'après le débit de la carte"}
   ],
   "commande-reprise": [
     {"file": "src/commande.js", "from": "  } catch (premiereErreur) {\n    try {\n      return await paiement.debiter(carte, montant);\n    } catch (secondeErreur) {\n      throw new Error('Service de paiement indisponible');\n    }\n  }", "to": "  } catch (premiereErreur) {\n    throw new Error('Service de paiement indisponible');\n  }", "desc": "aucune nouvelle tentative après une erreur technique"},
     {"file": "src/commande.js", "from": "throw new Error('Service de paiement indisponible');", "to": "throw secondeErreur;", "desc": "l'erreur technique brute est renvoyée au lieu de « Service de paiement indisponible »"},
-    {"file": "src/commande.js", "from": "    } catch (secondeErreur) {\n", "to": "    } catch (secondeErreur) {\n      try { return await paiement.debiter(carte, montant); } catch (e) { /* 3e tentative */ }\n", "desc": "trois tentatives au lieu de deux"}
+    {"file": "src/commande.js", "from": "    } catch (secondeErreur) {\n", "to": "    } catch (secondeErreur) {\n      try { return await paiement.debiter(carte, montant); } catch (e) { /* 3e tentative */ }\n", "desc": "trois tentatives au lieu de deux"},
+    {"file": "src/commande.js", "from": "    return await paiement.debiter(carte, montant);\n  } catch (premiereErreur) {", "to": "    const premiere = await paiement.debiter(carte, montant);\n    return premiere.accepte ? premiere : await paiement.debiter(carte, montant);\n  } catch (premiereErreur) {", "desc": "un refus de la banque est retenté comme une panne technique"}
+  ],
+  "commande-async": [
+    {"file": "src/commande.js", "from": "  if (panier.estVide()) {\n    throw new Error('Panier vide');\n  }\n", "to": "", "desc": "un panier vide peut être commandé"},
+    {"file": "src/commande.js", "from": "if (!resultat.accepte) {", "to": "if (false) {", "desc": "un paiement refusé est traité comme accepté"},
+    {"file": "src/commande.js", "from": "  if (!resultat.accepte) {\n    throw new Error(`Paiement refusé : ${resultat.motif}`);\n  }\n  await mailer.envoyer(client.email, 'Confirmation de commande', `Montant débité : ${montant} €`);", "to": "  await mailer.envoyer(client.email, 'Confirmation de commande', `Montant débité : ${montant} €`);\n  if (!resultat.accepte) {\n    throw new Error(`Paiement refusé : ${resultat.motif}`);\n  }", "desc": "l'e-mail de confirmation part même quand le paiement est refusé"},
+    {"file": "src/commande.js", "from": "throw new Error('Service de paiement indisponible');", "to": "throw secondeErreur;", "desc": "l'erreur technique brute est renvoyée au lieu de « Service de paiement indisponible »"}
   ],
   "relance": [
     {"file": "src/relance.js", "from": "24 * 60 * 60 * 1000", "to": "60 * 60 * 1000", "desc": "la relance part au bout d'1 h au lieu de 24 h"},
     {"file": "src/relance.js", "from": "annuler: () => clearTimeout(minuteur)", "to": "annuler: () => undefined", "desc": "annuler() n'empêche plus la relance"},
     {"file": "src/relance.js", "from": "if (!panier.estVide()) {", "to": "if (true) {", "desc": "un panier vidé entre-temps reçoit quand même une relance"},
-    {"file": "src/relance.js", "from": "${panier.nombreArticles()} article(s)", "to": "${panier.lignes().length} article(s)", "desc": "le message compte les lignes au lieu du nombre d'articles"}
+    {"file": "src/relance.js", "from": "${panier.nombreArticles()} article(s)", "to": "${panier.lignes().length} article(s)", "desc": "le message compte les lignes au lieu du nombre d'articles"},
+    {"file": "src/relance.js", "from": "        client.email,\n", "to": "        client.nom,\n", "desc": "la relance part sans destinataire valide"},
+    {"file": "src/relance.js", "from": "  const minuteur = setTimeout(() => {\n    if (!panier.estVide()) {\n      mailer.envoyer(\n        client.email,\n        'Votre panier vous attend',\n        `Vous avez ${panier.nombreArticles()} article(s) dans votre panier.`,\n      );\n    }\n  }, delai);\n  return { annuler: () => clearTimeout(minuteur) };", "to": "  const minuteur = setInterval(() => {\n    if (!panier.estVide()) {\n      mailer.envoyer(\n        client.email,\n        'Votre panier vous attend',\n        `Vous avez ${panier.nombreArticles()} article(s) dans votre panier.`,\n      );\n    }\n  }, delai);\n  return { annuler: () => clearInterval(minuteur) };", "desc": "la relance est renvoyée toutes les 24 h au lieu d'une seule fois"}
+  ],
+  "attente": [
+    {"file": "src/debit-patient.js", "from": "const pauses = [1000, 2000];", "to": "const pauses = [2000, 1000];", "desc": "on attend 2 s puis 1 s au lieu d'1 s puis 2 s"},
+    {"file": "src/debit-patient.js", "from": "const pauses = [1000, 2000];", "to": "const pauses = [1000, 1000];", "desc": "on attend 1 s avant chaque nouvelle tentative"},
+    {"file": "src/debit-patient.js", "from": "      await attendre(pauses[tentative]);\n", "to": "", "desc": "les tentatives s'enchaînent sans attendre"},
+    {"file": "src/debit-patient.js", "from": "tentative >= pauses.length", "to": "tentative > pauses.length", "desc": "quatre tentatives au lieu de trois"},
+    {"file": "src/debit-patient.js", "from": "tentative >= pauses.length", "to": "tentative >= 1", "desc": "deux tentatives seulement au lieu de trois"},
+    {"file": "src/debit-patient.js", "from": "throw new Error('Service de paiement indisponible');", "to": "throw erreur;", "desc": "l'erreur technique brute est renvoyée au lieu de « Service de paiement indisponible »"}
   ],
   "fidelite": [
     {"file": "src/fidelite.js", "from": "points *= 2;", "to": "points *= 3;", "desc": "les clients gold gagnent trois fois plus de points au lieu de deux"},
@@ -88,9 +188,30 @@
     {"file": "src/fidelite.js", "from": "const PLAFOND = 1000;", "to": "const PLAFOND = 10000;", "desc": "le plafond de 1000 points n'est plus appliqué"},
     {"file": "src/fidelite.js", "from": "const BONUS_ANNIVERSAIRE = 100;", "to": "const BONUS_ANNIVERSAIRE = 50;", "desc": "bonus anniversaire de 50 points au lieu de 100"},
     {"file": "src/fidelite.js", "from": "client.statut === 'silver'", "to": "client.statut === 'argent'", "desc": "le statut silver n'est plus reconnu"},
-    {"file": "src/fidelite.js", "from": "if (montantTTC <= 0) {", "to": "if (montantTTC < 0) {", "desc": "un achat de 0 € peut rapporter le bonus anniversaire"}
+    {"file": "src/fidelite.js", "from": "if (montantTTC <= 0) {", "to": "if (montantTTC < 0) {", "desc": "un achat de 0 € peut rapporter le bonus anniversaire"},
+    {"file": "src/fidelite.js", "from": "let points = Math.floor(montantTTC);", "to": "let points = Math.round(montantTTC);", "desc": "les centimes sont arrondis à l'euro le plus proche au lieu d'être ignorés"}
+  ],
+  "fidelite-ordre": [
+    {"file": "src/fidelite.js", "from": "  if (client.statut === 'gold') {\n    points *= 2;\n  } else if (client.statut === 'silver') {\n    points = Math.floor(points * 1.5);\n  }\n  if (client.anniversaire && estMoisAnniversaire(client.anniversaire, client.dateAchat)) {\n    points += BONUS_ANNIVERSAIRE;\n  }\n", "to": "  if (client.anniversaire && estMoisAnniversaire(client.anniversaire, client.dateAchat)) {\n    points += BONUS_ANNIVERSAIRE;\n  }\n  if (client.statut === 'gold') {\n    points *= 2;\n  } else if (client.statut === 'silver') {\n    points = Math.floor(points * 1.5);\n  }\n", "desc": "le bonus d'anniversaire est ajouté avant d'appliquer le statut (il est donc doublé pour un client gold)"},
+    {"file": "src/fidelite.js", "from": "  if (client.anniversaire && estMoisAnniversaire(client.anniversaire, client.dateAchat)) {\n    points += BONUS_ANNIVERSAIRE;\n  }\n  if (points > PLAFOND) {\n    points = PLAFOND;\n  }\n", "to": "  if (points > PLAFOND) {\n    points = PLAFOND;\n  }\n  if (client.anniversaire && estMoisAnniversaire(client.anniversaire, client.dateAchat)) {\n    points += BONUS_ANNIVERSAIRE;\n  }\n", "desc": "le plafond est appliqué avant le bonus d'anniversaire"}
   ],
   "bug-facture": [
-    {"file": "src/facture.js", "from": "livraisonOfferte(produitsTTC, pays)", "to": "livraisonOfferte(totalTTC, pays)", "desc": "seuil de livraison offerte calculé avant la remise"}
+    {"file": "src/facture.js", "from": "livraisonOfferte(produitsTTC, pays)", "to": "livraisonOfferte(totalTTC, pays)", "desc": "seuil de livraison offerte calculé avant la remise"},
+    {"file": "src/facture.js", "from": "fraisLivraison(poidsKg, pays)", "to": "fraisLivraison(Math.round(poidsKg), pays)", "desc": "les frais de port sont calculés sur le poids arrondi au kilo"}
+  ],
+  "bug-export": [
+    {"file": "src/export-compta.js", "from": "montantTTC.toFixed(2).replace('.', ',')", "to": "String(montantTTC).replace('.', ',')", "desc": "le montant n'a pas toujours deux décimales (59,4 au lieu de 59,40)"}
+  ],
+  "recap": [
+    {"file": "src/recapitulatif.js", "from": "`${montant.toFixed(2).replace('.', ',')} €`", "to": "`${montant.toFixed(2)} €`", "desc": "les montants s'affichent avec un point au lieu d'une virgule"},
+    {"file": "src/recapitulatif.js", "from": "panier.lignes().map(", "to": "panier.lignes().reverse().map(", "desc": "les produits sont listés dans l'ordre inverse du panier"},
+    {"file": "src/recapitulatif.js", "from": "euros(calculerTTC(l.prixHT * l.quantite))", "to": "euros(l.prixHT * l.quantite)", "desc": "le prix de chaque ligne est affiché HT"},
+    {"file": "src/recapitulatif.js", "from": "port === 0 ? 'offerte' : euros(port)", "to": "euros(port)", "desc": "une livraison offerte s'affiche « 0,00 € » au lieu de « offerte »"},
+    {"file": "src/recapitulatif.js", "from": "arrondir(produits + port)", "to": "arrondir(produits)", "desc": "le total TTC oublie les frais de port"},
+    {"file": "src/recapitulatif.js", "from": "`${l.quantite} × ${l.libelle}", "to": "`${l.libelle}", "desc": "la quantité de chaque produit n'est plus affichée"}
+  ],
+  "etiquette-bugs": [
+    {"file": "src/etiquette.js", "from": "`Articles : ${panier.nombreArticles()}`", "to": "`Articles : ${panier.lignes().length}`", "desc": "l'étiquette compte les lignes du panier au lieu des articles"},
+    {"file": "src/etiquette.js", "from": "    PAYS[client.pays],\n", "to": "    client.pays,\n", "desc": "le pays est écrit en code (BE) au lieu de toutes lettres"}
   ]
 }

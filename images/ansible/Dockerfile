@@ -8,6 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd -m -s /bin/bash admin && echo 'admin:cimes' | chpasswd && \
     echo 'admin ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/admin && chmod 440 /etc/sudoers.d/admin && \
     rm -f /etc/ssh/ssh_host_* && mkdir -p /run/sshd
+# Journal de sudo (horodaté, une ligne par commande) : les vérifications y distinguent ce qu'Ansible a fait
+# (« BECOME-SUCCESS ») d'une commande tapée à la main en SSH
+RUN printf 'Defaults logfile=/var/log/sudo.log\nDefaults loglinelen=0\n' > /etc/sudoers.d/journal && \
+    chmod 440 /etc/sudoers.d/journal && visudo -c >/dev/null
 COPY noeud/demarrer.sh /usr/local/sbin/demarrer-noeud
 RUN chmod 755 /usr/local/sbin/demarrer-noeud
 
@@ -29,7 +33,9 @@ RUN rm -f /etc/apt/sources.list.d/* && \
 # ─── Poste de contrôle de l'étudiant : Ansible + moteur Docker interne qui fait tourner les serveurs ─
 FROM docker:27-dind
 RUN apk add --no-cache bash bash-completion coreutils findutils grep sed curl jq nano vim less procps tree \
-        shadow ncurses openssh-client sshpass python3 py3-yaml ansible-core
+        shadow ncurses openssh-client sshpass python3 py3-yaml 'ansible-core~2.18'
+# ansible-core est figé en 2.18 : la 2.19 change l'évaluation des conditions (when) et des modèles, et le parcours
+# (notamment le piège des booléens du jour 6) est écrit et vérifié pour cette version.
 # etudiant n'est PAS dans le groupe docker : pour lui, web1, web2… sont de vrais serveurs, joignables en SSH
 RUN adduser -D -s /bin/bash etudiant
 COPY --from=noeud-final / /opt/ansible-lab/noeud/
