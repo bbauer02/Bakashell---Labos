@@ -1,11 +1,15 @@
 """Gestion des conteneurs Docker des étudiants (un conteneur par étudiant et par parcours)."""
+import logging
 import os
+import socket
 import threading
 import time
 
 import docker
 
 from .courses import COURSES
+
+log = logging.getLogger("linux-lab")
 
 # Réseau dédié aux étudiants, sans communication entre conteneurs (ICC désactivé).
 NETWORK_NAME = os.environ.get("LAB_NETWORK", "linux-lab-students")
@@ -85,10 +89,40 @@ def _image_changed(container, course: dict) -> bool:
     return container.attrs.get("Image") != current
 
 
+# Copie de secours des dossiers personnels avant recréation d'un conteneur (volume de la plateforme)
+HOME_BACKUP_DIR = os.path.join(os.path.dirname(os.environ.get("DB_PATH", "/data/platform.db")), "dossiers-personnels")
+
+
 def _save_home(container) -> bytes:
-    """Archive tar du dossier personnel de l'étudiant (fonctionne aussi sur un conteneur arrêté)."""
-    stream, _ = container.get_archive(STUDENT_HOME)
-    return b"".join(stream)
+    """Archive tar du dossier personnel de l'étudiant, avec une copie de secours sur disque.
+    Par tar dans le conteneur : sous Sysbox, l'API de copie de Docker échoue (volume sur /var/lib/docker)."""
+    if container.status != "running":
+        container.start()
+    result = container.exec_run(["tar", "-c", "-C", os.path.dirname(STUDENT_HOME), os.path.basename(STUDENT_HOME)],
+                                user="root", demux=True)
+    if result.exit_code != 0 or not result.output[0]:
+        raise RuntimeError(f"Archive du dossier personnel de {container.name} impossible : {result.output[1]!r}")
+    os.makedirs(HOME_BACKUP_DIR, exist_ok=True)
+    with open(os.path.join(HOME_BACKUP_DIR, f"{container.name}-{time.strftime('%Y%m%d-%H%M%S')}.tar"), "wb") as f:
+        f.write(result.output[0])
+    return result.output[0]
+
+
+def _restore_home(container, data: bytes):
+    """Extrait l'archive du dossier personnel dans le nouveau conteneur (tar lit l'entrée standard)."""
+    api = client().api
+    ex = api.exec_create(container.id, ["tar", "-x", "-p", "-C", os.path.dirname(STUDENT_HOME)],
+                         stdin=True, user="root")
+    sock = api.exec_start(ex["Id"], socket=True)
+    raw = getattr(sock, "_sock", sock)
+    raw.sendall(data)
+    raw.shutdown(socket.SHUT_WR)
+    while raw.recv(65536):
+        pass
+    raw.close()
+    code = api.exec_inspect(ex["Id"])["ExitCode"]
+    if code != 0:
+        raise RuntimeError(f"Restauration du dossier personnel dans {container.name} impossible (tar : code {code})")
 
 
 def _get_or_create(user_id: int, course: dict, name: str) -> str:
@@ -100,7 +134,15 @@ def _get_or_create(user_id: int, course: dict, name: str) -> str:
         elif _image_changed(container, course):
             # Nouvelle image du labo (exercices enrichis, outils ajoutés) : conteneur recréé, dossier personnel
             # conservé. Les mises en place seront rejouées à l'ouverture de chaque étape (marqueurs absents).
-            home = _save_home(container)
+            try:
+                home = _save_home(container)
+            except Exception:
+                # Sans copie du travail de l'étudiant, on garde l'ancien conteneur plutôt que de le perdre
+                log.exception("Mise à jour de %s impossible : ancien conteneur conservé", name)
+                container.reload()
+                if container.status != "running":
+                    container.start()
+                return container.id
             container.remove(force=True)
         else:
             if container.status != "running":
@@ -147,7 +189,10 @@ def _get_or_create(user_id: int, course: dict, name: str) -> str:
             break
         time.sleep(0.25)
     if home is not None:
-        container.put_archive(os.path.dirname(STUDENT_HOME), home)
+        try:
+            _restore_home(container, home)
+        except Exception:
+            log.exception("Dossier personnel non restauré dans %s (copie de secours dans %s)", name, HOME_BACKUP_DIR)
     return container.id
 
 
