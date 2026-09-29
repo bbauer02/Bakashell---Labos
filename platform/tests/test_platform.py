@@ -306,3 +306,21 @@ def test_etape_modifiee_depuis_sa_preparation():
     # Données enregistrées avant les empreintes : comparées à la version publiée auparavant
     legacy = runner._LEGACY_FINGERPRINTS.get(f"linux:{num}")
     assert runner.setup_outdated(course, num, step, {"CLE": "x"}) == (legacy is not None and legacy != runner.setup_fingerprint(step))
+
+
+def test_verification_groupee():
+    from app import runner
+    course = COURSES["linux"]
+    exs = course["steps"][1]["exercises"][:3]
+    cmd = runner.check_batch_command(course, exs)
+    assert cmd[-1].count("@@EX ") == 3  # un seul docker exec pour les trois exercices
+    out = (f"@@EX {exs[0]['id']}\n@@OK\n@@CODE 0\n"
+           f"@@EX {exs[1]['id']}\n@@FAIL 0\nMSG:détail\n@@CODE 0\n"
+           f"@@EX {exs[2]['id']}\n@@CODE 124\n")
+    r = runner.parse_batch_output(exs, out)
+    assert r[exs[0]["id"]] == (True, None)
+    assert not r[exs[1]["id"]][0] and "détail" in r[exs[1]["id"]][1]
+    assert not r[exs[2]["id"]][0] and "délai" in r[exs[2]["id"]][1]
+    # Délai global dépassé avant le dernier exercice : échec explicite, pas d'exception
+    r = runner.parse_batch_output(exs, out.split(f"@@EX {exs[2]['id']}")[0])
+    assert not r[exs[2]["id"]][0]

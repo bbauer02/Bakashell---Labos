@@ -57,11 +57,11 @@ def dexec(argv, env=None, user="root", input=None):
 
 
 def run_checks(course, step, env):
-    out = {}
-    for ex in step["exercises"]:
-        code, stdout, _ = dexec(runner.check_command(course, ex), env=env)
-        out[ex["id"]] = runner.parse_check_output(ex, code, stdout)
-    return out
+    # Comme la plateforme : toutes les vérifications de l'étape en un seul docker exec
+    # (script envoyé par l'entrée standard : la ligne de commande est limitée à 32 Ko sous Windows)
+    script, total = runner.check_batch_script(course, step["exercises"])
+    _, stdout, _ = dexec(["timeout", "-k", "5", str(total), "bash"], env=env, input=script)
+    return runner.parse_batch_output(step["exercises"], stdout)
 
 
 def parse_range(spec):

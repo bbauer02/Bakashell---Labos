@@ -4,6 +4,7 @@
     python -m pytest platform/tests
 """
 import os
+import re
 import sys
 import tempfile
 
@@ -48,6 +49,9 @@ class FakeDocker:
         script = cmd[-1] if isinstance(cmd, list) else cmd
         if cmd[:2] == ["test", "-f"]:  # marqueur de mise en place : déjà faite
             return 0, ""
+        if "@@EX " in script:  # vérification groupée : un résultat par exercice
+            ids = re.findall(r"echo '@@EX (\S+)'", script)
+            return 0, "".join(f"@@EX {i}\n{'@@OK' if i in self.passing else '@@FAIL 0'}\n@@CODE 0\n" for i in ids)
         for ex_id in self.passing:
             if f"#EX:{ex_id}#" in script:
                 return 0, "@@OK\n"

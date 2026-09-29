@@ -9,6 +9,7 @@ import json
 import pathlib
 import posixpath
 import re
+import secrets
 
 SETUP_TIMEOUT = 120
 
@@ -80,14 +81,64 @@ def setup_outdated(course: dict, step_num: int, step: dict, setup_data) -> bool:
 def check_command(course: dict, exercise: dict) -> list:
     """Un seul `docker exec` par exercice : les vérifications s'enchaînent, la première
     en échec est signalée par « @@FAIL <index> », suivie des lignes « MSG:… » qu'elle a produites."""
-    parts = [course["check_prelude"], _UNEXPORT, "cd /home/etudiant\n", '_out=$(mktemp)\n']
+    return ["timeout", "-k", "5", str(course["check_timeout"]), "bash", "-c",
+            _check_script(course["check_prelude"], exercise)]
+
+
+def _check_script(prelude: str, exercise: dict) -> str:
+    parts = [prelude, _UNEXPORT, "cd /home/etudiant\n", '_out=$(mktemp)\n']
     for i, (cmd, _msg) in enumerate(exercise["checks"]):
         parts.append(
             f"( {cmd}\n) >\"$_out\" 2>/dev/null </dev/null || "
             f"{{ echo '@@FAIL {i}'; grep '^MSG:' \"$_out\" | tail -n 3; rm -f \"$_out\"; exit 0; }}\n"
         )
     parts.append('rm -f "$_out"\necho \'@@OK\'\n')
-    return ["timeout", "-k", "5", str(course["check_timeout"]), "bash", "-c", "".join(parts)]
+    return "".join(parts)
+
+
+def check_batch_script(course: dict, exercises: list) -> tuple:
+    """Script de check_batch_command et son délai global (le banc de test l'envoie par l'entrée standard)."""
+    timeout = course["check_timeout"]
+    # Le prélude n'est écrit qu'une fois : un argument de commande est limité à 128 Ko sous Linux
+    tag = f"__LAB_{secrets.token_hex(8)}__"
+    parts = ['_lab_d=$(mktemp -d)\n', f"cat > \"$_lab_d/prelude\" <<'{tag}'\n{course['check_prelude']}\n{tag}\n"]
+    for i, ex in enumerate(exercises):
+        body = _check_script('. "$_lab_d/prelude"\n', ex)
+        parts.append(f"cat > \"$_lab_d/{i}\" <<'{tag}'\n{body}\n{tag}\n")
+    for i, ex in enumerate(exercises):
+        parts.append(f"echo '@@EX {ex['id']}'\n_lab_d=\"$_lab_d\" timeout -k 5 {timeout} bash \"$_lab_d/{i}\"\n"
+                     "echo \"@@CODE $?\"\n")
+    parts.append('rm -rf "$_lab_d"\n')
+    return "".join(parts), timeout * len(exercises) + 15
+
+
+def check_batch_command(course: dict, exercises: list) -> list:
+    """Vérifie plusieurs exercices en UN seul `docker exec` (le lancement d'un exec coûte bien plus cher que les
+    vérifications elles-mêmes). Chaque exercice garde son propre bash et son propre délai : un exercice bloqué
+    n'empêche pas de vérifier les autres. Sortie : « @@EX <id> », la sortie de check_command, « @@CODE <code> »."""
+    script, total = check_batch_script(course, exercises)
+    return ["timeout", "-k", "5", str(total), "bash", "-c", script]
+
+
+def parse_batch_output(exercises: list, output: str) -> dict:
+    """Résultat de check_batch_command : {identifiant: (réussi, message)}."""
+    segments = {}
+    current = None
+    for line in output.splitlines(keepends=True):
+        if line.startswith("@@EX "):
+            current = line[5:].strip()
+            segments[current] = ""
+        elif current is not None:
+            segments[current] += line
+    results = {}
+    for ex in exercises:
+        seg = segments.get(ex["id"])
+        if seg is None:  # délai global dépassé avant cet exercice
+            results[ex["id"]] = parse_check_output(ex, 124, "")
+            continue
+        m = re.search(r"^@@CODE (\d+)$", seg, re.M)
+        results[ex["id"]] = parse_check_output(ex, int(m.group(1)) if m else 124, seg)
+    return results
 
 
 def parse_check_output(exercise: dict, exit_code: int, output: str):

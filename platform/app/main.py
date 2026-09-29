@@ -751,6 +751,10 @@ async def admin_reset_user(request: Request, user_id: int, course: str = DEFAULT
 
 # ─── Mise en place et validation (fonctions bloquantes, exécutées en thread) ──
 
+# (conteneur, étape) dont la mise en place a été constatée : un conteneur recréé change d'identifiant
+_setup_seen: set = set()
+
+
 def ensure_setup(user_id: int, course: dict, container_id: str, step_num: int, force: bool = False) -> dict:
     """Prépare l'étape dans le conteneur (une fois) et retourne ses données attendues."""
     step = course["steps"][step_num]
@@ -758,10 +762,12 @@ def ensure_setup(user_id: int, course: dict, container_id: str, step_num: int, f
         return {}
     with user_lock(user_id, course["key"]):
         if not force:
-            code, _ = containers.exec_in_container(container_id, runner.marker_test_command(step_num, step))
-            if code == 0:
+            # Marqueur persistant déjà vu dans ce conteneur : inutile de relancer un docker exec à chaque vérification
+            cached = (container_id, step_num) in _setup_seen and not step.get("volatile")
+            if cached or containers.exec_in_container(container_id, runner.marker_test_command(step_num, step))[0] == 0:
                 data = db.get_setup(user_id, course["key"], step_num)
                 if data is not None:
+                    _setup_seen.add((container_id, step_num))
                     return data
         code, out = containers.exec_in_container(container_id, runner.setup_command(course, step_num, step))
         data = runner.parse_setup_output(out)
@@ -787,10 +793,16 @@ def validate_step(user_id: int, course: dict, step_num: int, auto: bool, only: s
     progress = db.get_user_score(user_id, course["id_glob"])
     hints = db.get_hints_used(user_id)
 
+    exercises = [ex for ex in step["exercises"] if not only or ex["id"] == only]
+    to_check = [ex for ex in exercises
+                if ex["id"] not in progress["completed"] and not (auto and ex.get("manual"))]
+    checked = {}
+    if to_check:  # toutes les vérifications en un seul docker exec
+        _, out = containers.exec_in_container(container_id, runner.check_batch_command(course, to_check), env=env)
+        checked = runner.parse_batch_output(to_check, out)
+
     results = []
-    for ex in step["exercises"]:
-        if only and ex["id"] != only:
-            continue
+    for ex in exercises:
         res = {"id": ex["id"], "title": ex["title"], "points": ex["points"],
                "passed": False, "already": False, "skipped": False, "message": None, "earned": 0}
         if ex["id"] in progress["completed"]:
@@ -798,8 +810,7 @@ def validate_step(user_id: int, course: dict, step_num: int, auto: bool, only: s
         elif auto and ex.get("manual"):
             res.update(skipped=True)
         else:
-            code, out = containers.exec_in_container(container_id, runner.check_command(course, ex), env=env)
-            passed, message = runner.parse_check_output(ex, code, out)
+            passed, message = checked[ex["id"]]
             if not auto:  # historique : seulement les vérifications demandées par l'étudiant
                 db.record_attempt(user_id, ex["id"], passed, None if passed else message)
             if passed:
