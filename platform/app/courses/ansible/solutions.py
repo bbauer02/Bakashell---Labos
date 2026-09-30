@@ -6,6 +6,10 @@ Les données tirées au hasard (messages, demandes) sont relues dans les fichier
 SOLUTIONS = {
     1: r'''
 #@ A1.1
+#? Ansible se connecte en SSH sans jamais pouvoir répondre à une question : il faut donc une authentification par clé (plus de mot de passe) et une empreinte de chaque serveur déjà connue dans `~/.ssh/known_hosts`.
+#? `ssh-keygen` crée la paire de clés sur le poste de contrôle, `ssh-copy-id` dépose la moitié publique dans `~/.ssh/authorized_keys` du compte `admin` de chaque serveur.
+#? Ici, `ssh-keyscan` enregistre les empreintes sans les vérifier, ce qui est acceptable dans ce labo fermé ; en production, on compare l'empreinte à une source sûre avant de répondre « yes ».
+#? Le test `ssh -o BatchMode=yes admin@web1 hostname` est le bon réflexe : il échoue au lieu de poser une question, exactement comme le ferait Ansible.
 ssh-keygen -q -t ed25519 -N "" -f ~/.ssh/id_ed25519
 # Accepter l'empreinte de chaque serveur (ou se connecter une fois à la main, comparer l'empreinte, répondre « yes »)
 ssh-keyscan web1 web2 db1 >> ~/.ssh/known_hosts
@@ -13,6 +17,9 @@ ssh-keyscan web1 web2 db1 >> ~/.ssh/known_hosts
 for s in web1 web2 db1; do sshpass -p cimes ssh-copy-id -i ~/.ssh/id_ed25519.pub admin@$s; done
 ssh -o BatchMode=yes admin@web1 hostname
 #@ A1.2
+#? Le suffixe `:children` fait de `production` un groupe de groupes : un serveur ajouté plus tard au groupe `web` sera automatiquement en production, sans toucher à cette section.
+#? Le piège était de recopier web1, web2 et db1 sous `[production]` : le résultat semble identique aujourd'hui, mais la liste serait à tenir à jour à la main.
+#? `ansible-inventory -i inventaire.ini --graph` affiche l'arborescence des groupes : c'est la façon la plus rapide de vérifier un inventaire sans se connecter aux serveurs.
 cd ~/infra
 cat > inventaire.ini <<'EOF'
 [web]
@@ -28,6 +35,9 @@ bdd
 EOF
 ansible-inventory -i inventaire.ini --graph
 #@ A1.3
+#? Lancé depuis `~/infra`, Ansible lit le fichier `ansible.cfg` du dossier courant : la section `[defaults]` y fixe l'inventaire (`inventory`) et le compte distant (`remote_user`) une fois pour toutes.
+#? `ansible-config dump --only-changed` montre les réglages réellement pris en compte : pratique pour repérer une faute de frappe dans un nom de clé, qu'Ansible ne signale pas toujours.
+#? Le module `ping` n'est pas un ping réseau : il vérifie toute la chaîne (connexion SSH, Python sur le serveur, exécution d'un module) et répond `pong` si tout fonctionne.
 cat > ansible.cfg <<'EOF'
 [defaults]
 inventory = inventaire.ini
@@ -35,6 +45,10 @@ remote_user = admin
 EOF
 ansible production -m ping
 #@ A1.4
+#? Un motif combine des groupes : `a:b` pour l'union, `a:&b` pour l'intersection, `a:!b` pour l'exclusion et `a[0]` pour le premier serveur du groupe `a`, dans l'ordre de l'inventaire.
+#? Le piège était de recopier des noms de serveurs : le motif doit rester juste le jour où le parc change, et seuls des noms de groupes le permettent.
+#? Entourez toujours le motif de guillemets simples : sans eux, le shell interprète lui-même `!` et `&` avant qu'Ansible ne les voie.
+#? `--list-hosts` affiche les serveurs visés sans rien exécuter : c'est le moyen sûr de tester un motif. Les quatre demandes sont tirées au sort, les vôtres peuvent donc différer de celles traitées ici.
 cat exercices/demandes.txt
 # Pour chaque demande, le motif correspondant, vérifié avec --list-hosts (aucune connexion)
 : > reponses/motifs.txt
@@ -53,6 +67,10 @@ done
 ''',
     2: r'''
 #@ A2.1
+#? Ansible n'installe aucun agent : pour chaque tâche, il emballe le module dans un fichier `AnsiballZ_<module>.py`, l'envoie par SSH dans un dossier temporaire du serveur, l'exécute avec le Python du serveur, lit le JSON renvoyé, puis efface le tout.
+#? Avec `-vvv`, la ligne `PUT` montre l'envoi du fichier et son dossier de destination, et la ligne `EXEC` montre l'interpréteur qui l'exécute.
+#? Le piège était de confondre les deux dossiers temporaires : `ansible-local-…` est sur le poste de contrôle, alors que la réponse attendue est celui du serveur, sous `/home/admin/.ansible/tmp`.
+#? La commande de Julien est tirée au sort : le nom du module (et donc du fichier) peut différer du vôtre.
 cd ~/infra
 cat ~/message-julien.txt
 # La commande de Julien, en mode très bavard
@@ -65,6 +83,9 @@ grep " PUT " /tmp/vvv.txt | grep -o "TO /home/admin/[^ ]*" | head -1 | sed 's|^T
 grep " EXEC " /tmp/vvv.txt | grep AnsiballZ | grep -o "/usr/bin/python3[.0-9]*" | head -1 >> reponses/module.txt
 cat reponses/module.txt
 #@ A2.2
+#? Les facts sont ce qu'Ansible collecte sur un serveur (module `setup`) ; l'option `filter` évite de parcourir des centaines de lignes.
+#? Un serveur peut déclarer ses propres facts dans `/etc/ansible/facts.d/<nom>.fact` : ici, le fichier `materiel.fact` apparaît sous `ansible_local.materiel`, section `contrat`, clé `numero_serie`.
+#? Les numéros de série sont tirés au sort à chaque préparation de l'étape : les vôtres diffèrent forcément de ceux d'un camarade.
 ansible web -m setup -a "filter=ansible_distribution_version"
 ansible web -m setup -a "filter=ansible_local"
 : > reponses/materiel.csv
@@ -75,11 +96,19 @@ for s in web1 web2; do
 done
 cat reponses/materiel.csv
 #@ A2.3
+#? Les modules `user` et `copy` décrivent un état voulu : relancées, ces commandes ne changent plus rien, contrairement à un `useradd` qui échouerait au second passage.
+#? `append=true` ajoute `www-data` aux groupes secondaires existants au lieu de remplacer toute la liste, et `-b` fait passer Ansible par sudo pour agir en root.
+#? Le piège était de se connecter aux serveurs pour taper `sudo useradd` : la vérification lit `/var/log/sudo.log` et distingue les commandes d'Ansible de celles tapées à la main.
+#? Cibler le groupe `web`, et non `all`, laisse db1 intact. L'UID demandé par Thomas est tiré au sort : le vôtre peut différer de celui de ce corrigé.
 cat ~/message-thomas.txt
 uid=$(grep -oE 'UID [0-9]+' ~/message-thomas.txt | cut -d' ' -f2)
 ansible web -b -m user -a "name=deploy uid=$uid groups=www-data append=true shell=/bin/bash"
 ansible web -b -m copy -a "dest=/etc/motd content='Serveur géré par Ansible - ne pas modifier à la main\n'"
 #@ A2.4
+#? Une empreinte qui change peut signaler une réinstallation… ou une attaque de l'homme du milieu : on ne fait confiance à la nouvelle qu'après l'avoir comparée à une source sûre, ici le message de Léa.
+#? `ssh-keygen -R db1` oublie l'ancienne empreinte, puis on enregistre la nouvelle ; comme le serveur est neuf, sa liste de clés autorisées est vide et il faut y réinstaller votre clé publique avec `ssh-copy-id`.
+#? Le piège était de désactiver la vérification des empreintes (`host_key_checking = False`, `StrictHostKeyChecking no`) : la connexion passe, mais vous accepteriez n'importe quel serveur, y compris celui d'un attaquant.
+#? L'empreinte officielle dépend de la réinstallation de votre propre db1 : elle diffère d'un environnement à l'autre.
 cat ~/message-lea.txt
 # 1. Comparer l'empreinte présentée par db1 à l'empreinte officielle
 officielle=$(grep -oE 'SHA256:[^ ]+' ~/message-lea.txt)
@@ -91,6 +120,10 @@ ssh-keyscan db1 >> ~/.ssh/known_hosts 2>/dev/null
 sshpass -p cimes ssh-copy-id -i ~/.ssh/id_ed25519.pub admin@db1
 ssh -o BatchMode=yes admin@db1 hostname
 #@ A2.5
+#? Le module `find` cherche sur tous les serveurs à la fois ; `-b` est indispensable, car certains dossiers ne sont lisibles que par root et seraient sinon ignorés.
+#? Le motif `clients-*.csv` porte sur le nom complet du fichier : il écarte les leurres comme `clients.csv.gpg`, `clients-….csv.bak` ou `fournisseurs-….csv`.
+#? Le piège était un motif trop large, ou une suppression lancée sur `all` : on supprime avec `file state=absent` sur le seul serveur concerné, après avoir regardé ce que `find` a trouvé.
+#? Le serveur, le dossier et le code du fichier sont tirés au sort : votre export n'était sans doute pas au même endroit.
 # Chercher partout (-b : certains dossiers ne sont lisibles que par root), puis supprimer sur le seul serveur concerné
 ansible all -b -m find -a "paths=/srv,/home,/var/backups patterns='clients-*.csv' recurse=yes"
 for s in web1 web2 db1; do
@@ -104,6 +137,9 @@ cat reponses/rgpd.txt
 ''',
     3: r'''
 #@ A3.1
+#? Un playbook décrit un état : « nginx présent, démarré, activé au démarrage ». Les modules `apt` et `service` ne font que ce qui manque, d'où `changed=0` au second passage.
+#? `hosts: web` limite le play aux serveurs web, db1 n'est donc jamais touché ; `become: true` est nécessaire pour installer un paquet.
+#? Le piège classique sur un serveur neuf est l'erreur « No package matching » : le cache APT est vide, d'où `update_cache: true`, et `cache_valid_time: 3600` évite de le rafraîchir à chaque passage.
 cd ~/infra
 cat > web.yml <<'EOF'
 - name: Serveurs web de la boutique
@@ -125,6 +161,9 @@ cat > web.yml <<'EOF'
 EOF
 ansible-playbook web.yml
 #@ A3.2
+#? Le module `copy` compare l'empreinte du fichier local à celle du fichier distant : il ne copie (et ne répond `changed`) que si le contenu diffère.
+#? Un `src:` relatif est cherché à côté du playbook : `fichiers/index.html` désigne donc `~/infra/fichiers/index.html`.
+#? Écrivez toujours les droits entre guillemets avec le zéro initial (`"0644"`) : sans guillemets, YAML lit un entier décimal et les droits obtenus sont absurdes.
 cat >> web.yml <<'EOF'
 
     - name: Page d'accueil de la boutique
@@ -135,6 +174,10 @@ cat >> web.yml <<'EOF'
 EOF
 ansible-playbook web.yml
 #@ A3.3
+#? Chaque commande de Julien est remplacée par le module qui décrit l'état voulu : `file` pour le dossier, `lineinfile` pour la ligne d'annonce, `apt` pour l'outil tree.
+#? `lineinfile` n'ajoute la ligne que si elle est absente, alors qu'un `echo … >>` l'ajoute à chaque passage : c'est ce qui dupliquait l'annonce.
+#? Le piège était de garder des tâches `command` ou `shell` : Ansible ne sait pas ce qu'elles modifient et répond toujours `changed`, si bien que le second passage n'est jamais à `changed=0`.
+#? La date de l'annonce est tirée au sort : la vôtre peut différer de celle de ce corrigé.
 # Chaque commande de Julien devient la description de l'état qu'elle cherchait à obtenir
 jour=$(sed -n 's/.*echo "Maintenance prévue le \(.*\)" >>.*/\1/p' fichiers/julien-taches.yml)
 cat >> web.yml <<EOF
@@ -164,6 +207,10 @@ EOF
 ansible-playbook web.yml
 ansible-playbook web.yml     # second passage : changed=0
 #@ A3.4
+#? Les défauts se corrigent un par un, en relisant les erreurs : tabulation interdite en YAML, `{{ }}` en début de valeur sans guillemets, valeur de `state` inconnue du module `apt`, nom de module erroné, `become` absent.
+#? `mode: 750` sans guillemets est l'entier décimal 750, soit 1356 en octal : les droits doivent s'écrire `"0750"`.
+#? Le défaut le plus sournois est `hosts: tous` : aucun groupe ne porte ce nom, Ansible affiche « no hosts matched » et termine sans erreur… sans rien avoir fait. Lisez toujours le récapitulatif.
+#? Le nom du dossier de travail de Marc est tiré au sort : le vôtre peut différer.
 ansible-playbook marc/outils.yml --syntax-check || true
 # Défauts possibles : tabulation, {{ }} sans guillemets, state: installed, module « fille », become absent,
 # mode: 750 (décimal !), et surtout hosts: tous, qui ne correspond à aucun groupe (« no hosts matched »)
@@ -196,6 +243,10 @@ ansible-playbook marc/outils.yml     # changed=0
 ''',
     4: r'''
 #@ A4.1
+#? Les fichiers de `group_vars/` placés à côté de l'inventaire sont chargés automatiquement : `group_vars/web.yml` définit des variables pour le groupe `web`, et pour lui seul.
+#? Le module `template` génère le fichier avec Jinja2 sur le poste de contrôle : `{{ inventory_hostname }}` donne une page différente sur chaque serveur, à partir d'un seul modèle.
+#? Les pièges étaient d'écrire le slogan en dur dans le modèle, ou de définir les variables dans `group_vars/all.yml`, ce qui les aurait aussi données à db1.
+#? Le slogan est tiré au sort : le vôtre peut différer de celui de ce corrigé.
 cd ~/infra
 mkdir -p group_vars templates
 slogan=$(tail -1 ~/demandes/slogan.txt)
@@ -219,15 +270,26 @@ EOF
 sed -i 's|ansible.builtin.copy:|ansible.builtin.template:|; s|src: fichiers/index.html|src: templates/index.html.j2|' web.yml
 ansible-playbook web.yml
 #@ A4.2
+#? `host_vars/web2.yml` définit des variables pour le seul serveur web2 ; elles l'emportent sur celles du groupe (`group_vars/web.yml`), sans toucher ni au modèle ni au playbook.
+#? `ansible-inventory --host web2` affiche les variables fusionnées de web2 : on y voit `environnement: recette` avant même de lancer le playbook.
+#? Le piège était de modifier `group_vars/web.yml` ou d'ajouter un test dans le modèle : on décrit une exception au bon niveau, celui du serveur.
 mkdir -p host_vars
 echo "environnement: recette" > host_vars/web2.yml
 ansible-inventory --host web2
 ansible-playbook web.yml
 #@ A4.3
+#? L'adresse vient d'un fact (`ansible_facts['default_ipv4']['address']`) collecté au début du jeu : si le réseau change, la page suit toute seule.
+#? `groups['web']` donne la liste des serveurs du groupe dans l'ordre de l'inventaire, et `hostvars[h]` permet de lire les variables d'un autre serveur que celui en cours.
+#? `loop.last` évite la virgule après le dernier serveur : un web3 ajouté plus tard apparaîtra sans aucune modification du modèle.
+#? La forme `{{ ansible_default_ipv4.address }}` est aussi acceptée : ansible-core 2.18 injecte encore les facts comme variables `ansible_*` par défaut.
 # L'adresse vient des facts du serveur ; la ferme, des variables magiques groups et hostvars
 sed -i "s|  <p>Environnement : {{ environnement }}</p>|&\n  <p>Adresse : {{ ansible_facts['default_ipv4']['address'] }}</p>\n  <p>Ferme : {% for h in groups['web'] %}{{ h }} ({{ hostvars[h]['environnement'] }}){% if not loop.last %}, {% endif %}{% endfor %}</p>|" templates/index.html.j2
 ansible-playbook web.yml
 #@ A4.4
+#? Quand une variable est définie à plusieurs endroits, la plus spécifique l'emporte : `host_vars` passe avant tout ce qui concerne les groupes, et un groupe enfant (`web`) passe avant son parent (`production`), qui passe avant `all`.
+#? Plutôt que de raisonner de tête, ce corrigé fait parler Ansible : on modifie la valeur dans un seul fichier à la fois et `ansible-inventory --host` montre quels serveurs la reprennent.
+#? Le piège était de répondre « le dernier fichier lu » ou « celui qui est le plus bas dans l'arborescence » : seule la priorité d'Ansible compte.
+#? Les fichiers présents dans la copie de Julien sont tirés au sort : vos trois réponses peuvent différer de celles d'un camarade.
 # Toutes les valeurs sont identiques : on en change une à la fois, et on regarde quels serveurs suivent
 cd ~/infra/exercices/precedence
 declare -A source
@@ -245,6 +307,10 @@ cd ~/infra
 ''',
     5: r'''
 #@ A5.1
+#? Un handler est une tâche qui ne s'exécute que si une tâche l'a notifiée (`notify`) et que cette tâche a répondu `changed` ; il est lancé à la fin du play, une seule fois même s'il a été notifié plusieurs fois.
+#? nginx n'est donc rechargé que lorsque sa configuration change réellement ; `state: reloaded` relit la configuration sans couper les connexions en cours, contrairement à `restarted`.
+#? Le modèle remplace le site par défaut de Debian (`sites-available/default`) : c'est ce qui fait disparaître l'écoute sur le port 80.
+#? Le piège était une tâche qui recharge nginx à chaque passage : le playbook ne serait jamais à `changed=0`.
 cd ~/infra
 echo "http_port: 8080" >> group_vars/web.yml
 cat > templates/site.conf.j2 <<'EOF'
@@ -316,6 +382,9 @@ cat > web.yml <<EOF
 EOF
 ansible-playbook web.yml
 #@ A5.2
+#? Les handlers attendent normalement la fin du play : sans `meta: flush_handlers`, le test s'exécuterait alors que nginx écoute encore sur l'ancien port.
+#? Le module `uri` échoue si le code HTTP n'est pas 200 (valeur par défaut de `status_code`) : une page illisible (403) fait donc échouer le jeu, comme demandé.
+#? `-e http_port=8089` a la priorité la plus forte : le modèle change, le handler recharge nginx, le test vise 8089. Relancé normalement, tout revient sur 8080, puis un troisième passage ne recharge plus rien.
 # Les handlers en attente sont exécutés AVANT le test : sinon nginx n'écoute pas encore sur le nouveau port
 cat > /tmp/fumee.yml <<'EOF'
     - name: Recharger nginx maintenant si la configuration a changé
@@ -331,6 +400,9 @@ ansible-playbook web.yml -e http_port=8089
 ansible-playbook web.yml
 ansible-playbook web.yml     # changed=0, handler non exécuté
 #@ A5.3
+#? `validate` teste le fichier candidat avant de le mettre en place : `%s` est remplacé par le chemin d'une copie temporaire, et si la commande échoue, la configuration en place n'est pas touchée.
+#? `nginx -t` ne sait tester qu'une configuration complète : un bloc `server` isolé, hors de tout bloc `http`, serait refusé même s'il est correct. D'où le petit script, déployé par Ansible avant la configuration, qui l'enveloppe dans une configuration minimale.
+#? Le piège était de compter sur le refus de nginx au rechargement : la configuration cassée serait tout de même sur le disque, prête à faire tomber le site au prochain redémarrage.
 # Un petit script teste un fichier de site dans une configuration nginx minimale mais complète
 cat > /tmp/testeur.yml <<'EOF'
     - name: Script de test des configurations de site nginx
@@ -349,12 +421,18 @@ sed -i 's|^        dest: /etc/nginx/sites-available/default$|&\n        validate
 ansible-playbook web.yml
 ansible-playbook web.yml -e http_port=abc || echo "Refusé, comme prévu : la configuration en place n'a pas bougé"
 #@ A5.4
+#? Par défaut, quand une tâche échoue sur un serveur, celui-ci est retiré du jeu, et les handlers qu'il avait en attente ne sont jamais exécutés : la configuration est modifiée, mais nginx n'est pas rechargé.
+#? `force_handlers: true` au niveau du play exécute quand même les handlers notifiés ; `force_handlers = True` dans la section `[defaults]` d'`ansible.cfg` est une variante également acceptée.
+#? L'option `--force-handlers` de la ligne de commande a le même effet, mais elle dépend de la mémoire de la personne qui lance le playbook : l'écrire dans le code est plus sûr.
 # Même si une tâche échoue ensuite, les handlers notifiés sont exécutés
 sed -i 's/^  become: true$/&\n  force_handlers: true/' web.yml
 ansible-playbook web.yml
 ''',
     6: r'''
 #@ A6.1
+#? `loop` répète une seule tâche pour chaque élément de la liste, disponible dans `{{ item }}` : ajouter une personne revient à ajouter une ligne dans `group_vars/web.yml`, sans toucher au playbook.
+#? `append: true` ajoute `www-data` aux groupes existants de chaque compte au lieu de remplacer la liste.
+#? Le piège était de copier-coller une tâche par personne. Les prénoms de l'équipe sont tirés au sort : les vôtres diffèrent de ceux d'un camarade.
 cd ~/infra
 { echo "equipe_web:"; grep -E '^[a-z]+$' ~/demandes/equipe.txt | sed 's/^/  - /'; } >> group_vars/web.yml
 cat > /tmp/comptes.yml <<'EOF'
@@ -371,6 +449,9 @@ EOF
 sed -i '/^    - name: Recharger nginx maintenant/e cat /tmp/comptes.yml' web.yml
 ansible-playbook web.yml
 #@ A6.2
+#? `when:` s'évalue pour chaque serveur : la tâche est exécutée sur web2 (recette) et marquée `skipping` sur web1 ; l'expression s'écrit sans `{{ }}`.
+#? Dans le modèle, `{% if … %}…{% endif %}` joue le même rôle : le bandeau n'est écrit que sur les pages des serveurs de recette.
+#? Le piège était de viser web2 par son nom : la condition porte sur la variable `environnement`, donc un futur serveur de recette recevra lui aussi le bandeau et htop.
 cat > /tmp/htop.yml <<'EOF'
     - name: Outils de diagnostic, en recette seulement
       ansible.builtin.apt:
@@ -384,6 +465,10 @@ sed -i '/^    - name: Recharger nginx maintenant/e cat /tmp/htop.yml' web.yml
 sed -i 's|<body>|<body>\n{% if environnement == "recette" %}\n  <div class="bandeau">RECETTE - site de test</div>\n{% endif %}|' templates/index.html.j2
 ansible-playbook web.yml
 #@ A6.3
+#? Une seule liste de fiches alimente deux tâches : `selectattr('actif')` garde les actifs pour créer leurs comptes, `rejectattr('actif')` garde les anciens pour les supprimer.
+#? `state: absent` avec `remove: true` supprime le compte et son dossier personnel ; sans `remove`, les fichiers des anciens resteraient sur le disque.
+#? Le piège était d'écrire `actif: "false"` entre guillemets : c'est une chaîne non vide, donc considérée comme vraie, et l'ancien garderait son compte. Les booléens s'écrivent `true` et `false`, sans guillemets.
+#? La composition de l'équipe est tirée au sort : vos noms diffèrent de ceux d'un camarade.
 # Une seule liste de fiches, tirée de equipe.csv, remplace equipe_web
 grep -E '^(environnement|slogan|http_port):' group_vars/web.yml > /tmp/web-vars.yml
 {
@@ -419,6 +504,10 @@ sed -i '/^    - name: Outils de diagnostic, en recette seulement/e cat /tmp/comp
 ansible-playbook web.yml
 ansible-playbook web.yml     # changed=0
 #@ A6.4
+#? `maintenance: "false"` entre guillemets est une chaîne non vide, donc vraie pour `when` : la page apparaissait partout. `type_debug` le révèle en affichant `str`.
+#? Le filtre `| bool` convertit les chaînes `"true"`, `"false"`, `"yes"`, `"no"`… en vrais booléens ; c'est indispensable ici, car `-e maintenance=false` passe toujours une chaîne.
+#? Retirer les guillemets dans les fichiers de Julien ne suffisait donc pas : seul `| bool` fonctionne aussi avec `-e`. Une valeur JSON (`-e '{"maintenance": false}'`) donnerait un vrai booléen, mais on ne peut pas compter sur tous les utilisateurs pour y penser.
+#? Le serveur mis en maintenance par Julien est tiré au sort : ce peut être web1 ou web2 chez vous.
 # « false » entre guillemets est une chaîne non vide, donc vraie ; -e passe toujours des chaînes : | bool
 ansible web -m debug -a "msg={{ maintenance | type_debug }} {{ maintenance }}" --playbook-dir julien
 sed -i 's/^      when: maintenance$/      when: maintenance | bool/; s/^      when: not maintenance$/      when: not (maintenance | bool)/' julien/maintenance.yml
@@ -428,6 +517,10 @@ ansible-playbook julien/maintenance.yml
 ''',
     7: r'''
 #@ A7.1
+#? `--check --diff` compare les serveurs à ce que décrit le code, sans rien modifier : les serveurs qui ont une tâche `changed` sont ceux qui ont dérivé.
+#? Le mode vérification ne voit pas ce que le code ne décrit pas : la page de promotion ajoutée à la main se cherche avec un module (`find` avec `contains`, ou `grep` via `command`).
+#? Le piège était de corriger en SSH avec sudo : on ajouterait une dérive de plus. On supprime avec `file state=absent`, puis on rejoue le playbook pour revenir à l'état décrit.
+#? Les serveurs modifiés et le chemin de la page ajoutée sont tirés au sort : vos réponses peuvent différer de celles d'un camarade.
 cd ~/infra
 # 1. Les écarts avec le code : le mode vérification les voit
 ansible-playbook web.yml --check --diff
@@ -446,6 +539,10 @@ cat reponses/fantome.txt
 # 3. Retour à l'état décrit
 ansible-playbook web.yml
 #@ A7.2
+#? Un rôle range tâches, handlers, modèles et valeurs par défaut dans une arborescence standard : dans un rôle, `src: index.html.j2` est cherché dans `roles/web/templates/`.
+#? `defaults/main.yml` a la priorité la plus faible de toutes : ces valeurs servent si rien d'autre ne les définit, et `group_vars` ou `host_vars` les surchargent.
+#? Le piège était de mettre ces valeurs dans `vars/main.yml`, dont la priorité dépasse celle de `host_vars` : web2 ne serait plus en recette (c'est exactement l'incident du jour 8).
+#? `site.yml` ne contient plus que la cible, `become` et la liste des rôles : c'est le point d'entrée de toute l'infrastructure.
 ansible-galaxy init --init-path roles web
 mv templates/*.j2 roles/web/templates/
 jour=$(sed -n 's/.*line: "Maintenance prévue le \(.*\)"/\1/p' web.yml)
@@ -560,6 +657,9 @@ EOF
 ansible-playbook site.yml
 ansible-playbook site.yml    # changed=0
 #@ A7.3
+#? `--check` ne signale que les écarts avec ce que décrit le code ; un compte que le code ne mentionne pas lui est invisible.
+#? La solution est de décrire l'absence : `user` avec `state: absent` et `remove: true` pour le compte et son dossier, `file` avec `state: absent` pour `/etc/sudoers.d/marc`.
+#? Supprimer le compte à la main ne suffisait pas : s'il est recréé, seul le code le fera disparaître au passage suivant, tout en restant à `changed=0` quand il n'y a rien à faire.
 # Ce que le code ne décrit pas n'existe pas pour --check : on décrit l'absence
 cat >> roles/web/tasks/main.yml <<'EOF'
 
@@ -579,6 +679,10 @@ ansible-playbook site.yml    # changed=0
 ''',
     8: r'''
 #@ A8.1
+#? Le mot de passe est rangé dans `group_vars/bdd/vault.yml`, chiffré par `ansible-vault` : tous les fichiers du dossier `group_vars/bdd/` sont chargés pour le groupe, et le coffre n'est déchiffré qu'en mémoire pendant le jeu.
+#? La clé du coffre est dans `~/.vault_pass`, hors du projet, désignée par `vault_password_file` dans `ansible.cfg` : le dépôt peut être partagé sans révéler ni le mot de passe, ni la clé.
+#? `lineinfile` avec `regexp` remplace la ligne existante, y compris la ligne `requirepass` commentée d'origine ; `no_log: true` évite d'afficher le mot de passe dans la sortie, et le handler redémarre Redis pour qu'il prenne en compte ces réglages.
+#? Le piège était de laisser le mot de passe en clair dans le rôle, ou la clé du coffre dans `~/infra`. Le mot de passe de Sophie est tiré au sort : le vôtre diffère de celui d'un camarade.
 cd ~/infra
 ansible-galaxy init --init-path roles redis
 cat > roles/redis/tasks/main.yml <<'EOF'
@@ -633,16 +737,25 @@ cat >> site.yml <<'EOF'
 EOF
 ansible-playbook site.yml --limit bdd
 #@ A8.2
+#? Un nouveau serveur se prépare comme au premier jour (empreinte, clé), puis une ligne dans l'inventaire suffit : les rôles et `group_vars/web.yml` s'appliquent automatiquement.
+#? `--limit web3` (ou `-l web3`) restreint le jeu à ce seul serveur : web1 et web2 ne sont ni contactés ni modifiés.
+#? Le piège était de relancer `site.yml` sur tout le parc : le résultat aurait été le même, mais la vérification lit le journal de sudo de web1 et web2 et y aurait vu le passage d'Ansible.
 ssh-keyscan web3 >> ~/.ssh/known_hosts
 sshpass -p cimes ssh-copy-id -i ~/.ssh/id_ed25519.pub admin@web3
 sed -i 's/^web2$/web2\nweb3/' inventaire.ini
 # Seul web3 est configuré : web1 et web2 ne sont pas touchés
 ansible-playbook site.yml --limit web3
 #@ A8.3
+#? Si tout est décrit dans les rôles, reconstruire un serveur neuf ne demande qu'une commande, et un second passage le confirme par `changed=0` sur les quatre serveurs.
+#? Le piège était ce qui avait été fait à la main ou en commande ad hoc : sur un serveur réinstallé, cela disparaît, et seul le code survit.
+#? En cas d'échec, lisez le récapitulatif, puis relancez avec `-v` pour voir le détail de la première tâche en erreur.
 # Tout est décrit dans les rôles : un serveur neuf est reconstruit par un seul passage
 ansible-playbook site.yml
 ansible-playbook site.yml    # changed=0 sur les quatre serveurs
 #@ A8.4
+#? Les variables de `roles/<rôle>/vars/main.yml` ont une priorité plus forte que `host_vars` : elles écrasaient `environnement: recette` de web2.
+#? `ansible-inventory --host web2` ne montre que les variables de l'inventaire, pas celles des rôles : c'est pour cela qu'il affichait « recette » alors que le jeu utilisait « production ».
+#? La correction vide `vars/main.yml` ; supprimer ce fichier serait tout aussi valable. Les valeurs par défaut du rôle vont dans `defaults/main.yml`, la priorité la plus faible, que tout le reste peut surcharger.
 # vars/main.yml l'emporte sur host_vars : les valeurs par défaut du rôle vont dans defaults/main.yml
 # Diagnostic : ansible-inventory --host web2 dit « recette », mais pendant le jeu la valeur est « production »
 ansible-inventory --host web2 | grep environnement
@@ -653,6 +766,10 @@ ansible-playbook site.yml
 ''',
     9: r'''
 #@ A9.1
+#? Une lecture ne modifie rien : `register` capture la sortie de la commande et `changed_when: false` rend la tâche honnête dans le récapitulatif.
+#? `nginx -v` écrit sa version sur la sortie d'erreur, d'où `stderr`, alors que `redis-server --version` l'écrit sur `stdout`.
+#? Le rapport est écrit une seule fois (`run_once: true`) sur le poste de contrôle (`delegate_to: localhost`, sans sudo), à partir de `hostvars` ; comme son contenu est identique d'un passage à l'autre, `copy` répond `ok` au second passage.
+#? Les numéros de version dépendent des paquets installés dans votre environnement : ceux de votre rapport peuvent différer d'un exemple à l'autre.
 cd ~/infra
 cat > rapport.yml <<'EOF'
 - name: Versions des logiciels exposés
@@ -693,6 +810,10 @@ ansible-playbook rapport.yml
 cat reponses/versions.txt
 ansible-playbook rapport.yml     # changed=0
 #@ A9.2
+#? `changed_when` et `failed_when` remplacent le jugement par défaut d'Ansible (toujours `changed` pour `command`, échec si le code de retour n'est pas 0) par une règle adaptée au script.
+#? `failed_when` combine deux conditions : le texte `ERREUR` dans la sortie (le script renvoie 0 même en cas d'échec) et un code de retour autre que 0 ou 3, le code 3 signalant seulement une purge déjà en cours.
+#? Le piège était `ignore_errors: true` : le code 3 passerait, mais une vraie erreur serait masquée elle aussi.
+#? Variante valable : `changed_when: purge.stdout is search('SUPPRIMES=[1-9]')`, qui teste directement qu'au moins un fichier a été supprimé.
 cat > purge.yml <<'EOF'
 - name: Purge du cache des pages
   hosts: web
@@ -708,6 +829,9 @@ EOF
 ansible-playbook purge.yml
 ansible-playbook purge.yml     # caches vides : changed=0
 #@ A9.3
+#? Les `pre_tasks` s'exécutent avant les rôles : si `assert` échoue, le jeu s'arrête avant d'avoir touché à la configuration de nginx ou à la page.
+#? `http_port | int` est nécessaire, car une valeur passée par `-e` est une chaîne : on compare alors des nombres, et non du texte.
+#? Le piège était de placer la vérification après des tâches qui modifient les serveurs : le refus arriverait trop tard. Une tâche `assert` placée en toute première position du rôle aurait aussi fonctionné.
 cat > site.yml <<'EOF'
 - name: Serveurs web
   hosts: web
@@ -734,6 +858,10 @@ EOF
 ansible-playbook site.yml -e http_port=80 || echo "Refusé, comme prévu"
 ansible-playbook site.yml
 #@ A9.4
+#? `block` regroupe les étapes de la livraison, `rescue` s'exécute seulement si l'une d'elles échoue, et `always` s'exécute dans tous les cas, ce qui garantit une ligne de journal par tentative.
+#? La tâche `stat` lancée avant le bloc mémorise la cible actuelle du lien (`lnk_source`) : c'est elle que `rescue` remet en place pour revenir à la version précédente.
+#? Le piège était d'oublier `fail` à la fin de `rescue` : un `rescue` réussi fait considérer le serveur comme rattrapé, et le jeu afficherait un succès alors que la livraison a échoué.
+#? Les numéros de version sont tirés au sort dans `~/demandes/livraisons.txt` : les vôtres diffèrent de ceux d'un camarade.
 cat ~/demandes/livraisons.txt
 cat > livraison.yml <<'EOF'
 - name: Livraison du site vitrine
@@ -803,6 +931,10 @@ ansible-playbook livraison.yml -e version=$vc || echo "Échec rattrapé : retour
 ''',
     10: r'''
 #@ A10.1
+#? Face à un incident, on constate d'abord sans rien toucher (SSH, HTTP, Redis, groupe sudo), on rétablit l'accès en vérifiant les empreintes comme au jour 2, puis on laisse le code remettre l'infrastructure en ordre.
+#? Ce que le code ne décrivait pas (droits du dossier du site, compte stagiaire) doit y entrer : `file` avec `mode` pour le dossier, `user` avec `state: absent` dans un rôle appliqué à tous les serveurs.
+#? Le piège était de réparer à la main avec `chmod` ou `userdel` : la vérification recrée ces écarts avant de rejouer `site.yml`, et seul le code les corrige de façon durable.
+#? Les serveurs touchés et les pannes sont tirés au sort : votre `incident.txt` peut citer d'autres serveurs que celui d'un camarade.
 cd ~/infra
 : > reponses/incident.txt
 # 1. Constater, sans rien toucher. Qui répond encore à SSH ?
@@ -881,6 +1013,9 @@ EOF
 ansible-playbook site.yml
 ansible-playbook site.yml    # changed=0
 #@ A10.2
+#? `serial: 1` traite les serveurs un par un, dans l'ordre de l'inventaire : si tous les serveurs d'un lot échouent, Ansible arrête le jeu et les serveurs suivants gardent l'ancienne version.
+#? `max_fail_percentage: 0` arrête tout dès le premier échec, même avec des lots de plusieurs serveurs : avec `serial: 1`, c'est une sécurité supplémentaire, et `serial: 1` seul suffit déjà.
+#? Le module `copy` avec `content` écrit la version seule sur sa ligne, et ne répond `changed` que si elle change.
 cat > deploiement.yml <<'EOF'
 - name: Déploiement progressif de l'application
   hosts: web
@@ -897,6 +1032,9 @@ cat > deploiement.yml <<'EOF'
 EOF
 ansible-playbook deploiement.yml -e version=2025.1
 #@ A10.3
+#? Une étiquette posée sur une tâche permet de n'exécuter qu'elle avec `--tags page` ; posée sur le rôle dans `site.yml`, elle serait héritée par toutes ses tâches, y compris la configuration de nginx.
+#? `--list-tags` et `--list-tasks --tags page` montrent ce qui serait exécuté, sans rien lancer : le bon réflexe avant de s'en servir.
+#? Un `site.yml` complet, sans `--tags`, remet ensuite en ordre tout ce que la page seule n'a pas touché.
 # L'étiquette sur la seule tâche de la page (pas sur le rôle : elle s'étendrait à toutes ses tâches)
 sed -i "/^- name: Page d'accueil de la boutique$/,/^    mode:/ s/^    mode: \"0644\"$/&\n  tags: [page]/" roles/web/tasks/main.yml
 ansible-playbook site.yml --list-tags

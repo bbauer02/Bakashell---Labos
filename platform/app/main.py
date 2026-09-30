@@ -1048,18 +1048,26 @@ async def api_memo(request: Request, course_key: str):
 
 @app.get("/api/solution/{exercise_id}")
 async def api_solution(request: Request, exercise_id: str):
-    """Correction d'un exercice : réservée aux comptes admin."""
+    """Correction d'un exercice : pour les comptes admin, et pour l'étudiant qui a réussi l'exercice
+    (correction commentée, sans le détail des vérifications)."""
     user = get_current_user(request)
-    if not user or not user.get("is_admin"):
-        return JSONResponse({"error": "Réservé aux enseignants"}, status_code=403)
-    _, _, _, ex = get_exercise(exercise_id)
+    if not user:
+        return unauthorized()
+    key, _, _, ex = get_exercise(exercise_id)
     sol = solutions.for_exercise(exercise_id)
     if not ex or not sol:
         return not_found()
+    if not user.get("is_admin"):
+        course = course_for(user, key)
+        if not course or exercise_id not in db.get_user_score(user["user_id"], course["id_glob"])["completed"]:
+            return JSONResponse({"error": "Correction disponible une fois l'exercice réussi"}, status_code=403)
+        return {"exercise": exercise_id, "preamble": sol["preamble"], "code": sol["code"],
+                "explanation": sol["explanation"], "manual": bool(ex.get("manual"))}
     return {
         "exercise": exercise_id,
         "preamble": sol["preamble"],
         "code": sol["code"],
+        "explanation": sol["explanation"],
         "checks": [message for _cmd, message in ex["checks"]],
         "hints": ex.get("hints", []),
         "manual": bool(ex.get("manual")),

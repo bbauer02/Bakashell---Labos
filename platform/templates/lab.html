@@ -618,6 +618,9 @@
         .solution-title { font-size: 11px; font-weight: 600; color: var(--warning, #fdcb6e); text-transform: uppercase; letter-spacing: .4px; margin: 4px 0 6px; }
         .solution-code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 11.5px; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-word; overflow-x: auto; background: #0a0c10; border-radius: 6px; padding: 8px 10px; margin: 0 0 6px; max-height: 420px; }
         .btn-copy { background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; margin-bottom: 8px; }
+        .solution-explanation { font-size: 12.5px; line-height: 1.55; color: var(--text); margin-bottom: 10px; }
+        .solution-explanation p { margin: 0 0 6px; }
+        .solution-explanation code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 11.5px; background: #0a0c10; border-radius: 4px; padding: 1px 5px; }
         .solution-checks { padding-left: 18px; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
 
         /* ─── Resize Handle ────────────────────────── */
@@ -1075,7 +1078,7 @@
                     <div class="ticket-body">${ex.ticket.body}</div>
                     <div class="exercise-desc"><span class="deliverable-label">À livrer :</span> ${ex.desc}</div>` : `
                     <div class="exercise-desc">${ex.desc}</div>`}
-                    ${IS_ADMIN ? `<div class="solution-zone"><button class="btn-solution" onclick="toggleSolution('${ex.id}', this)">Voir la correction</button><div class="solution" id="solution-${ex.id}"></div></div>` : ''}
+                    ${IS_ADMIN || ex.completed ? solutionZone(ex.id) : ''}
                     <div class="hint-zone" id="hints-${ex.id}" data-ticket="${ex.ticket ? 1 : ''}">${renderHints(ex.id, ex.hints, ex.hints_total, ex.completed, !!ex.ticket)}</div>
                     <div class="exercise-result">${ex.completed ? '<div class="exercise-status pass">&#10003; Validé</div>' : ''}</div>
                     ${ex.completed ? '' : `<button class="btn-check" onclick="validateExercise('${ex.id}', this)">▶ Vérifier cet exercice</button>`}
@@ -1220,11 +1223,17 @@
         }
 
         // ─── Correction (comptes admin) ───────────────
+        const SOLUTION_LABEL = IS_ADMIN ? 'Voir la correction' : 'Voir la correction commentée';
+
+        function solutionZone(id) {
+            return `<div class="solution-zone"><button class="btn-solution" onclick="toggleSolution('${id}', this)">${SOLUTION_LABEL}</button><div class="solution" id="solution-${id}"></div></div>`;
+        }
+
         async function toggleSolution(id, btn) {
             const box = document.getElementById(`solution-${id}`);
             if (box.classList.contains('open')) {
                 box.classList.remove('open');
-                btn.textContent = 'Voir la correction';
+                btn.textContent = SOLUTION_LABEL;
                 return;
             }
             if (!box.dataset.loaded) {
@@ -1235,12 +1244,17 @@
 ${s.preamble}
 
 ` : '') + s.code;
-                    box.innerHTML = `
-                        <div class="solution-title">Commandes attendues${s.manual ? ' <span class="badge-manual">vérification sur clic</span>' : ''}</div>
+                    // Explication : texte simple, `code` entre accents graves
+                    const note = (t) => esc(t).replace(/`([^`]+)`/g, '<code>$1</code>');
+                    const explanation = (s.explanation || []).length ? `
+                        <div class="solution-title">Pourquoi ça marche</div>
+                        <div class="solution-explanation">${s.explanation.map((l) => `<p>${note(l)}</p>`).join('')}</div>` : '';
+                    box.innerHTML = explanation + `
+                        <div class="solution-title">${IS_ADMIN ? 'Commandes attendues' : 'Une solution de référence'}${s.manual ? ' <span class="badge-manual">vérification sur clic</span>' : ''}</div>
                         <pre class="solution-code">${esc(code)}</pre>
-                        <button class="btn-copy" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent); showToast('Correction copiée', 'info')">Copier</button>
-                        <div class="solution-title">Ce qui est vérifié (message affiché à l'étudiant en cas d'échec)</div>
-                        <ol class="solution-checks">${s.checks.map((c) => `<li>${c}</li>`).join('')}</ol>`;
+                        ${IS_ADMIN ? `<button class="btn-copy" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent); showToast('Correction copiée', 'info')">Copier</button>` : ''}
+                        ${s.checks ? `<div class="solution-title">Ce qui est vérifié (message affiché à l'étudiant en cas d'échec)</div>
+                        <ol class="solution-checks">${s.checks.map((c) => `<li>${c}</li>`).join('')}</ol>` : ''}`;
                     box.dataset.loaded = '1';
                 } catch (e) {
                     showToast(`Correction indisponible : ${e.message}`, 'error');
@@ -1306,6 +1320,8 @@ ${s.preamble}
                 card.className = 'exercise-card passed';
                 card.querySelector('.btn-check')?.remove();
                 zone.innerHTML = `<div class="exercise-status pass">&#10003; ${r.already ? 'Validé' : 'Validé ! +' + r.earned + ' pts'}</div>`;
+                // Exercice réussi : la correction commentée devient accessible
+                if (!card.querySelector('.solution-zone')) zone.insertAdjacentHTML('beforebegin', solutionZone(r.id));
                 const pts = card.querySelector('.exercise-points');
                 if (pts && r.earned) pts.textContent = `${r.earned}/${r.points} pts`;
             } else if (r.skipped) {

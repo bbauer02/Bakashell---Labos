@@ -1,10 +1,12 @@
 """SQLite : comptes, sessions, progression, indices et données de mise en place."""
+import datetime
 import hashlib
 import hmac
 import json
 import os
 import secrets
 import sqlite3
+import statistics
 
 DB_PATH = os.environ.get("DB_PATH", "/data/platform.db")
 SESSION_HOURS = int(os.environ.get("SESSION_HOURS", "24"))
@@ -761,13 +763,33 @@ def exercise_stats(course: dict, user_ids=None) -> dict:
     for r in hints:
         if r["user_id"] in students:
             entry(r["exercise_id"])["hints"] += r["count"]
+    minutes = _minutes_per_exercise(glob, students)
     result = {}
     for ex_id, e in stats.items():
         top = max(e["messages"].items(), key=lambda kv: kv[1]) if e["messages"] else None
         result[ex_id] = {"tried": len(e["tried"]), "passed": len(e["passed"]), "fails": e["fails"],
                          "hints": e["hints"], "top_message": top[0] if top else None,
-                         "top_count": top[1] if top else 0}
+                         "top_count": top[1] if top else 0, "minutes": minutes.get(ex_id)}
     return {"students": len(students), "exercises": result}
+
+
+def _minutes_per_exercise(glob: str, students: set) -> dict:
+    """Temps médian (minutes) passé sur chaque exercice : écart entre deux réussites successives d'un même
+    étudiant, dans la même séance (écarts de plus d'une heure ignorés : pause, autre jour)."""
+    db = get_db()
+    rows = db.execute("SELECT user_id, exercise_id, completed_at FROM progress WHERE exercise_id GLOB ? "
+                      "ORDER BY user_id, completed_at", (glob,)).fetchall()
+    db.close()
+    gaps, previous = {}, {}
+    for r in rows:
+        if r["user_id"] not in students:
+            continue
+        at = datetime.datetime.fromisoformat(str(r["completed_at"]))
+        before = previous.get(r["user_id"])
+        if before is not None and 0 <= (at - before).total_seconds() <= 3600:
+            gaps.setdefault(r["exercise_id"], []).append((at - before).total_seconds() / 60)
+        previous[r["user_id"]] = at
+    return {ex: round(statistics.median(g), 1) for ex, g in gaps.items()}
 
 
 # ─── Export des notes ─────────────────────────────────────────────────

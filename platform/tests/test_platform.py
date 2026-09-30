@@ -324,3 +324,18 @@ def test_verification_groupee():
     # Délai global dépassé avant le dernier exercice : échec explicite, pas d'exception
     r = runner.parse_batch_output(exs, out.split(f"@@EX {exs[2]['id']}")[0])
     assert not r[exs[2]["id"]][0]
+
+
+def test_correction_commentee_apres_reussite(app_client, fake_docker):
+    student_in_class(app_client)
+    login(app_client, "ada@lab.test", "motdepasse1")
+    assert app_client.get(f"/api/solution/{FIRST}").status_code == 403  # pas avant la réussite
+    fake_docker.passing.add(FIRST)
+    assert app_client.post(f"/api/linux/validate/1?exercise={FIRST}").json()["validation"]["results"][0]["passed"]
+    s = app_client.get(f"/api/solution/{FIRST}").json()
+    assert s["code"] and "explanation" in s and "checks" not in s  # sans le détail des vérifications
+    assert not any(line.startswith("#? ") for line in s["code"].splitlines())
+    second = LINUX["steps"][1]["exercises"][1]["id"]
+    assert app_client.get(f"/api/solution/{second}").status_code == 403
+    admin_client(app_client)
+    assert "checks" in app_client.get(f"/api/solution/{second}").json()
