@@ -265,6 +265,33 @@ Accès Internet depuis les conteneurs : inutile, tous les parcours fonctionnent 
 Monaco sont installés dans l'image de la plateforme et servis par elle : en salle, les navigateurs n'ont pas besoin
 d'Internet.
 
+## HTTPS derrière un reverse proxy
+
+En production, la plateforme est servie en HTTPS par un reverse proxy (Caddy, qui obtient et renouvelle seul son
+certificat Let's Encrypt) ; le port 8080 n'écoute plus que sur l'hôte. Le proxy et la plateforme partagent le réseau
+Docker externe `web-proxy`, où le proxy a une adresse fixe :
+
+```bash
+docker network create --subnet 172.30.0.0/24 web-proxy     # une seule fois, sur le serveur
+```
+
+```text
+# Caddyfile (proxy en 172.30.0.10 sur web-proxy)
+mon-domaine.fr {
+	reverse_proxy linux-lab-platform:8080 {
+		flush_interval -1          # flux temps réel du tableau de bord ; la WebSocket du terminal passe telle quelle
+	}
+}
+```
+
+```bash
+# .env de la plateforme
+COOKIE_SECURE=1
+FORWARDED_ALLOW_IPS=172.30.0.10    # seul le proxy peut indiquer l'adresse réelle des étudiants
+PUBLIC_URL=https://mon-domaine.fr
+PLATFORM_BIND=127.0.0.1           # port 8080 fermé à l'extérieur
+```
+
 ## Mettre à jour une installation existante
 
 Les données (comptes, classes, progression) sont dans le volume Docker `<projet>_platform-data` ; le travail de chaque
