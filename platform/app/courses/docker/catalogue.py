@@ -67,22 +67,34 @@ compose() { docker compose -f "$1" "${@:2}"; }
 cfg() { docker compose -f "$1" config --format json 2>/dev/null | jq -e "$2" >/dev/null; }
 id_img() { docker image inspect -f '{{.Id}}' "$1" 2>/dev/null; }
 verif() { docker rm -f "$@" >/dev/null 2>&1; }
+# nom_image <conteneur> <image> : le conteneur a été créé sous ce nom d'image (préfixe docker.io/library/ et :latest facultatifs)
+nom_image() {
+  local c r; c=$(insp "$1" '{{.Config.Image}}') && [ -n "$c" ] || return 1
+  c=${c#docker.io/}; c=${c#library/}; r=${2#docker.io/}; r=${r#library/}
+  case "${c##*/}" in *:*|*@*) ;; *) c=$c:latest ;; esac
+  case "${r##*/}" in *:*|*@*) ;; *) r=$r:latest ;; esac
+  [ "$c" = "$r" ]
+}
+# image_de <conteneur> <image> : créé sous ce nom d'image, ou depuis l'image qu'il désigne (identifiant, autre tag…)
+image_de() { nom_image "$1" "$2" && return 0; local i; i=$(id_img "$2") && [ -n "$i" ] && [ "$(insp "$1" '{{.Image}}')" = "$i" ]; }
 # ipc <conteneur> : première adresse IP du conteneur ; http_c : requête directe vers elle (aucun port publié)
 ipc() { insp "$1" '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' | awk '{print $1}'; }
 http_c() { curl -fsS --max-time 5 "http://$(ipc "$1"):$2$3"; }
 attendre_http() { local i; for i in $(seq 1 "${4:-10}"); do http_c "$1" "$2" "$3" && return 0; sleep 1; done; return 1; }
 # etape_npm <journal> : numéro (#n) de l'étape « RUN … npm ci » dans un journal de construction --progress=plain
-etape_npm() { grep -oE '^#[0-9]+ \[[^]]*\] RUN .*npm +(ci|install)' "$1" | head -1 | cut -d' ' -f1; }
+etape_npm() { grep -oE '^#[0-9]+ \[[^]]*\] RUN .*npm"?[ ,"]+(ci|install)' "$1" | head -1 | cut -d' ' -f1; }
 # npm_en_cache <projet> : l'étape npm est reprise du cache quand seul server.js change,
 # et rejouée quand package-lock.json change (elle dépend donc bien de ce fichier)
 npm_en_cache() {
-  local t r=1 n; t=$(mktemp -d); cp -a "$1/." "$t/"
+  local t r=1 n u i; t=$(mktemp -d); cp -a "$1/." "$t/"
   if docker build --progress=plain -t lab-verif-cache:1 "$t" > "$t.1" 2>&1; then
     echo "// modification" >> "$t/server.js"
     docker build --progress=plain -t lab-verif-cache:2 "$t" > "$t.2" 2>&1 && n=$(etape_npm "$t.2") && [ -n "$n" ] && grep -q "^$n CACHED" "$t.2" && r=0
     [ $r = 0 ] || echo "MSG:Après une modification de server.js, l'étape npm est rejouée au lieu d'être reprise du cache."
     if [ $r = 0 ]; then
-      echo " " >> "$t/package-lock.json"; r=1
+      # Blancs propres à cette vérification (JSON toujours valide) : un contenu déjà vu serait repris du cache
+      # de construction, et la vérification échouerait dès sa deuxième exécution
+      u=$(date +%s%N)$RANDOM; i=0; while [ $i -lt ${#u} ]; do printf "%$(( ${u:$i:1} + 1 ))s\n" ""; i=$((i + 1)); done >> "$t/package-lock.json"; r=1
       docker build --progress=plain -t lab-verif-cache:3 "$t" > "$t.3" 2>&1 && n=$(etape_npm "$t.3") && [ -n "$n" ] && ! grep -q "^$n CACHED" "$t.3" && r=0
       [ $r = 0 ] || echo "MSG:Après une modification de package-lock.json, l'étape npm reste en cache : elle ne dépend donc pas de ce fichier."
     fi
@@ -189,7 +201,7 @@ emit ACTIFS "$(docker ps -q --no-trunc --filter label=lab.exercice=D1 | tr '\n' 
                        "Entre guillemets doubles, votre shell remplace <code>$MOT</code> par la valeur d'une variable (vide ici) ; entre guillemets simples, l'apostrophe pose problème. <code>\"$(cat ~/message.txt)\"</code> insère le contenu du fichier tel quel."],
              "checks": [
                  ('docker inspect premier', "Aucun conteneur nommé premier (option --name)."),
-                 ('i=$(insp premier "{{.Config.Image}}"); [ "$i" = alpine ] || [ "$i" = alpine:latest ]', "Le conteneur premier doit être créé depuis l'image alpine."),
+                 ('image_de premier alpine', "Le conteneur premier doit être créé depuis l'image alpine."),
                  ('[ "$(docker logs premier 2>&1)" = "$LAB_MSG" ]', "Le conteneur premier n'a pas affiché exactement la phrase de ~/message.txt (docker logs premier) : un « $ » ou une apostrophe interprétés par votre shell ?"),
                  ('[ "$(insp premier "{{.State.Status}}")" = exited ] && [ "$(insp premier "{{.State.ExitCode}}")" = 0 ]', "Le conteneur doit s'être terminé normalement (état exited, code 0)."),
              ]},
@@ -200,10 +212,12 @@ emit ACTIFS "$(docker ps -q --no-trunc --filter label=lab.exercice=D1 | tr '\n' 
                        "<code>docker top</code> ou le champ <code>.State.Pid</code> de <code>docker inspect</code> pour l'hôte ; <code>docker exec dormeur ps</code> pour l'intérieur. Les deux numéros sont-ils égaux ?"],
              "checks": [
                  ('running dormeur', "Le conteneur dormeur ne tourne pas."),
-                 ('[ "$(docker exec dormeur cat /proc/1/comm 2>/dev/null)" = sleep ]', "Le processus principal de dormeur doit être sleep."),
-                 ('[ "$(ans $H/pid-dormeur.txt)" = "$(insp dormeur "{{.State.Pid}}")" ]', "~/pid-dormeur.txt ne contient pas le PID, sur l'hôte, du processus du conteneur."),
-                 ('[ "$(ps -o comm= -p "$(insp dormeur "{{.State.Pid}}")")" = sleep ]', "Le processus trouvé n'est pas le sleep du conteneur."),
-                 ('[ "$(ans $H/pid-interne.txt)" = 1 ]', "~/pid-interne.txt ne contient pas le PID du sleep vu depuis l'intérieur du conteneur (docker exec dormeur ps)."),
+                 ('docker top dormeur -o pid,comm | awk \'$2 == "sleep" {t = 1} END {exit !t}\'', "Aucun processus sleep ne tourne dans dormeur."),
+                 # PID de l'hôte : un processus du conteneur (même espace de noms des PID que son processus principal)
+                 ('p=$(ans $H/pid-dormeur.txt); [ -n "$p" ] && [ -e "/proc/$p" ] && [ "$(readlink "/proc/$p/ns/pid")" = "$(readlink "/proc/$(insp dormeur "{{.State.Pid}}")/ns/pid")" ]', "~/pid-dormeur.txt ne contient pas le PID, sur l'hôte, d'un processus du conteneur dormeur."),
+                 ('[ "$(ps -o comm= -p "$(ans $H/pid-dormeur.txt)")" = sleep ]', "Le processus trouvé n'est pas le sleep du conteneur."),
+                 # PID interne : dernier numéro de NSpid (1 si sleep est le processus principal)
+                 ('[ "$(ans $H/pid-interne.txt)" = "$(awk \'/^NSpid:/ {print $NF}\' "/proc/$(ans $H/pid-dormeur.txt)/status")" ]', "~/pid-interne.txt ne contient pas le PID du sleep vu depuis l'intérieur du conteneur (docker exec dormeur ps)."),
              ]},
             {"id": "D1.3", "points": 4, "title": "Le ménage sélectif",
              "ticket": {"from": "sophie", "body": "Le serveur déborde de conteneurs. Supprime tous les conteneurs <strong>arrêtés</strong> (ou jamais démarrés) de l'équipe <strong>marketing</strong>. Ne touche à rien d'autre : ni à ceux qui tournent, ni à ceux de la compta, ni aux conteneurs sans équipe. L'équipe est indiquée dans une étiquette (<em>label</em>) <code>equipe</code>."},
@@ -343,7 +357,8 @@ emit FACTURE "$(docker cp generateur-factures:$factures - | tar -xO | sha256sum 
                  ('[ -n "$LAB_GOURMAND" ] && running "$LAB_GOURMAND" && [ "$(insp "$LAB_GOURMAND" "{{.Id}} {{.State.StartedAt}}")" = "$LAB_WORKER" ]', "Le worker gourmand a été arrêté, redémarré ou recréé (bouton « Réinitialiser les fichiers de cette étape » pour recommencer)."),
                  ('[ "$(insp "$LAB_GOURMAND" "{{.HostConfig.Memory}}")" = 134217728 ]', "La mémoire du worker gourmand n'est pas limitée à 128 Mo (docker inspect -f '{{.HostConfig.Memory}}')."),
                  ('[ "$(insp "$LAB_GOURMAND" "{{.HostConfig.MemorySwap}}")" = 134217728 ]', "Le worker gourmand peut encore utiliser du swap : la limite mémoire + swap doit aussi valoir 128 Mo."),
-                 ('[ "$(insp "$LAB_GOURMAND" "{{.HostConfig.NanoCpus}}")" = 500000000 ]', "Le worker gourmand n'est pas limité à un demi-CPU."),
+                 # --cpus 0.5, ou l'équivalent --cpu-quota = moitié de --cpu-period (100000 par défaut)
+                 ('set -- $(insp "$LAB_GOURMAND" "{{.HostConfig.NanoCpus}} {{.HostConfig.CpuQuota}} {{.HostConfig.CpuPeriod}}"); p=${3:-0}; [ "$p" -gt 0 ] || p=100000; [ "$1" = 500000000 ] || { [ "$1" = 0 ] && [ "${2:-0}" -gt 0 ] && [ $(( $2 * 2 )) = "$p" ]; }',"Le worker gourmand n'est pas limité à un demi-CPU."),
              ]},
             {"id": "D2.7", "points": 5, "title": "Parler au processus principal",
              "ticket": {"from": "diallo", "body": "Le programme de caisse (<code>caisse</code>) attend ses ordres sur son <strong>entrée standard</strong>. Il faut lui envoyer l'ordre <code>CLOTURE</code> pour clôturer la journée : il répond alors avec le ticket de clôture. Surtout, ne l'arrête pas : il doit encaisser demain !"},
@@ -450,7 +465,7 @@ emit INTRA "$jeton_intra"
                        "<code>-p port_hôte:port_conteneur</code> ; nginx écoute sur le port 80. Testez avec <code>curl localhost:8080</code>."],
              "checks": [
                  ('running vitrine', "Le conteneur vitrine ne tourne pas."),
-                 ('insp vitrine "{{.Config.Image}}" | grep -q "^nginx"', "vitrine doit utiliser l'image nginx:alpine."),
+                 ('image_de vitrine nginx:alpine', "vitrine doit utiliser l'image nginx:alpine."),
                  ('http 8080 / | grep -qi nginx', "Rien ne répond sur http://localhost:8080 (port publié ?)."),
              ]},
             {"id": "D3.2", "points": 5, "title": "Le vrai site",
@@ -557,7 +572,7 @@ docker rm -f lab-prep-stock >/dev/null
                  ('running cache', "Le conteneur cache ne tourne pas."),
                  ('insp cache "{{range .Mounts}}{{.Type}} {{.Name}} {{.Destination}}{{println}}{{end}}" | grep -qx "volume donnees-boutique /data"', "Le volume donnees-boutique doit être monté sur /data dans le conteneur cache."),
                  ('[ "$(docker exec cache redis-cli get promo)" = RANDO10 ]', "La clé promo ne vaut pas RANDO10 dans Redis."),
-                 ('docker run --rm -v donnees-boutique:/data alpine grep -rqs RANDO10 /data', "La donnée n'est pas encore écrite sur le volume : activez la persistance (--appendonly yes)."),
+                 ('docker run --rm -v donnees-boutique:/data alpine sh -c "find /data -type f -exec strings {} + | grep -q RANDO10"', "La donnée n'est pas encore écrite sur le volume : activez la persistance (--appendonly yes)."),
              ]},
             {"id": "D4.2", "points": 3, "title": "Sauvegarde du volume",
              "ticket": {"from": "sophie", "body": "Règle d'or : pas de données sans sauvegarde. Archive le contenu du volume <code>donnees-boutique</code> dans <code>~/sauvegardes/donnees-boutique.tar.gz</code>."},
@@ -723,7 +738,7 @@ emit VSUPPR "$e $f"
              "hints": ["Où l'outil écrit-il ? Lancé avec <code>--read-only</code> seul, il le dit dans son erreur (on peut aussi lire son script). Avec un tmpfs sur ce dossier, le script est bien écrit, mais son exécution est refusée : regardez les options de montage (<code>docker run --rm --read-only --tmpfs &lt;dossier&gt; compilateur:1 mount</code>).",
                        "Docker monte les tmpfs en <code>noexec</code> par défaut. Une option de montage, ajoutée après le chemin (<code>--tmpfs &lt;dossier&gt;:…</code>), autorise l'exécution."],
              "checks": [
-                 ('docker inspect compilateur && [ "$(insp compilateur "{{.Config.Image}}")" = compilateur:1 ]', "Aucun conteneur compilateur créé depuis l'image compilateur:1."),
+                 ('docker inspect compilateur && image_de compilateur compilateur:1', "Aucun conteneur compilateur créé depuis l'image compilateur:1."),
                  ('[ "$(insp compilateur "{{.HostConfig.ReadonlyRootfs}}")" = true ]', "Le conteneur compilateur doit avoir un système de fichiers en lecture seule (--read-only)."),
                  ('[ "$(insp compilateur "{{json .Config.Cmd}}{{json .Config.Entrypoint}}")" = "$(docker image inspect -f "{{json .Config.Cmd}}{{json .Config.Entrypoint}}" compilateur:1)" ]', "Le conteneur compilateur doit lancer la commande par défaut de l'image."),
                  ('insp compilateur "{{range .Mounts}}{{.Type}} {{.Destination}}{{println}}{{end}}" | while read t d; do case "$t" in volume|bind) case "${LAB_TRAVAIL:-/work}/" in "${d%/}"/*) exit 1 ;; esac ;; esac; done',"La zone de travail ne doit pas être un volume ni un dossier de l'hôte : elle doit disparaître à l'arrêt (tmpfs)."),
@@ -823,8 +838,9 @@ own $P/rapport
                        "<code>FROM</code>, <code>WORKDIR</code>, <code>COPY</code>, <code>EXPOSE</code>, <code>CMD</code> (forme JSON). Puis <code>docker build -t nom:tag contexte</code>."],
              "checks": [
                  ('test -f $P/api/Dockerfile', "~/projet/api/Dockerfile n'existe pas."),
-                 ('grep -qiE "^FROM +node:20-alpine( |$)" $P/api/Dockerfile', "Le Dockerfile doit partir de l'image node:20-alpine (FROM)."),
-                 ('docker build -q -t lab-verif-api $P/api && docker rmi lab-verif-api', "Le Dockerfile ne se construit pas : lancez docker build pour voir l'erreur."),
+                 ('docker build -q -t lab-verif-api $P/api >/dev/null', "Le Dockerfile ne se construit pas : lancez docker build pour voir l'erreur."),
+                 # L'image construite commence par toutes les couches de node:20-alpine, quelle que soit l'écriture du FROM
+                 ('couches() { docker image inspect -f "{{range .RootFS.Layers}}{{println .}}{{end}}" "$1" 2>/dev/null; }; b=$(couches node:20-alpine); i=$(couches lab-verif-api); docker rmi lab-verif-api >/dev/null 2>&1; [ -n "$b" ] && [ "$(echo "$i" | head -n "$(echo "$b" | wc -l)")" = "$b" ]', "Le Dockerfile doit partir de l'image node:20-alpine (FROM)."),
                  ('docker image inspect boutique-api:1.0', "L'image boutique-api:1.0 n'existe pas (option -t de docker build)."),
                  ('insp boutique-api:1.0 "{{json .Config.ExposedPorts}}" | grep -q "3000/tcp"', "L'image doit exposer le port 3000 (EXPOSE)."),
                  ('verif lab-verif; docker run -d --name lab-verif boutique-api:1.0 >/dev/null && attendre_http lab-verif 3000 /health 8 | grep -q ok; r=$?; verif lab-verif; [ $r = 0 ]', "Un conteneur lancé depuis boutique-api:1.0 ne répond pas sur /health (vérifiez CMD et le port)."),
@@ -836,7 +852,7 @@ own $P/rapport
                        "<code>--restart unless-stopped</code>, sur un conteneur créé depuis <code>boutique-api:1.0</code> qui publie le port 3000."],
              "checks": [
                  ('running api', "Le conteneur api ne tourne pas."),
-                 ('[ "$(insp api "{{.Config.Image}}")" = boutique-api:1.0 ]', "Le conteneur api doit être créé depuis l'image boutique-api:1.0."),
+                 ('image_de api boutique-api:1.0', "Le conteneur api doit être créé depuis l'image boutique-api:1.0."),
                  ('http 3000 /produits | grep -q "SAC-40L"', "http://localhost:3000/produits ne renvoie pas le catalogue."),
                  ('[ "$(insp api "{{.HostConfig.RestartPolicy.Name}}")" = unless-stopped ]', "La politique de redémarrage ne correspond pas : l'api doit redémarrer après un plantage ou un redémarrage du serveur, sauf si on l'a arrêtée volontairement."),
              ]},
@@ -859,7 +875,7 @@ own $P/rapport
              "hints": ["<code>docker ps</code> affiche « Restarting (3) » : que signifie ce 3 ? Lisez <code>docker logs synchro</code> : que cherche le programme, et où ?",
                        "Donnez au programme ce que réclament ses journaux : le dossier de configuration par un bind mount (lecture seule), là où il le cherche, et une variable d'environnement s'il en demande une. Ajoutez la politique <code>on-failure</code> avec un nombre maximal de tentatives. Le conteneur est à recréer."],
              "checks": [
-                 ('[ "$(insp synchro "{{.State.Status}}")" = running ] && [ "$(insp synchro "{{.Config.Image}}")" = synchro-stock:1.0 ]', "synchro (image synchro-stock:1.0) ne tourne pas normalement : lisez docker logs synchro."),
+                 ('[ "$(insp synchro "{{.State.Status}}")" = running ] && image_de synchro synchro-stock:1.0', "synchro (image synchro-stock:1.0) ne tourne pas normalement : lisez docker logs synchro."),
                  ('docker logs synchro 2>/dev/null | grep -qx "Synchro OK : $LAB_SYNCHRO"', "synchro n'a pas lu la configuration de ~/projet/synchro/stock.conf."),
                  ('[ "$(insp synchro "{{.HostConfig.RestartPolicy.Name}}:{{.HostConfig.RestartPolicy.MaximumRetryCount}}")" = on-failure:5 ]', "synchro doit redémarrer seulement en cas d'échec, et 5 fois au plus."),
              ]},
@@ -890,7 +906,7 @@ own $P/rapport
     7: {
         "title": "Jour 7 — Dockerfile : cache, démarrage et arguments",
         "description": "Les subtilités du Dockerfile. Compétences : ordre des couches et cache, forme exec, PID 1 et signaux, --init, ENTRYPOINT et CMD, ARG, ENV, LABEL, tags.",
-        "lesson": """<h3>Le cache de construction</h3><p>Pour chaque instruction, Docker réutilise la couche du cache si l'instruction <strong>et tout ce qui la précède</strong> sont inchangés. Pour <code>COPY</code>, « inchangé » veut dire : mêmes fichiers, même contenu. Dès qu'une couche change, <strong>toutes les suivantes</strong> sont reconstruites. D'où la règle : ce qui change rarement en premier.</p><pre>FROM node:20-alpine<br>WORKDIR /srv<br>COPY &lt;les fichiers qui décrivent les dépendances&gt; ./   # changent rarement<br>RUN &lt;installation des dépendances&gt;                    # long : en cache tant que ces fichiers ne changent pas<br>COPY . .                                              # le code : change à chaque modification</pre><p><code>docker build --progress=plain</code> affiche <code>CACHED</code> pour chaque étape réutilisée.</p><div class="tip"><code>npm ci</code> installe exactement les versions de <code>package-lock.json</code> (il lit aussi <code>package.json</code>) : constructions reproductibles. <code>--omit=dev</code> laisse de côté les outils de développement. Sans accès à Internet, ajoutez <code>--no-audit --no-fund</code> : sinon npm tente de contacter le registre.</div><h3>Forme exec, forme shell, et PID 1</h3><pre>CMD ["node", "server.js"]   # forme exec : node est lancé directement<br>CMD node server.js          # forme shell : /bin/sh -c "node server.js"</pre><p><code>docker stop</code> envoie <strong>SIGTERM au PID 1</strong>, attend 10 s, puis tue tout (SIGKILL, code de sortie 137).</p><ul><li>En forme shell, c'est un shell qui démarre. Pour une commande <strong>simple</strong>, la plupart des shells (dont celui d'Alpine) se font remplacer par elle : node finit quand même PID 1. Mais pour un <strong>script</strong> ou une commande <strong>composée</strong> (<code>echo … ; node …</code>, <code>cd … &amp;&amp; node …</code>), le shell reste PID 1, node n'est que son enfant… et un shell en PID 1 ne transmet pas SIGTERM.</li><li>On ne compte donc pas sur ce comportement : forme exec pour <code>CMD</code> et <code>ENTRYPOINT</code>, et <code>exec commande</code> en dernière ligne d'un script de démarrage (le shell est <strong>remplacé</strong> par la commande).</li><li>Le PID 1 a un statut à part : le noyau ne lui applique pas l'action par défaut des signaux. Un programme en PID 1 <strong>sans gestionnaire</strong> pour SIGTERM (un script node sans <code>process.on('SIGTERM')</code>, par exemple) l'ignore donc. Solution sans toucher à l'image : <code>docker run --init</code> place un mini-init (tini) en PID 1, qui transmet les signaux à l'application (<code>init: true</code> dans compose).</li></ul><pre>docker top conteneur                         # qui est le PID 1 ?<br>docker exec conteneur cat /proc/1/cmdline<br>time docker stop conteneur                   # 10 s = le signal n'a pas été entendu<br>docker inspect -f '{{.State.ExitCode}}' conteneur   # 137 = tué par SIGKILL</pre><h3>ENTRYPOINT et CMD</h3><ul><li><code>ENTRYPOINT</code> : le programme, toujours exécuté.</li><li><code>CMD</code> : ses arguments <strong>par défaut</strong>, remplacés par ce que l'on écrit après le nom de l'image dans <code>docker run</code>. Un ENTRYPOINT qui est un script reçoit donc le CMD en arguments (<code>$@</code>).</li></ul><pre>ENTRYPOINT ["ping"]<br>CMD ["-c", "3", "localhost"]<br><br>docker run --rm pingeur                      # ping -c 3 localhost<br>docker run --rm pingeur -c 1 cimes.local     # ping -c 1 cimes.local</pre><p>Sans ENTRYPOINT, les arguments de <code>docker run</code> remplacent toute la commande. <code>docker run --entrypoint sh …</code> remplace l'ENTRYPOINT, pour déboguer (et efface le CMD de l'image).</p><h3>ARG, ENV et LABEL</h3><pre>ARG REVISION=inconnue                              # variable de CONSTRUCTION (valeur par défaut)<br>ENV REVISION=$REVISION                             # variable d'ENVIRONNEMENT, présente à l'exécution<br>LABEL org.opencontainers.image.revision=$REVISION  # métadonnée de l'image<br><br>docker build --build-arg REVISION=a1b2c3 -t outil:a1b2c3 .<br>docker image inspect -f '{{json .Config.Labels}}' outil:a1b2c3</pre><ul><li>Un <code>ARG</code> n'existe que pendant la construction ; pour que l'application le voie, il faut le recopier dans un <code>ENV</code>.</li><li>Un ARG est transmis à <strong>tous</strong> les RUN qui suivent sa déclaration : si sa valeur change, ils sont tous reconstruits, même s'ils ne le citent pas. Déclarez-le le plus bas possible.</li><li><code>-e</code> au lancement (ou <code>environment:</code> dans compose) reste prioritaire sur l'ENV de l'image.</li></ul><h3>Les tags</h3><pre>docker tag outil:a1b2c3 outil:latest     # une étiquette de plus sur la même image<br>docker images outil                      # même IMAGE ID = même image</pre><p>Un tag est une étiquette <strong>mobile</strong> posée sur un identifiant d'image. <code>latest</code> n'est pas « la plus récente » : c'est le tag par défaut, qui désigne ce qu'on lui a fait désigner. Et un conteneur garde l'image avec laquelle il a été créé, même si le tag est déplacé ensuite.</p>""",
+        "lesson": """<h3>Le cache de construction</h3><p>Pour chaque instruction, Docker réutilise la couche du cache si l'instruction <strong>et tout ce qui la précède</strong> sont inchangés. Pour <code>COPY</code>, « inchangé » veut dire : mêmes fichiers, même contenu. Dès qu'une couche change, <strong>toutes les suivantes</strong> sont reconstruites. D'où la règle : ce qui change rarement en premier.</p><pre>FROM node:20-alpine<br>WORKDIR /srv<br>COPY &lt;les fichiers qui décrivent les dépendances&gt; ./   # changent rarement<br>RUN &lt;installation des dépendances&gt;                    # long : en cache tant que ces fichiers ne changent pas<br>COPY . .                                              # le code : change à chaque modification</pre><p><code>docker build --progress=plain</code> affiche <code>CACHED</code> pour chaque étape réutilisée.</p><div class="tip"><code>npm ci</code> installe exactement les versions de <code>package-lock.json</code> (il lit aussi <code>package.json</code>) : constructions reproductibles. <code>--omit=dev</code> laisse de côté les outils de développement. Sans accès à Internet, ajoutez <code>--no-audit --no-fund</code> : sinon npm tente de contacter le registre.</div><h3>Forme exec, forme shell, et PID 1</h3><pre>CMD ["node", "server.js"]   # forme exec : node est lancé directement<br>CMD node server.js          # forme shell : /bin/sh -c "node server.js"</pre><p><code>docker stop</code> envoie <strong>SIGTERM au PID 1</strong>, attend 10 s, puis tue tout (SIGKILL, code de sortie 137).</p><ul><li>En forme shell, c'est un shell qui démarre. Pour une commande <strong>simple</strong>, la plupart des shells (dont celui d'Alpine) se font remplacer par elle : node finit quand même PID 1. Le shell d'Alpine (BusyBox) le fait même pour la dernière commande d'une suite (<code>cd … &amp;&amp; node …</code>), mais pas celui de Debian ou d'Ubuntu (dash), qui reste alors PID 1. Et pour un <strong>script</strong> de démarrage, c'est toujours le shell qui exécute le script qui reste PID 1 : node n'est que son enfant… et un shell en PID 1 ne transmet pas SIGTERM.</li><li>On ne compte donc pas sur ce comportement : forme exec pour <code>CMD</code> et <code>ENTRYPOINT</code>, et <code>exec commande</code> en dernière ligne d'un script de démarrage (le shell est <strong>remplacé</strong> par la commande).</li><li>Le PID 1 a un statut à part : le noyau ne lui applique pas l'action par défaut des signaux. Un programme en PID 1 <strong>sans gestionnaire</strong> pour SIGTERM (un script node sans <code>process.on('SIGTERM')</code>, par exemple) l'ignore donc. Solution sans toucher à l'image : <code>docker run --init</code> place un mini-init (tini) en PID 1, qui transmet les signaux à l'application (<code>init: true</code> dans compose).</li></ul><pre>docker top conteneur                         # qui est le PID 1 ?<br>docker exec conteneur cat /proc/1/cmdline<br>time docker stop conteneur                   # 10 s = le signal n'a pas été entendu<br>docker inspect -f '{{.State.ExitCode}}' conteneur   # 137 = tué par SIGKILL</pre><h3>ENTRYPOINT et CMD</h3><ul><li><code>ENTRYPOINT</code> : le programme, toujours exécuté.</li><li><code>CMD</code> : ses arguments <strong>par défaut</strong>, remplacés par ce que l'on écrit après le nom de l'image dans <code>docker run</code>. Un ENTRYPOINT qui est un script reçoit donc le CMD en arguments (<code>$@</code>).</li></ul><pre>ENTRYPOINT ["ping"]<br>CMD ["-c", "3", "localhost"]<br><br>docker run --rm pingeur                      # ping -c 3 localhost<br>docker run --rm pingeur -c 1 cimes.local     # ping -c 1 cimes.local</pre><p>Sans ENTRYPOINT, les arguments de <code>docker run</code> remplacent toute la commande. <code>docker run --entrypoint sh …</code> remplace l'ENTRYPOINT, pour déboguer (et efface le CMD de l'image).</p><h3>ARG, ENV et LABEL</h3><pre>ARG REVISION=inconnue                              # variable de CONSTRUCTION (valeur par défaut)<br>ENV REVISION=$REVISION                             # variable d'ENVIRONNEMENT, présente à l'exécution<br>LABEL org.opencontainers.image.revision=$REVISION  # métadonnée de l'image<br><br>docker build --build-arg REVISION=a1b2c3 -t outil:a1b2c3 .<br>docker image inspect -f '{{json .Config.Labels}}' outil:a1b2c3</pre><ul><li>Un <code>ARG</code> n'existe que pendant la construction ; pour que l'application le voie, il faut le recopier dans un <code>ENV</code>.</li><li>Un ARG est transmis à <strong>tous</strong> les RUN qui suivent sa déclaration : si sa valeur change, ils sont tous reconstruits, même s'ils ne le citent pas. Déclarez-le le plus bas possible.</li><li><code>-e</code> au lancement (ou <code>environment:</code> dans compose) reste prioritaire sur l'ENV de l'image.</li></ul><h3>Les tags</h3><pre>docker tag outil:a1b2c3 outil:latest     # une étiquette de plus sur la même image<br>docker images outil                      # même IMAGE ID = même image</pre><p>Un tag est une étiquette <strong>mobile</strong> posée sur un identifiant d'image. <code>latest</code> n'est pas « la plus récente » : c'est le tag par défaut, qui désigne ce qu'on lui a fait désigner. Et un conteneur garde l'image avec laquelle il a été créé, même si le tag est déplacé ensuite.</p>""",
         "setup": r'''
 images_de_base
 livrer api pointeuse export entree
@@ -956,11 +972,12 @@ docker run -d --name etiqueteuse $L etiqueteuse:latest >/dev/null
                        "Copiez d'abord <code>package.json</code> et <code>package-lock.json</code>, puis <code>RUN npm ci --omit=dev --no-audit --no-fund</code>, et seulement ensuite <code>COPY . .</code>. Vérifiez : modifiez <code>server.js</code>, reconstruisez avec <code>--progress=plain</code>."],
              "checks": [
                  ('test -f $P/api/Dockerfile', "~/projet/api/Dockerfile n'existe pas (voir le jour 6)."),
-                 ('grep -qiE "^RUN\\b.*\\bnpm +ci\\b" $P/api/Dockerfile', "Le Dockerfile de l'API doit installer les dépendances avec npm ci (RUN)."),
+                 # RUN npm ci … ou, en forme exec, RUN ["npm", "ci", …]
+                 ('grep -qiE "^RUN\\b.*\\bnpm\\b\\"?[ ,\\"]+ci\\b" $P/api/Dockerfile', "Le Dockerfile de l'API doit installer les dépendances avec npm ci (RUN)."),
                  ('npm_en_cache $P/api', "L'étape npm ci n'est pas au bon endroit : elle doit dépendre de package.json et package-lock.json, et d'eux seuls (dans quel ordre sont les COPY ?)."),
              ]},
             {"id": "D7.2", "points": 5, "title": "La pointeuse perd des passages", "manual": True,
-             "ticket": {"from": "thomas", "body": "La pointeuse de l'entrepôt (<code>~/projet/pointeuse</code>) enregistre les passages quand elle s'arrête… en théorie. En pratique, <code>docker stop</code> met 10 secondes et on perd tout : le message « Arrêt propre » n'apparaît jamais dans les logs. Trouve pourquoi, corrige <strong>sans toucher au code</strong> de <code>pointeuse.js</code>, et construis <code>pointeuse:1.0</code>."},
+             "ticket": {"from": "thomas", "body": "La pointeuse de l'entrepôt (<code>~/projet/pointeuse</code>) enregistre les passages quand elle s'arrête… en théorie. En pratique, <code>docker stop</code> met 10 secondes et on perd tout : le message « Arrêt propre » n'apparaît jamais dans les logs. Trouve pourquoi, corrige <strong>sans toucher au code</strong> de <code>pointeuse.js</code>, et construis <code>pointeuse:1.0</code>. Pas de rustine qui relaierait le signal : c'est node lui-même qui doit le recevoir."},
              "desc": "L'image <code>pointeuse:1.0</code>, construite depuis <code>~/projet/pointeuse</code> (<code>pointeuse.js</code> inchangé), a node pour PID 1 et s'arrête en moins de 3 secondes avec <code>docker stop</code>, avec le code de sortie 0 et le message « Arrêt propre ».",
              "hints": ["Construisez l'image, lancez un conteneur, puis <code>docker top</code> : quel est le processus n°1 ? Est-ce lui qui reçoit SIGTERM ? Et node, qui l'a lancé ?",
                        "Le PID 1 est un shell (celui du <code>CMD</code> ou celui de <code>demarrer.sh</code>) ; node n'est que son descendant, et un shell en PID 1 ne lui transmet pas le signal. Il ne doit rester aucun shell entre Docker et node : dans un script, <code>exec</code> remplace le shell par la commande, et la forme exec du <code>CMD</code> lance le programme directement."],
@@ -984,17 +1001,18 @@ docker run -d --name etiqueteuse $L etiqueteuse:latest >/dev/null
              ]},
             {"id": "D7.4", "points": 4, "title": "Une version gravée dans l'image", "manual": True,
              "ticket": {"from": "sophie", "body": "En production, on ne sait jamais quelle version de l'API tourne. Je veux que la version soit <strong>gravée dans l'image</strong> au moment de la construction : l'image <code>boutique-api:1.1</code> doit s'annoncer en 1.1 dans <code>/health</code> sans aucun <code>-e</code>, et porter le label standard <code>org.opencontainers.image.version</code>. Pas de version écrite en dur dans le Dockerfile : elle est passée à la construction."},
-             "desc": "<code>boutique-api:1.1</code> porte le label <code>org.opencontainers.image.version=1.1</code> et s'annonce en 1.1 ; construit avec <code>--build-arg APP_VERSION=&lt;n'importe quoi&gt;</code>, le Dockerfile de l'API donne cette version-là.",
+             "desc": "<code>boutique-api:1.1</code> porte le label <code>org.opencontainers.image.version=1.1</code> et s'annonce en 1.1 ; construit avec une autre valeur passée par <code>--build-arg</code>, le Dockerfile de l'API donne cette version-là.",
              "hints": ["Une variable de construction n'existe que pendant le build. Comment la rendre visible à l'application (qui lit <code>APP_VERSION</code>), et dans les métadonnées de l'image ?",
                        "Un <code>ARG</code>, recopié dans un <code>ENV</code> et dans un <code>LABEL</code>, placés après <code>npm ci</code> pour ne pas casser le cache ; puis <code>docker build --build-arg …</code>."],
              "checks": [
                  ('docker image inspect boutique-api:1.1', "L'image boutique-api:1.1 n'existe pas."),
                  ('[ "$(insp boutique-api:1.1 "{{index .Config.Labels \\"org.opencontainers.image.version\\"}}")" = 1.1 ]', "L'image boutique-api:1.1 doit porter le label org.opencontainers.image.version=1.1."),
                  ('[ "$(version_api boutique-api:1.1)" = 1.1 ]', "Un conteneur lancé depuis boutique-api:1.1 (sans -e) ne s'annonce pas en version 1.1 dans /health (ARG recopié dans un ENV ?)."),
-                 ('t=v$RANDOM; docker build -q --build-arg APP_VERSION=$t -t lab-verif-version-img $P/api >/dev/null && v=$(version_api lab-verif-version-img) && l=$(insp lab-verif-version-img "{{index .Config.Labels \\"org.opencontainers.image.version\\"}}"); docker rmi lab-verif-version-img >/dev/null 2>&1; echo "MSG:construit avec --build-arg APP_VERSION=$t : version $v, label $l"; [ "$v" = "$t" ] && [ "$l" = "$t" ]', "Le Dockerfile de ~/projet/api ne reprend pas la valeur passée par --build-arg APP_VERSION (dans /health et dans le label) : la version ne doit pas être écrite en dur."),
+                 # Argument de construction : celui que l'ENV APP_VERSION recopie (ENV APP_VERSION=$VERSION…), sinon APP_VERSION
+                 ('t=v$RANDOM; a=$(grep -iE "^ *ENV " $P/api/Dockerfile | grep -oE \'APP_VERSION[= ]+"?[$][{]?[A-Za-z_][A-Za-z0-9_]*\' | tail -1 | grep -oE "[A-Za-z_][A-Za-z0-9_]*$"); a=${a:-APP_VERSION}; docker build -q --build-arg $a=$t -t lab-verif-version-img $P/api >/dev/null && v=$(version_api lab-verif-version-img) && l=$(insp lab-verif-version-img "{{index .Config.Labels \\"org.opencontainers.image.version\\"}}"); docker rmi lab-verif-version-img >/dev/null 2>&1; echo "MSG:construit avec --build-arg $a=$t : version $v, label $l"; [ "$v" = "$t" ] && [ "$l" = "$t" ]', "Le Dockerfile de ~/projet/api ne reprend pas la valeur passée à la construction par --build-arg (dans /health et dans le label) : la version ne doit pas être écrite en dur."),
              ]},
             {"id": "D7.5", "points": 5, "title": "Un script d'entrée qui garde la main", "manual": True,
-             "ticket": {"from": "nadia", "body": "L'image de Marc <code>~/projet/entree</code> passe par un script de démarrage, et elle ne se comporte pas comme prévu. Pour déboguer, je voudrais lancer <code>docker run --rm api-entree:1.0 cat /tmp/config.json</code> et lire la configuration préparée par le script : impossible. Et lancée sans argument, elle doit démarrer l'API, avec un <code>docker stop</code> immédiat. Corrige et construis <code>api-entree:1.0</code>."},
+             "ticket": {"from": "nadia", "body": "L'image de Marc <code>~/projet/entree</code> passe par un script de démarrage, et elle ne se comporte pas comme prévu. Pour déboguer, je voudrais lancer <code>docker run --rm api-entree:1.0 cat /tmp/config.json</code> et lire la configuration préparée par le script : impossible. Et lancée sans argument, elle doit démarrer l'API, avec un <code>docker stop</code> immédiat : node doit recevoir lui-même le signal. Corrige et construis <code>api-entree:1.0</code>."},
              "desc": "Avec <code>api-entree:1.0</code> : une commande passée à <code>docker run</code> est exécutée après la préparation de la configuration ; sans argument, l'API démarre, avec node en PID 1, et s'arrête en moins de 3 secondes.",
              "hints": ["Un script ENTRYPOINT reçoit le CMD (ou les arguments de <code>docker run</code>) en arguments, à condition que l'ENTRYPOINT soit en forme exec : que fait <code>demarrage.sh</code> de ses arguments ? Et qui devient le PID 1 ? Testez les deux cas : avec et sans argument.",
                        "Terminez le script par <code>exec \"$@\"</code>, mettez la commande du serveur dans un <code>CMD</code> en forme exec, utilisé par défaut, et vérifiez que l'<code>ENTRYPOINT</code> est lui aussi en forme exec."],
@@ -1023,7 +1041,7 @@ docker run -d --name etiqueteuse $L etiqueteuse:latest >/dev/null
                  ('[ -n "$(id_img etiqueteuse:1.5)" ] && [ "$(id_img etiqueteuse:latest)" = "$(id_img etiqueteuse:1.5)" ]', "etiqueteuse:latest ne désigne pas la même image que etiqueteuse:1.5 (comparez les IMAGE ID)."),
                  ('[ "$(id_img etiqueteuse:1)" = "$(id_img etiqueteuse:1.5)" ]', "etiqueteuse:1 ne désigne pas la même image que etiqueteuse:1.5."),
                  ('running etiqueteuse && [ "$(insp etiqueteuse "{{.Image}}")" = "$(id_img etiqueteuse:1.5)" ]', "Le conteneur etiqueteuse ne tourne pas sur la version 1.5 : un conteneur garde l'image avec laquelle il a été créé."),
-                 ('case "$(insp etiqueteuse "{{.Config.Image}}")" in etiqueteuse|etiqueteuse:latest) ;; *) exit 1 ;; esac', "La production lance etiqueteuse:latest : le conteneur etiqueteuse doit être créé depuis ce tag."),
+                 ('nom_image etiqueteuse etiqueteuse:latest', "La production lance etiqueteuse:latest : le conteneur etiqueteuse doit être créé depuis ce tag."),
              ]},
         ],
     },
@@ -1122,7 +1140,7 @@ emit ACTIV_STOCK "$activ_stock"
                  ('docker image inspect catalogue-web:1.0', "L'image catalogue-web:1.0 n'existe pas."),
                  ('docker run --rm --entrypoint sh catalogue-web:1.0 -c "! command -v node"', "L'image catalogue-web:1.0 contient Node : seul le résultat (dist/) doit être copié dans l'image finale."),
                  ('t=$(mktemp -d); cp -a $P/catalogue/. $t/; rm -rf $t/dist; n="VERIF-$RANDOM$RANDOM"; jq --arg n "$n" \'. + [{"ref": $n, "libelle": "Produit de vérification", "prixHT": 1}]\' $P/catalogue/produits.json > $t/produits.json; docker build -q -t lab-verif-catalogue $t >/dev/null; r=$?; rm -rf $t; [ $r = 0 ] || exit 1; verif lab-verif-cat; docker run -d --name lab-verif-cat lab-verif-catalogue >/dev/null; attendre_http lab-verif-cat 80 / 8 | grep -q "$n"; r=$?; verif lab-verif-cat; docker rmi lab-verif-catalogue >/dev/null 2>&1; [ $r = 0 ]', "Construite depuis ~/projet/catalogue avec un catalogue modifié, l'image ne sert pas la page régénérée : node generer.js doit s'exécuter PENDANT la construction."),
-                 ('running catalogue && [ "$(insp catalogue "{{.Config.Image}}")" = catalogue-web:1.0 ]', "Le conteneur catalogue, issu de catalogue-web:1.0, ne tourne pas."),
+                 ('running catalogue && image_de catalogue catalogue-web:1.0', "Le conteneur catalogue, issu de catalogue-web:1.0, ne tourne pas."),
                  ('http 8084 / | grep -q "Page générée par generer.js"', "http://localhost:8084 ne sert pas la page générée par generer.js."),
              ]},
             {"id": "D8.2", "points": 3, "title": "Un ARG n'est pas un coffre",
@@ -1360,7 +1378,7 @@ emit COMMANDE "$(printf '%s' "$cmd" | jq -Rc 'split(" ")')"
              "hints": ["Quelle commande, disponible dans l'image Redis, répond seulement quand le serveur est prêt ? Et comment une dépendance peut-elle attendre un état de santé ?",
                        "<code>test: [\"CMD\", \"redis-cli\", \"ping\"]</code> sur redis ; sur api, la forme longue de <code>depends_on</code> avec <code>condition: service_healthy</code>."],
              "checks": [
-                 ('cfg $P/compose.yaml \'.services.redis.healthcheck.test | tostring | test("redis-cli") and test("ping")\'', "Le service redis n'a pas de healthcheck fondé sur redis-cli ping."),
+                 ('cfg $P/compose.yaml \'.services.redis.healthcheck.test | tostring | test("redis-cli"; "i") and test("ping"; "i")\'', "Le service redis n'a pas de healthcheck fondé sur redis-cli ping."),
                  ('cfg $P/compose.yaml \'.services.api.depends_on.redis.condition == "service_healthy"\'', "Le service api doit dépendre de redis avec condition: service_healthy."),
                  ('[ "$(insp "$(compose $P/compose.yaml ps -q redis)" "{{.State.Health.Status}}")" = healthy ]', "Le conteneur redis n'est pas (encore) healthy : relancez docker compose up -d."),
              ]},
@@ -1370,7 +1388,7 @@ emit COMMANDE "$(printf '%s' "$cmd" | jq -Rc 'split(" ")')"
              "hints": ["Compose lit tout seul un fichier du dossier du projet, et remplace les variables écrites <code>${…}</code> dans <code>compose.yaml</code>. Vérifiez le résultat avec <code>docker compose config</code>.",
                        "<code>APP_VERSION: ${APP_VERSION}</code> dans l'environnement du service api. Après modification, <code>docker compose up -d</code> recrée les conteneurs concernés."],
              "checks": [
-                 ('grep -qE "^APP_VERSION=.?2\\.0.?$" $P/.env', "~/projet/.env doit définir APP_VERSION=2.0."),
+                 ('grep -qE "^(export +)?APP_VERSION *= *.?2\\.0.? *$" $P/.env', "~/projet/.env doit définir APP_VERSION=2.0."),
                  ('! grep -q "2\\.0" $P/compose.yaml', "La version 2.0 est écrite en dur dans compose.yaml : elle doit venir du fichier .env."),
                  ('cfg $P/compose.yaml \'.services.api.environment.APP_VERSION == "2.0" or .services.api.build.args.APP_VERSION == "2.0"\'', "Dans la configuration appliquée (docker compose config), le service api ne reçoit pas APP_VERSION=2.0."),
                  ('http 8080 /api/health | jq -e ".version == \\"2.0\\""', "L'API ne s'annonce pas en version 2.0 (conteneur recréé, ou image reconstruite ?)."),
@@ -1491,8 +1509,8 @@ emit ETATS "$(docker inspect -f '{{.Id}}' badgeuse) $(docker inspect -f '{{.Id}}
              "hints": ["Quel est son code de sortie ? Au-delà de 128, c'est un signal : lequel, et qui l'a envoyé ? <code>docker inspect</code> garde la réponse dans <code>.State</code>.",
                        "<code>.State.OOMKilled</code> : la limite mémoire est trop basse. <code>docker update --memory … --memory-swap …</code> (même valeur, 128 Mo au plus) puis <code>docker start</code>, ou recréez le conteneur."],
              "checks": [
-                 ('grep -Eqi "oom|mémoire|memoire|memory" $H/cause.txt', "~/cause.txt n'explique pas ce qui a tué l'import."),
-                 ('[ "$(insp import-compta "{{.Config.Image}}")" = import-compta:1.0 ] && [ "$(insp import-compta "{{json .Config.Cmd}}")" = "$(docker image inspect -f "{{json .Config.Cmd}}" import-compta:1.0)" ]', "import-compta doit lancer l'image import-compta:1.0 avec sa commande par défaut."),
+                 ('grep -Eqi "oom|mémoire|memoire|memory|\\bram\\b" $H/cause.txt', "~/cause.txt n'explique pas ce qui a tué l'import."),
+                 ('image_de import-compta import-compta:1.0 && [ "$(insp import-compta "{{json .Config.Cmd}}")" = "$(docker image inspect -f "{{json .Config.Cmd}}" import-compta:1.0)" ]', "import-compta doit lancer l'image import-compta:1.0 avec sa commande par défaut."),
                  ('[ "$(insp import-compta "{{.State.Status}} {{.State.ExitCode}}")" = "exited 0" ] && docker logs import-compta 2>&1 | grep -q "Import terminé"', "L'import import-compta n'est pas allé au bout (code 0 et « Import terminé »)."),
                  ('m=$(insp import-compta "{{.HostConfig.Memory}}"); [ "$m" -gt 0 ] && [ "$m" -le 134217728 ]', "La limite mémoire de import-compta doit rester en place, à 128 Mo au plus."),
              ]},

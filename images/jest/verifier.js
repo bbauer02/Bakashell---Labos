@@ -21,8 +21,9 @@
  *                                            bug du jeu avec --each), ou contre la référence (--ref)
  *   coverage --tests a --file src/x.js [--branches N] [--lines N]
  *   suite                                    toute la suite de l'étudiant, avec sa config Jest
- *   config  --expr EXPR                      la configuration Jest de l'étudiant (variable c, et
- *                                            where = « package.json » ou « jest.config.js »)
+ *   config  --expr EXPR                      la configuration Jest de l'étudiant (variable c,
+ *                                            where = « package.json » ou « jest.config.js »,
+ *                                            couvre(fichier) et couvreSrc() : collectCoverageFrom)
  *   workflow fichier                         workflow GitHub Actions attendu au jour 10
  *   variante CLE VALEUR [--force] [fichier...]
  *                                            enregistre la variante de l'étudiant pour CLE (déjà
@@ -607,7 +608,9 @@ function loadConfig() {
     if (fs.existsSync(path.join(PROJECT, f))) copyRegular(path.join(PROJECT, f), path.join(dir, f), f);
   }
   sh('chown', ['-R', 'correcteur:correcteur', dir]);
+  // jest.config.js peut exporter un objet, ou une fonction (éventuellement asynchrone) qui le renvoie
   const script = `
+    (async () => {
     const fs = require('fs');
     let pkg = {};
     try { pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); } catch (e) { pkg = {}; }
@@ -615,12 +618,16 @@ function loadConfig() {
     const hasFile = fs.existsSync('jest.config.js');
     if (hasFile && pkg.jest) out.error = 'multiple';
     else if (hasFile) {
-      try { out.c = require(process.cwd() + '/jest.config.js'); out.where = 'jest.config.js'; }
-      catch (e) { out.error = 'Erreur au chargement de jest.config.js : ' + e.message; }
-      if (typeof out.c === 'function') out.error = 'jest.config.js doit exporter un objet';
+      try {
+        out.c = require(process.cwd() + '/jest.config.js');
+        if (typeof out.c === 'function') out.c = await out.c();
+        out.where = 'jest.config.js';
+      } catch (e) { out.error = 'Erreur au chargement de jest.config.js : ' + e.message; }
+      if (!out.error && (!out.c || typeof out.c !== 'object')) out.error = 'jest.config.js doit exporter un objet (ou une fonction qui le renvoie)';
     } else if (pkg.jest) { out.c = pkg.jest; out.where = 'package.json'; }
     else out.error = 'none';
     process.stdout.write('\\n@@CONFIG@@' + JSON.stringify(out) + '\\n');
+    })();
   `;
   const r = sh('su', ['-s', '/bin/sh', 'correcteur', '-c', `cd ${quote(dir)} && exec node -e ${quote(script)}`], { timeout: 15000 });
   cleanup([dir]);
@@ -633,11 +640,47 @@ function loadConfig() {
   return res;
 }
 
+/**
+ * Filtre de collectCoverageFrom, appliqué comme le fait Jest (chaîne ou tableau de globs, préfixe
+ * <rootDir>/ retiré, négations « ! ») à un chemin relatif à la racine du projet.
+ */
+function coverageMatcher(c) {
+  let globs = c.collectCoverageFrom;
+  if (typeof globs === 'string') {
+    try { const v = JSON.parse(globs); globs = Array.isArray(v) ? v : [globs]; } catch (e) { globs = [globs]; }
+  }
+  if (!Array.isArray(globs) || !globs.length || !globs.every((g) => typeof g === 'string')) return () => false;
+  const { globsToMatcher } = require(path.join(LAB, 'node_modules', 'jest-util'));
+  const match = globsToMatcher(globs.map((g) => g.replace(/^(!?)(<rootDir>\/)(.*)/, '$1$3')));
+  return (rel) => match(rel);
+}
+
+/** Fichiers .js du code de référence (src/…), relatifs à la racine du projet. */
+function sourcesReference() {
+  const out = [];
+  const walk = (dir, rel) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) walk(path.join(dir, e.name), `${rel}/${e.name}`);
+      else if (e.name.endsWith('.js')) out.push(`${rel}/${e.name}`);
+    }
+  };
+  walk(path.join(PRIVATE, 'ref', 'src'), 'src');
+  return out;
+}
+
+/**
+ * Évalue --expr sur la configuration Jest de l'étudiant. Variables : c (configuration), where
+ * (« package.json » ou « jest.config.js ») ; couvre(fichier) : le fichier est mesuré par
+ * collectCoverageFrom ; couvreSrc() : tous les fichiers .js de src/ le sont, et aucun test.
+ */
 function cmdConfig(o) {
   const { c, where } = loadConfig();
+  const conf = c || {};
+  const couvre = coverageMatcher(conf);
+  const couvreSrc = () => sourcesReference().every(couvre) && !couvre('tests/prix.test.js');
   let ok = false;
   try {
-    ok = Boolean(new Function('c', 'where', `return (${o.expr});`)(c || {}, where));
+    ok = Boolean(new Function('c', 'where', 'couvre', 'couvreSrc', `return (${o.expr});`)(conf, where, couvre, couvreSrc));
   } catch (e) { ok = false; }
   process.exit(ok ? 0 : 1);
 }
@@ -658,16 +701,25 @@ function cmdWorkflow(o) {
   let pkg = {};
   try { pkg = JSON.parse(readProjectFile('package.json') || '{}'); } catch (e) { pkg = {}; }
   const scripts = pkg.scripts || {};
+  const COVERAGE = /--(?:coverage|collectCoverage)(?:=true)?(?:\s|$)/;
   const runsCoverage = (run) => String(run).split('\n').some((line) => {
-    if (/--coverage\b/.test(line) && /\b(jest|npm)\b/.test(line)) return true;
+    if (COVERAGE.test(line) && /\b(jest|npm)\b/.test(line)) return true;
     const m = line.match(/\bnpm\s+(?:run\s+([\w:.-]+)|(test|t)\b)/);
     const name = m && (m[1] || 'test');
-    return Boolean(name && /--coverage\b/.test(scripts[name] || ''));
+    return Boolean(name && COVERAGE.test(scripts[name] || ''));
   });
+  /** Valeurs d'une clé de matrice : tableau de la clé, et entrées « include ». */
+  const matrixValues = (matrix, key) => {
+    if (!matrix || typeof matrix !== 'object') return [];
+    const values = Array.isArray(matrix[key]) ? [...matrix[key]] : [];
+    for (const inc of Array.isArray(matrix.include) ? matrix.include : []) {
+      if (inc && typeof inc === 'object' && inc[key] !== undefined) values.push(inc[key]);
+    }
+    return values;
+  };
   const jobs = wf.jobs && typeof wf.jobs === 'object' ? Object.values(wf.jobs) : [];
   if (!jobs.length) problems.push('aucun job défini');
-  let best = null;
-  for (const job of jobs) {
+  const infos = jobs.map((job) => {
     const steps = Array.isArray(job && job.steps) ? job.steps : [];
     const found = { checkout: false, versions: null, ci: false, coverage: false };
     for (const st of steps) {
@@ -676,14 +728,19 @@ function cmdWorkflow(o) {
       if (typeof st.uses === 'string' && /^actions\/setup-node@/.test(st.uses)) {
         const v = st.with && st.with['node-version'];
         const m = String(v === undefined ? '' : v).match(/^\$\{\{\s*matrix\.([\w-]+)\s*\}\}$/);
-        const matrix = job.strategy && job.strategy.matrix;
-        found.versions = m ? (matrix && Array.isArray(matrix[m[1]]) ? matrix[m[1]] : []) : (v === undefined ? [] : [v]);
+        found.versions = m ? matrixValues(job.strategy && job.strategy.matrix, m[1]) : (v === undefined ? [] : [v]);
       }
       if (typeof st.run === 'string' && /\bnpm\s+ci\b/.test(st.run)) found.ci = true;
       if (typeof st.run === 'string' && runsCoverage(st.run)) found.coverage = true;
     }
-    if (!best || Object.values(found).filter(Boolean).length > Object.values(best).filter(Boolean).length) best = found;
-  }
+    return found;
+  });
+  // Les versions de Node peuvent venir d'une matrice ou de plusieurs jobs complets (un job par version)
+  const complets = infos.filter((f) => f.checkout && f.versions && f.ci && f.coverage);
+  const score = (f) => Object.values(f).filter(Boolean).length;
+  const best = complets.length
+    ? { ...complets[0], versions: complets.flatMap((f) => f.versions) }
+    : infos.reduce((b, f) => (!b || score(f) > score(b) ? f : b), null);
   if (best) {
     if (!best.checkout) problems.push('le code doit être récupéré avec actions/checkout');
     if (!best.versions) problems.push('Node doit être installé avec actions/setup-node');

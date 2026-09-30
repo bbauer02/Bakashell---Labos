@@ -24,11 +24,12 @@ from . import containers
 from . import database as db
 from . import live
 from . import memo
+from . import quiz
 from . import ratelimit
 from . import runner
 from . import solutions
 from . import terminals
-from .courses import COURSES, DEFAULT_COURSE, EXERCISE_INDEX, get_course, get_exercise
+from .courses import COURSES, DEFAULT_COURSE, EXERCISE_INDEX, QUIZ_QUESTIONS, get_course, get_exercise
 from .scenario import CHARACTERS
 
 log = logging.getLogger("linux-lab")
@@ -950,10 +951,51 @@ async def api_step(request: Request, course_key: str, num: int):
         "has_setup": runner.has_setup(step),
         # Étape modifiée depuis sa préparation : l'étudiant est invité à la réinitialiser
         "setup_outdated": runner.setup_outdated(course, num, step, db.get_setup(user["user_id"], course["key"], num)),
+        # QCM de fin de cours : absent, à faire (None) ou (points, maximum)
+        "quiz": ({"done": db.quiz_scores(user["user_id"], course["key"]).get(num), "max": QUIZ_QUESTIONS}
+                 if num in course["quiz"] else None),
         "mentor": CHARACTERS[course["mentor"]]["name"].split()[0],
         "due": db.user_deadlines(user["user_id"], course["key"]).get(num),
         "exercises": [exercise_payload(ex, progress, hints, attempts) for ex in step["exercises"]],
     }
+
+
+@app.get("/api/{course_key}/quiz/{num}")
+async def api_quiz(request: Request, course_key: str, num: int):
+    """QCM de fin de cours de l'étape : les questions (sans les réponses) ou, après la tentative, le corrigé."""
+    user = get_current_user(request)
+    if not user:
+        return unauthorized()
+    course = course_for(user, course_key)
+    if not course or num not in course["quiz"]:
+        return not_found()
+    done = db.get_quiz_result(user["user_id"], course["key"], num)
+    if done:
+        return {"done": True, **done}
+    return {"done": False, "max": QUIZ_QUESTIONS,
+            "questions": quiz.public(quiz.draw(user["user_id"], course, num))}
+
+
+@app.post("/api/{course_key}/quiz/{num}")
+async def api_quiz_answer(request: Request, course_key: str, num: int):
+    """Une seule tentative : corrige, enregistre les points, renvoie le corrigé et la progression."""
+    user = get_current_user(request)
+    if not user:
+        return unauthorized()
+    course = course_for(user, course_key)
+    if not course or num not in course["quiz"]:
+        return not_found()
+    try:
+        answers = (await request.json()).get("answers", [])
+    except Exception:
+        answers = []
+    drawn = quiz.draw(user["user_id"], course, num)
+    points, details = quiz.grade(drawn, answers if isinstance(answers, list) else [])
+    if db.save_quiz_result(user["user_id"], course["key"], num, points, len(drawn), details):
+        live.publish({"type": "quiz", "user_id": user["user_id"], "name": live.names.get(user["user_id"]),
+                      "course": course["key"], "step": num, "score": points, "max": len(drawn)})
+    return {"done": True, **db.get_quiz_result(user["user_id"], course["key"], num),
+            "progress": progress_payload(user["user_id"], course)}
 
 
 @app.get("/api/{course_key}/attempts/{exercise_id}")

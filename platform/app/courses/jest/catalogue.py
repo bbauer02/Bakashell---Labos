@@ -64,7 +64,7 @@ livrer package.json package-lock.json .gitignore README.md src/prix.js tests/pri
              "desc": "<code>tests/prix.test.js</code> passe, garde ses 3 tests (dont celui de l'article à 19,99 € HT) et détecte un calcul de TTC mal arrondi.",
              "hints": ["Lancez <code>npx jest tests/prix</code> et lisez la différence entre <em>Expected</em> et <em>Received</em> : lequel des deux respecte la règle ?", "Quel arrondi la règle impose-t-elle ? Faites le calcul à la main, sans passer par JavaScript : c'est cette valeur que le test doit attendre."],
              "checks": [
-                 ('has tests/prix.test.js "calculerTTC\\(\\s*19\\.99\\s*\\)"', "Le test de l'article à 19,99 € HT a disparu : il fallait le corriger, pas le supprimer."),
+                 ('has tests/prix.test.js "(^|[^0-9.])19\\.99([^0-9]|$)"', "Le test de l'article à 19,99 € HT a disparu : il fallait le corriger, pas le supprimer."),
                  ('verif pass --tests tests/prix.test.js --min 3', "tests/prix.test.js ne passe pas avec le code de référence."),
                  ('verif kill --tests tests/prix.test.js --set prix-ttc', "Le test corrigé est trop permissif."),
              ]},
@@ -74,9 +74,9 @@ livrer package.json package-lock.json .gitignore README.md src/prix.js tests/pri
              "hints": ["Lancez chaque script et lisez ce qu'il affiche. Quelle option de Jest rend la main, laquelle attend vos sauvegardes ?", "Relisez le tableau des options du cours : de quoi <code>--watch</code> a-t-il besoin pour savoir ce qui a changé ? <code>~/boutique</code> l'a-t-il ?"],
              "checks": [
                  ('node -e "require(\'$P/package.json\')"', "package.json n'est plus un JSON valide."),
-                 ('t="$(pkg \'p.scripts.test\')"; echo "$t" | grep -qE "^(npx )?jest( |$)" && ! echo "$t" | grep -q -- "--watch"', "Le script « test » doit lancer jest une seule fois, sans mode surveillance : dans la CI, npm test doit rendre la main."),
+                 ('t="$(pkg \'p.scripts.test\')"; echo "$t" | grep -qE "^(CI=(true|1) )?(npx )?jest( |$)" && ! echo "$t" | grep -qE -- "--watch(All)?(=true)?( |$)"', "Le script « test » doit lancer jest une seule fois, sans mode surveillance : dans la CI, npm test doit rendre la main."),
                  ('w="$(pkg \'p.scripts["test:watch"]\')"; echo "$w" | grep -qE -- "--watchAll( |$)" || { echo "$w" | grep -qE -- "--watch( |$)" && [ -d $P/.git ]; }', "Le script « test:watch » ne fonctionne pas dans ~/boutique : lancez npm run test:watch et lisez le message d'erreur."),
-                 ('c="$(pkg \'p.scripts["test:ci"]\')"; echo "$c" | grep -qE "^(npx )?jest " && echo "$c" | grep -qE -- "--ci( |$)" && ! echo "$c" | grep -q -- "--watch"', "Le script « test:ci » doit lancer jest en mode intégration continue."),
+                 ('c="$(pkg \'p.scripts["test:ci"]\')"; echo "$c" | grep -qE "^((CI=(true|1) )?(npx )?jest|npm (run )?test --)( |$)" && echo "$c" | grep -qE -- "(^CI=(true|1) |--ci( |$))" && ! echo "$c" | grep -qE -- "--watch(All)?(=true)?( |$)"', "Le script « test:ci » doit lancer jest en mode intégration continue (option --ci)."),
              ]},
             {"id": "J1.3", "points": 5, "title": "Arrondi commercial", "manual": True,
              "ticket": {"from": "diallo", "body": "Bonjour, ici la compta. La fonction <code>arrondir</code> de <code>src/prix.js</code> sert pour toutes nos factures. Je veux la garantie qu'elle arrondit <strong>au centime le plus proche</strong>, les demi-centimes vers le haut, y compris dans les cas piégeux : 1,005 € doit donner 1,01 € (le précédent logiciel donnait 1,00 € et on a eu un contrôle fiscal)."},
@@ -124,7 +124,7 @@ livrer src/panier.js src/catalogue.js
                  ('verif kill --tests tests/panier.test.js --set panier-base', "Vos tests ne détectent pas toutes les régressions du panier."),
              ]},
             {"id": "J2.2", "points": 5, "title": "Les cas d'erreur", "manual": True,
-             "ticket": {"from": "thomas", "body": "Hier, un client a commandé 0 sac à dos, et un autre 1,5 lampe frontale. Il nous faut des tests sur <strong>toutes les erreurs</strong> : quantités invalides, retrait d'un produit absent, remises hors de 0–100 %, prix HT négatif. Et vérifie le <strong>type</strong> d'erreur : le front affiche un message différent pour une <code>RangeError</code>. Attention quand même : une remise de 0 % ou de 100 %, c'est permis."},
+             "ticket": {"from": "thomas", "body": "Hier, un client a commandé 0 sac à dos, et un autre 1,5 lampe frontale. Il nous faut des tests sur <strong>toutes les erreurs</strong> : quantités invalides, retrait d'un produit absent, remises hors de 0–100 %, prix HT négatif. Et vérifie le <strong>type</strong> d'erreur, avec <code>toThrow</code> : le front affiche un message différent pour une <code>RangeError</code>. Attention quand même : une remise de 0 % ou de 100 %, c'est permis."},
              "desc": "<code>tests/erreurs.test.js</code>, utilisant <code>toThrow</code>, qui passe et détecte chaque validation manquante, trop stricte ou mal typée.",
              "hints": ["Pour chaque validation, cherchez la frontière exacte entre accepté et refusé, et testez des deux côtés.", "Le type d'erreur se lit dans le code : ne supposez pas qu'il est le même partout."],
              "checks": [
@@ -133,7 +133,7 @@ livrer src/panier.js src/catalogue.js
                  ('verif kill --tests tests/erreurs.test.js --set panier-erreurs', "Vos tests ne détectent pas toutes les validations manquantes ou erronées."),
              ]},
             {"id": "J2.3", "points": 4, "title": "Fuite de données", "manual": True,
-             "ticket": {"from": "nadia", "body": "Un bug vicieux en production : un composant du front modifiait les lignes renvoyées par <code>panier.lignes()</code>… et ça modifiait le vrai panier. C'est corrigé, mais je veux un test qui l'empêche de revenir. Vérifie aussi la structure exacte d'une ligne."},
+             "ticket": {"from": "nadia", "body": "Un bug vicieux en production : un composant du front modifiait les lignes renvoyées par <code>panier.lignes()</code>… et ça modifiait le vrai panier. C'est corrigé, mais je veux un test qui l'empêche de revenir. Vérifie aussi la structure exacte d'une ligne, avec <code>toEqual</code> ou <code>toStrictEqual</code>."},
              "desc": "<code>tests/panier-lignes.test.js</code>, utilisant <code>toEqual</code> ou <code>toStrictEqual</code>, qui détecte toute fuite de l'état interne et toute ligne mal construite.",
              "hints": ["Qu'est-ce qu'un appelant pourrait modifier dans ce qui lui est renvoyé ? Il y a deux niveaux.", "Après la modification, relisez l'état du panier par une autre méthode : a-t-il bougé ?"],
              "checks": [
@@ -172,7 +172,7 @@ livrer src/livraison.js tests/panier-thomas.test.js src/numerotation.js tests/nu
 ''',
         "exercises": [
             {"id": "J3.1", "points": 6, "title": "La grille tarifaire", "manual": True,
-             "ticket": {"from": "sophie", "body": "Le transporteur a changé ses tarifs et <code>src/livraison.js</code> a été réécrit en urgence. Avant la mise en ligne, je veux la grille <strong>entièrement</strong> vérifiée : chaque tranche de poids, chaque pays, les seuils de livraison offerte, et les cas refusés. Les commentaires du fichier font foi."},
+             "ticket": {"from": "sophie", "body": "Le transporteur a changé ses tarifs et <code>src/livraison.js</code> a été réécrit en urgence. Avant la mise en ligne, je veux la grille <strong>entièrement</strong> vérifiée : chaque tranche de poids, chaque pays, les seuils de livraison offerte, et les cas refusés, en tests paramétrés (<code>test.each</code> ou <code>describe.each</code>), pas en 40 copier-coller. Les commentaires du fichier font foi."},
              "desc": "<code>tests/livraison.test.js</code> utilisant <code>test.each</code> (ou <code>describe.each</code>), qui passe et détecte toutes les erreurs de grille, de limites et de seuils.",
              "hints": ["Faites la liste des limites de la grille (poids et montants) et des pays : chaque élément de la liste mérite au moins un cas.", "N'oubliez pas les cas refusés, ni la seconde fonction du module."],
              "checks": [
@@ -181,7 +181,7 @@ livrer src/livraison.js tests/panier-thomas.test.js src/numerotation.js tests/nu
                  ('verif kill --tests tests/livraison.test.js --set livraison', "Vos tests ne détectent pas toutes les erreurs de la grille tarifaire."),
              ]},
             {"id": "J3.2", "points": 4, "title": "« Ils passent chez moi »", "manual": True,
-             "ticket": {"from": "thomas", "body": "La CI lance maintenant les tests avec <code>jest --randomize</code>, et <code>tests/panier-thomas.test.js</code> y échoue une fois sur deux, alors que chez moi tout est vert ! Nadia dit que mes tests « dépendent de leur ordre ». Tu peux les réparer, sans en supprimer et sans les affaiblir ?"},
+             "ticket": {"from": "thomas", "body": "La CI lance maintenant les tests avec <code>jest --randomize</code>, et <code>tests/panier-thomas.test.js</code> y échoue une fois sur deux, alors que chez moi tout est vert ! Nadia dit que mes tests « dépendent de leur ordre ». Tu peux les réparer, sans en supprimer et sans les affaiblir ? Règle de l'équipe : un <code>beforeEach</code> fournit à chaque test un panier neuf."},
              "desc": "<code>tests/panier-thomas.test.js</code> garde au moins 5 tests qui vérifient toujours le panier, utilise <code>beforeEach</code>, et chaque test passe seul comme dans n'importe quel ordre.",
              "hints": ["Lancez <code>npx jest tests/panier-thomas --randomize</code> plusieurs fois, puis chaque test seul avec <code>-t</code>. Qu'est-ce qu'un test suppose sans le préparer lui-même ?", "Chaque test doit partir d'un panier neuf et préparer lui-même ce dont il a besoin, sans perdre ses vérifications."],
              "checks": [
@@ -234,7 +234,7 @@ livrer src/data/codes.js src/codesPromo.js SPEC-codes-promo.md
              "desc": "<code>SPEC-codes-promo.md</code> mentionne la nouvelle règle ; <code>tests/codesPromo.test.js</code> la vérifie (il échoue sur l'ancien comportement) ; <code>src/codesPromo.js</code> la respecte, ainsi que tout le reste de la spécification.",
              "hints": ["Suivez pas à pas ce que devient <code>null</code> dans votre fonction : pourquoi la réponse est-elle <code>INCONNU</code> ?", "Quelles autres valeurs qui ne sont pas des chaînes le front pourrait-il envoyer ? Testez-en plusieurs, et vérifiez le type avant toute normalisation."],
              "checks": [
-                 ('verif grep SPEC-codes-promo.md "null|cha[iî]ne|string|typeof" --i', "SPEC-codes-promo.md ne mentionne pas la nouvelle règle."),
+                 ('verif grep SPEC-codes-promo.md "null|undefined|cha[iî]ne|string|type|texte" --i',"SPEC-codes-promo.md ne mentionne pas la nouvelle règle."),
                  ('verif pass --tests tests/codesPromo.test.js', "tests/codesPromo.test.js ne passe pas sur l'implémentation de référence."),
                  ('verif reproduce --tests tests/codesPromo.test.js --set bug-null', "Vos tests passent encore sur l'ancien comportement : ils ne vérifient pas la nouvelle règle."),
                  ('verif pass --tests tests/codesPromo.test.js --src student', "Vos tests ne passent pas avec votre implémentation."),
@@ -262,17 +262,17 @@ livrer src/stock.js src/commande.js src/services/paiement.js src/services/mailer
 ''',
         "exercises": [
             {"id": "J5.1", "points": 5, "title": "Rupture de stock", "manual": True,
-             "ticket": {"from": "thomas", "body": "<code>verifierDisponibilite</code> (dans <code>src/stock.js</code>) interroge l'API de l'entrepôt pour chaque ligne du panier. Évidemment, pas question d'appeler l'entrepôt depuis les tests : l'API est passée en paramètre, fais-en une doublure. Vérifie ce qu'elle renvoie <strong>et</strong> comment l'API est appelée (l'entrepôt facture chaque appel !)."},
-             "desc": "<code>tests/stock.test.js</code>, avec <code>jest.fn()</code> et <code>toHaveBeenCalledWith</code>, qui passe et détecte les régressions.",
+             "ticket": {"from": "thomas", "body": "<code>verifierDisponibilite</code> (dans <code>src/stock.js</code>) interroge l'API de l'entrepôt pour chaque ligne du panier. Évidemment, pas question d'appeler l'entrepôt depuis les tests : l'API est passée en paramètre, fais-en une doublure Jest (<code>jest.fn</code> ou <code>jest.spyOn</code>). Vérifie ce qu'elle renvoie <strong>et</strong> comment l'API est appelée (l'entrepôt facture chaque appel !)."},
+             "desc": "<code>tests/stock.test.js</code>, avec une doublure Jest (<code>jest.fn()</code> ou <code>jest.spyOn</code>) dont les appels sont vérifiés (<code>toHaveBeenCalledWith</code>…), qui passe et détecte les régressions.",
              "hints": ["La doublure est un simple objet dont la méthode <code>quantiteDisponible</code> est un <code>jest.fn()</code>. Que renvoie la vraie API : un nombre, ou une promesse ?", "Testez un stock insuffisant, un stock tout juste suffisant, et un panier de plusieurs lignes ; comptez aussi les appels."],
              "checks": [
-                 ('has tests/stock.test.js "jest\\.fn"', "tests/stock.test.js doit utiliser jest.fn()."),
-                 ('has tests/stock.test.js "toHaveBeenCalledWith"', "tests/stock.test.js doit vérifier les appels avec toHaveBeenCalledWith."),
+                 ('has tests/stock.test.js "jest\\.(fn|spyOn)\\b"', "tests/stock.test.js doit remplacer l'API par une doublure Jest (jest.fn() ou jest.spyOn)."),
+                 ('has tests/stock.test.js "to(HaveBeen|Be)(Nth|Last)?CalledWith|(nth|last)CalledWith|\\.mock\\.calls"', "tests/stock.test.js doit vérifier les arguments des appels (toHaveBeenCalledWith, toHaveBeenNthCalledWith…)."),
                  ('verif pass --tests tests/stock.test.js', "tests/stock.test.js est absent ou ne passe pas."),
                  ('verif kill --tests tests/stock.test.js --set stock', "Vos tests ne détectent pas toutes les régressions."),
              ]},
             {"id": "J5.2", "points": 6, "title": "Passer commande sans débiter personne", "manual": True,
-             "ticket": {"from": "sophie", "body": "Incident de la semaine dernière : un test a débité pour de vrai la carte de test… de notre PDG. Désormais <code>src/services/paiement.js</code> et <code>mailer.js</code> refusent de fonctionner dans les tests. Écris les tests du <strong>cas nominal</strong> de <code>passerCommande</code> (<code>src/commande.js</code>) en remplaçant ces deux modules."},
+             "ticket": {"from": "sophie", "body": "Incident de la semaine dernière : un test a débité pour de vrai la carte de test… de notre PDG. Désormais <code>src/services/paiement.js</code> et <code>mailer.js</code> refusent de fonctionner dans les tests. Écris les tests du <strong>cas nominal</strong> de <code>passerCommande</code> (<code>src/commande.js</code>) en remplaçant ces deux modules avec <code>jest.mock</code>."},
              "desc": "<code>tests/commande.test.js</code>, avec <code>jest.mock</code> des services de paiement et de mail, qui vérifie le débit (montant, carte, nombre), l'e-mail de confirmation et le résultat renvoyé.",
              "hints": ["Une fois le module remplacé par <code>jest.mock</code>, que renvoie <code>paiement.debiter</code> ? Que doit-il renvoyer pour que <code>passerCommande</code> aille au bout ?", "Le montant débité est le total <strong>TTC</strong> du panier. Un débit, c'est un seul appel à la banque, et un e-mail a un destinataire, un sujet et un corps."],
              "checks": [
@@ -281,11 +281,11 @@ livrer src/stock.js src/commande.js src/services/paiement.js src/services/mailer
                  ('verif kill --tests tests/commande.test.js --set commande-ok', "Vos tests ne détectent pas toutes les régressions du cas nominal."),
              ]},
             {"id": "J5.3", "points": 6, "title": "Le tirage au sort", "manual": True,
-             "ticket": {"from": "sophie", "body": "Le marketing organise un jeu-concours : <code>tirerGagnant</code> (<code>src/concours.js</code>) désigne un gagnant au hasard. Un huissier va contrôler le tirage : chaque participant, <strong>premier et dernier compris</strong>, doit pouvoir gagner, et une liste vide doit être refusée. Écris des tests qui donnent toujours le même résultat, sans toucher au module."},
+             "ticket": {"from": "sophie", "body": "Le marketing organise un jeu-concours : <code>tirerGagnant</code> (<code>src/concours.js</code>) désigne un gagnant au hasard. Un huissier va contrôler le tirage : chaque participant, <strong>premier et dernier compris</strong>, doit pouvoir gagner, et une liste vide doit être refusée. Écris des tests qui donnent toujours le même résultat, sans toucher au module : espionne <code>Math.random</code> avec <code>jest.spyOn</code>, et remets la vraie fonction en place après usage."},
              "desc": "<code>tests/concours.test.js</code> passe à chaque exécution, espionne <code>Math.random</code> avec <code>jest.spyOn</code>, remet la vraie fonction en place, et détecte tout tirage biaisé ou mal protégé.",
              "hints": ["On ne peut pas prévoir le hasard… mais on peut décider de ce que renvoie <code>Math.random</code>, le temps d'un test. Quelles valeurs extrêmes peut-il renvoyer ?", "Relisez la section <code>jest.spyOn</code> du cours, et le tableau de remise à zéro : un espion oublié fausse tous les tests suivants du fichier."],
              "checks": [
-                 ('has tests/concours.test.js "spyOn\\(\\s*Math\\s*,"', "tests/concours.test.js doit espionner Math.random avec jest.spyOn."),
+                 ('has tests/concours.test.js "spyOn\\(\\s*((global|globalThis)\\s*\\.\\s*)?Math\\s*,"', "tests/concours.test.js doit espionner Math.random avec jest.spyOn."),
                  ('has tests/concours.test.js "mockRestore|restoreAllMocks"', "L'espion de Math.random doit être retiré après usage (mockRestore ou jest.restoreAllMocks)."),
                  ('verif pass --tests tests/concours.test.js --seeds 1,2,3', "tests/concours.test.js est absent, ne passe pas, ou ne donne pas toujours le même résultat."),
                  ('verif kill --tests tests/concours.test.js --set concours', "Vos tests ne détectent pas tous les tirages biaisés."),
@@ -300,7 +300,7 @@ livrer src/stock.js src/commande.js src/services/paiement.js src/services/mailer
                  ('verif kill --tests tests/commande-fuite.test.js --set commande-fuite', "Les tests ne détectent plus toutes les régressions de passerCommande."),
              ]},
             {"id": "J5.5", "points": 5, "title": "Le marketing réécrit les e-mails", "manual": True,
-             "ticket": {"from": "sophie", "body": "Le marketing va réécrire le texte des e-mails de confirmation chaque semaine (tests A/B). Ce qui ne doit <strong>jamais</strong> changer : le destinataire, le sujet exact, et le montant débité, qui doit figurer dans le corps. Je veux des tests qui protègent ça… sans casser à chaque nouvelle formulation."},
+             "ticket": {"from": "sophie", "body": "Le marketing va réécrire le texte des e-mails de confirmation chaque semaine (tests A/B). Ce qui ne doit <strong>jamais</strong> changer : le destinataire, le sujet exact, et le montant débité, qui doit figurer dans le corps. Je veux des tests qui protègent ça… sans casser à chaque nouvelle formulation. Comme d'habitude, le module d'envoi est remplacé avec <code>jest.mock</code>."},
              "desc": "<code>tests/commande-email.test.js</code> passe, détecte tout e-mail de confirmation mal adressé, mal intitulé ou sans le bon montant, et reste vert quelle que soit la formulation du corps.",
              "hints": ["Pour le corps, qu'est-ce qui fait partie de la règle, et qu'est-ce qui n'en fait pas partie ?", "Relisez la section du cours sur les matchers à trous : ils s'utilisent aussi comme arguments de <code>toHaveBeenCalledWith</code>."],
              "checks": [
@@ -321,7 +321,7 @@ livrer tests/commande-async.test.js
 ''',
         "exercises": [
             {"id": "J6.1", "points": 6, "title": "Paiement refusé", "manual": True,
-             "ticket": {"from": "diallo", "body": "Un client a reçu un e-mail « commande confirmée » alors que sa banque avait refusé le paiement ! Et un autre a vu sa carte sollicitée pour un panier vide. Il nous faut des tests sur les <strong>échecs</strong> de <code>passerCommande</code> : paiement refusé (avec le motif de la banque dans le message), panier vide… et aucun effet de bord dans ces cas-là."},
+             "ticket": {"from": "diallo", "body": "Un client a reçu un e-mail « commande confirmée » alors que sa banque avait refusé le paiement ! Et un autre a vu sa carte sollicitée pour un panier vide. Il nous faut des tests sur les <strong>échecs</strong> de <code>passerCommande</code> : paiement refusé (avec le motif de la banque dans le message), panier vide… et aucun effet de bord dans ces cas-là. Vérifie les promesses rejetées avec <code>rejects</code>."},
              "desc": "<code>tests/commande-erreurs.test.js</code>, utilisant <code>rejects</code>, qui passe et détecte chaque chemin d'erreur mal géré.",
              "hints": ["Le client doit comprendre pourquoi sa commande échoue : que doit contenir le message d'erreur ?", "Dans chaque chemin d'erreur, quels appels ne doivent <em>jamais</em> avoir lieu ? Vérifiez-les une fois l'opération terminée."],
              "checks": [
@@ -330,7 +330,7 @@ livrer tests/commande-async.test.js
                  ('verif kill --tests tests/commande-erreurs.test.js --set commande-erreurs', "Vos tests ne détectent pas tous les chemins d'erreur mal gérés."),
              ]},
             {"id": "J6.2", "points": 5, "title": "La banque qui tousse", "manual": True,
-             "ticket": {"from": "nadia", "body": "L'API de la banque a des micro-coupures. <code>passerCommande</code> retente <strong>une seule fois</strong> après une erreur technique, puis abandonne avec « Service de paiement indisponible » (on ne montre jamais l'erreur technique brute au client). Un refus de la banque, lui, n'est pas une panne : on ne redemande jamais. Verrouille ce comportement."},
+             "ticket": {"from": "nadia", "body": "L'API de la banque a des micro-coupures. <code>passerCommande</code> retente <strong>une seule fois</strong> après une erreur technique, puis abandonne avec « Service de paiement indisponible » (on ne montre jamais l'erreur technique brute au client). Un refus de la banque, lui, n'est pas une panne : on ne redemande jamais. Verrouille ce comportement, en simulant les pannes avec <code>mockRejectedValue</code> (ou <code>mockRejectedValueOnce</code>)."},
              "desc": "<code>tests/commande-reprise.test.js</code>, simulant des pannes avec <code>mockRejectedValueOnce</code> ou <code>mockRejectedValue</code>, qui détecte toute erreur dans la logique de reprise.",
              "hints": ["Faites la liste des scénarios : que peut répondre la banque au premier appel ? Et au second ?", "Comptez les tentatives dans chaque scénario, et distinguez une promesse rejetée (panne) d'une réponse négative (refus)."],
              "checks": [
@@ -362,7 +362,7 @@ livrer src/relance.js src/debit-patient.js
 ''',
         "exercises": [
             {"id": "J7.1", "points": 6, "title": "Relance des paniers abandonnés", "manual": True,
-             "ticket": {"from": "thomas", "body": "Le marketing a lancé les relances de paniers abandonnés (<code>src/relance.js</code>). Premier jour : des clients relancés au bout d'une heure, d'autres relancés alors qu'ils avaient déjà commandé, et un client qui se plaint de recevoir la relance <strong>tous les jours</strong>… Écris des tests qui garantissent une relance unique au bout du délai fixé par le marketing (il est indiqué dans <code>src/relance.js</code>), l'annulation, le destinataire et le contenu du message. Sans attendre pour de vrai, évidemment."},
+             "ticket": {"from": "thomas", "body": "Le marketing a lancé les relances de paniers abandonnés (<code>src/relance.js</code>). Premier jour : des clients relancés au bout d'une heure, d'autres relancés alors qu'ils avaient déjà commandé, et un client qui se plaint de recevoir la relance <strong>tous les jours</strong>… Écris des tests qui garantissent une relance unique au bout du délai fixé par le marketing (il est indiqué dans <code>src/relance.js</code>), l'annulation, le destinataire et le contenu du message. Sans attendre pour de vrai, évidemment : avec les faux minuteurs de Jest (<code>jest.useFakeTimers</code>)."},
              "desc": "<code>tests/relance.test.js</code>, avec <code>jest.useFakeTimers</code>, rapide (moins de 5 s), qui détecte toute régression de la relance.",
              "hints": ["Le <code>mailer</code> est passé en paramètre. Scénarios : délai exact (juste avant / pile), annulation, panier vidé entre-temps, message avec plusieurs articles… et bien après le délai.", "Écrivez le délai attendu en dur, tel que l'annonce le commentaire : si vous réutilisez la constante exportée par le code testé, un délai faux passera inaperçu."],
              "checks": [
@@ -375,7 +375,7 @@ livrer src/relance.js src/debit-patient.js
              "desc": "<code>tests/debit-patient.test.js</code> passe en moins de 2,5 s et détecte toute erreur sur le nombre de tentatives, les délais d'attente ou l'erreur finale.",
              "hints": ["Avec des faux minuteurs, faites avancer le temps juste avant, puis juste au moment de chaque nouvelle tentative, et comptez les appels à la banque.", "Si rien ne bouge alors que le temps avance, relisez la section « Minuteurs et promesses » du cours."],
              "checks": [
-                 ('has tests/debit-patient.test.js "useFakeTimers"', "tests/debit-patient.test.js doit utiliser jest.useFakeTimers()."),
+                 ('has tests/debit-patient.test.js "useFakeTimers|spyOn\\(\\s*(global|globalThis)\\s*,\\s*[\'\\"]setTimeout[\'\\"]"', "tests/debit-patient.test.js doit simuler le temps (jest.useFakeTimers(), ou setTimeout espionné) au lieu d'attendre."),
                  ('verif pass --tests tests/debit-patient.test.js --max-ms 2500', "tests/debit-patient.test.js est absent, ne passe pas ou attend de vrais délais."),
                  ('verif kill --tests tests/debit-patient.test.js --set attente', "Vos tests ne détectent pas toutes les erreurs de la logique d'attente."),
              ]},
@@ -398,8 +398,8 @@ livrer src/fidelite.js
              "hints": ["Relisez dans le cours les deux endroits où peut vivre la configuration de Jest. Vérifiez votre travail avec <code>npm run test:coverage</code> : les seuils sont-ils affichés quand ils ne sont pas atteints ?", "À côté de <code>global</code>, <code>coverageThreshold</code> accepte des clés qui sont des chemins de fichiers (<code>./src/…</code>)."],
              "checks": [
                  ('node -e "require(\'$P/package.json\')"', "package.json n'est plus un JSON valide."),
-                 ('pkg \'p.scripts["test:coverage"]\' | grep -qE "jest.*--coverage"', "Le script « test:coverage » doit lancer jest avec --coverage."),
-                 ('verif config --expr \'(c.collectCoverageFrom || []).includes("src/**/*.js")\'', "collectCoverageFrom doit inclure « src/**/*.js »."),
+                 ('pkg \'p.scripts["test:coverage"]\' | grep -qE -- "^((npx )?jest|npm (run )?test --)( .*)? --(coverage|collectCoverage)(=true)?( |$)"', "Le script « test:coverage » doit lancer jest avec --coverage."),
+                 ('verif config --expr \'couvreSrc()\'', "collectCoverageFrom doit mesurer tous les fichiers .js de src/ (par exemple « src/**/*.js »)."),
                  ('verif config --expr \'c.coverageThreshold && c.coverageThreshold.global && c.coverageThreshold.global.branches >= 80 && c.coverageThreshold.global.lines >= 90\'', "coverageThreshold.global doit exiger au moins 80 % de branches et 90 % de lignes."),
                  ('verif config --expr \'Object.entries(c.coverageThreshold || {}).some(([k, v]) => k !== "global" && /(^|\\/)src\\/prix\\.js$/.test(k) && v && v.branches >= 100)\'', "Aucun seuil n'exige 100 % de branches sur src/prix.js."),
              ]},
@@ -453,7 +453,7 @@ livrer --set bug-export src/export-compta.js
                  ('verif reproduce --tests tests/facture.test.js --set bug-facture --each', "Il manque un test de non-régression."),
              ]},
             {"id": "J9.3", "points": 5, "title": "Un bug assumé", "manual": True,
-             "ticket": {"from": "sophie", "body": "Ticket #231 : le logiciel de comptabilité rejette certaines lignes de l'export (<code>src/export-compta.js</code>). Ce module appartient au prestataire, qui livrera le correctif le mois prochain : on n'y touche pas. Mais je veux que le bug soit documenté dans notre suite : un test qui dit ce que la compta attend, qui reste vert tant que le bug existe… et qui passe au rouge le jour où le correctif arrive, pour qu'on pense à le transformer en test normal."},
+             "ticket": {"from": "sophie", "body": "Ticket #231 : le logiciel de comptabilité rejette certaines lignes de l'export (<code>src/export-compta.js</code>). Ce module appartient au prestataire, qui livrera le correctif le mois prochain : on n'y touche pas. Mais je veux que le bug soit documenté dans notre suite : un test qui dit ce que la compta attend, qui reste vert tant que le bug existe… et qui passe au rouge le jour où le correctif arrive, pour qu'on pense à le transformer en test normal. Un test marqué comme échec attendu, donc, ni désactivé ni inversé."},
              "desc": "<code>tests/export-compta.test.js</code> décrit le résultat attendu par la compta, passe avec le code actuel (bogué), et échoue dès que le bug #231 est corrigé.",
              "hints": ["Écrivez d'abord le test normal, avec la valeur exacte que la compta attend d'après le commentaire du module : il est rouge. Comment annoncer cet échec comme connu, sans désactiver le test ?", "Relisez la fin du cours du jour."],
              "checks": [
@@ -500,7 +500,7 @@ livrer tests/wip-thomas.test.js package-lock.json .gitignore
              "checks": [
                  ('[ "$(pkg \'p.jest === undefined\')" = true ]', "package.json contient encore une clé « jest »."),
                  ('verif config --expr \'where === "jest.config.js"\'', "La configuration de Jest doit être dans jest.config.js."),
-                 ('verif config --expr \'(c.collectCoverageFrom || []).includes("src/**/*.js") && c.coverageThreshold && c.coverageThreshold.global && c.coverageThreshold.global.branches >= 80 && c.coverageThreshold.global.lines >= 90 && Object.entries(c.coverageThreshold).some(([k, v]) => /(^|\\/)src\\/prix\\.js$/.test(k) && v && v.branches >= 100)\'', "La configuration de la couverture et ses seuils (jour 8) ont été perdus en route."),
+                 ('verif config --expr \'couvreSrc() && c.coverageThreshold && c.coverageThreshold.global && c.coverageThreshold.global.branches >= 80 && c.coverageThreshold.global.lines >= 90 && Object.entries(c.coverageThreshold).some(([k, v]) => /(^|\\/)src\\/prix\\.js$/.test(k) && v && v.branches >= 100)\'', "La configuration de la couverture et ses seuils (jour 8) ont été perdus en route."),
                  ('verif config --expr \'c.resetMocks === true && c.restoreMocks === true\'', "La remise à zéro complète des doublures et la restauration des espions ne sont pas toutes les deux activées."),
                  ('verif suite', "La suite complète n'est pas au vert."),
              ]},

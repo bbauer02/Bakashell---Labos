@@ -11,12 +11,13 @@ cd ~/boutique
 #? `toBe(19.99 * 1.2)` recalculait le résultat avec la formule du code, sans arrondi : le test exigeait 23,988 et contredisait la règle.
 #? Les mutants à détecter : un calcul sans arrondi (23,988), une troncature au centime inférieur (23,98) et une TVA à 19,6 %.
 #? Piège : `toBeCloseTo(23.99, 2)` tolère un écart de 0,005 et laisserait donc passer le calcul non arrondi (23,988) ; ici, seule l'égalité exacte protège la règle.
+#? Formes également valables : `calculerTTC(19.99, 0.2)`, `toEqual`/`toStrictEqual(23.99)`, ou un `test.each` des trois cas (l'article à 19,99 € doit y rester).
 sed -i 's/toBe(19.99 \* 1.2)/toBe(23.99)/' tests/prix.test.js
 #@ J1.2
 #? `npm test` doit lancer la suite une seule fois et rendre la main : `--watchAll` dans ce script bloquait la CI indéfiniment.
 #? `--watch` demande à git quels fichiers ont changé ; `~/boutique` n'étant pas un dépôt, il s'arrête aussitôt, alors que `--watchAll` relance toute la suite sans git.
 #? `jest --ci` n'est jamais interactif et fait échouer un snapshot absent au lieu de l'écrire : c'est le comportement voulu en intégration continue.
-#? Variante également valable : garder `jest --watch` après avoir fait de `~/boutique` un dépôt git (`git init`).
+#? Variantes également valables : garder `jest --watch` après avoir fait de `~/boutique` un dépôt git (`git init`) ; `npm test -- --ci` ou `CI=true jest` pour `test:ci`.
 # npm test doit rendre la main ; --watch a besoin de git (~/boutique n'est pas un dépôt) : --watchAll
 node -e '
 const fs = require("fs");
@@ -212,6 +213,7 @@ EOF
 #? `toEqual` ignore les propriétés qui valent `undefined` et la classe des objets : il restait vert avec `remise: undefined` et avec des instances d'une classe `Ligne`.
 #? `toStrictEqual` tient compte des deux : c'est le seul matcher d'égalité qui garantit « exactement un objet simple ».
 #? Le produit ajouté porte un champ `poids` supplémentaire : le test vérifie en même temps que la ligne ne recopie que `ref`, `libelle`, `prixHT` et `quantite`.
+#? Variante également valable : vérifier `Object.keys(ligne)` et `Object.getPrototypeOf(ligne) === Object.prototype`, qui voient eux aussi la propriété `undefined` et la classe.
 cat > tests/panier-api.test.js <<'EOF'
 const { Panier } = require('../src/panier');
 
@@ -268,6 +270,7 @@ cd ~/boutique
 #? Un `<` écrit `<=` ne se voit que sur la valeur limite exacte : sans un cas pile sur chaque limite, ces mutants survivent.
 #? Pour `livraisonOfferte`, il faut chaque seuil pile, juste en dessous, et un pays étranger au seuil français, pour détecter une livraison offerte dès ce montant partout.
 #? Les cas refusés font partie de la règle : un pays non desservi doit lever une erreur (pas coûter 0 €) et un poids nul doit être refusé.
+#? Un `describe.each` par pays, un `test.each` en gabarit (`test.each` suivi d'un tableau entre accents graves) ou des lignes objets (`$poids`) conviennent tout autant.
 #? La grille (tranches, tarifs, suppléments, seuils) n'est pas la même dans tous les projets : les valeurs attendues se calculent à partir des commentaires et de la table des suppléments de `src/livraison.js`, jamais en appelant le code testé. Ici, un petit script les calcule et écrit les lignes du `test.each`.
 node - <<'EOF'
 const fs = require('fs');
@@ -321,6 +324,7 @@ EOF
 #? Le panier était créé une seule fois en haut du fichier : chaque test héritait de ce que les précédents y avaient mis, et l'ordre d'exécution décidait du résultat.
 #? Avec `beforeEach`, chaque test part d'un panier neuf et prépare lui-même ce dont il a besoin (ajouter la gourde avant de vérifier le total, par exemple).
 #? Piège : rendre les tests indépendants en supprimant leurs assertions ; les mutants (total sans les quantités, lignes comptées au lieu des articles, retrait qui vide tout) doivent rester détectés.
+#? Le `beforeEach` est imposé par le ticket (règle de l'équipe) : créer un panier dans chaque test serait correct, mais refusé ; un `beforeEach` qui prépare déjà les gourdes, dans un `describe` imbriqué, est accepté.
 cat > tests/panier-thomas.test.js <<'EOF'
 const { Panier } = require('../src/panier');
 
@@ -395,6 +399,7 @@ cd ~/boutique
 #? Chaque test reçoit une date fixe (`JOUR`) : le résultat ne dépend plus du jour réel, et les tests passent même avec une horloge système déplacée dans le futur.
 #? Les limites de format sont testées des deux côtés : une longueur de moins que le minimum et de plus que le maximum refusées pour `FORMAT`, les longueurs limites bien formées mais `INCONNU`, ce qui prouve qu'elles franchissent le contrôle de format.
 #? Le code saisonnier (celui qui expire le premier) doit encore être valable le soir de son dernier jour : ce cas détecte une expiration calculée à minuit au début du jour.
+#? Variante également valable : figer l'horloge avec `jest.useFakeTimers({ now })` et `jest.setSystemTime(…)` au lieu de passer la date à `validerCode`.
 #? Le code à la fois expiré et épuisé vérifie la priorité entre les règles ; `toEqual` sur l'objet complet détecte aussi une remise renvoyée en fraction (0.1) au lieu d'un pourcentage (10).
 #? Les codes et les longueurs autorisées ne sont pas les mêmes dans tous les projets : ils se lisent dans `src/data/codes.js` et dans la spécification. Ici, un petit script les lit et écrit les tests.
 node - <<'EOF'
@@ -538,6 +543,7 @@ cd ~/boutique
 #? `toHaveBeenCalledWith('GOURDE')` est indispensable : avec le libellé au lieu de la référence, la doublure renvoie `undefined`, et `undefined < 2` est faux, donc aucun manque n'apparaît dans le résultat.
 #? `toHaveBeenCalledTimes(2)` pour deux lignes détecte à la fois une ligne oubliée et une API interrogée deux fois par ligne (et facturée deux fois).
 #? Le stock tout juste suffisant (2 demandés, 2 disponibles) détecte un `<=` à la place de `<`, et `toEqual` sur le manque complet vérifie que `disponible` est bien renseigné.
+#? Variantes également valables : `jest.spyOn` sur une fausse API asynchrone, `mockResolvedValueOnce` en chaîne, `toHaveBeenNthCalledWith` ou `mock.calls`.
 cat > tests/stock.test.js <<'EOF'
 const { Panier } = require('../src/panier');
 const { verifierDisponibilite } = require('../src/stock');
@@ -714,6 +720,7 @@ cd ~/boutique
 #? `await expect(…).rejects.toThrow(…)` attend la fin de la promesse et vérifie l'erreur ; le message complet (« Paiement refusé : fonds insuffisants ») détecte un motif perdu.
 #? L'absence d'effets de bord se vérifie après la fin de l'opération : aucun e-mail après un refus, aucun débit pour un panier vide.
 #? Ces vérifications détectent les mutants les plus sournois : l'e-mail envoyé avant le contrôle du paiement, ou le panier vide refusé seulement après le débit de la carte.
+#? `rejects` est imposé par le ticket : un `try/catch` avec `expect.assertions` serait juste, mais refusé ici ; `return expect(…).rejects…` ou `rejects.toThrow(/motif/)` sont acceptés.
 cat > tests/commande-erreurs.test.js <<'EOF'
 jest.mock('../src/services/paiement');
 jest.mock('../src/services/mailer');
@@ -748,6 +755,7 @@ EOF
 #? On compte les appels à la banque dans chaque scénario : 2 après une panne passagère, 2 (et pas 3) après deux pannes, 1 seul après un refus.
 #? Le message « Service de paiement indisponible » est vérifié explicitement : l'erreur technique brute ne doit jamais remonter au client.
 #? `jest.resetAllMocks()` évite qu'une valeur « Once » non consommée dans un test ne fausse le suivant.
+#? `mockRejectedValue(Once)` est imposé par le ticket : `mockImplementationOnce(() => Promise.reject(…))` serait équivalent, mais refusé.
 cat > tests/commande-reprise.test.js <<'EOF'
 jest.mock('../src/services/paiement');
 jest.mock('../src/services/mailer');
@@ -899,6 +907,7 @@ EOF
 #? On compte les appels juste avant et pile à chaque échéance (1 ms avant, puis 1 ms plus tard) : des délais inversés, identiques ou absents sont ainsi détectés.
 #? Les délais se lisent dans le commentaire de `debiterPatiemment` (ils changent d'un projet à l'autre) ; l'assertion `rejects` est créée avant de faire avancer le temps : la promesse rejetée a déjà un gestionnaire au moment où elle échoue.
 #? Le second test vérifie à la fois le message final et le nombre exact de tentatives : ni 2, ni 4, mais 3.
+#? Variantes également valables : `jest.runAllTimersAsync()` en notant `Date.now()` à chaque tentative, ou `jest.spyOn(global, 'setTimeout')` qui relève les délais demandés.
 # Délais annoncés par le commentaire de debiterPatiemment (« On attend 1 s avant la 2e tentative, puis 2 s avant la 3e »), en millisecondes
 read P1 P2 < <(grep -oP 'On attend \K[\d,]+ s avant la 2e tentative, puis [\d,]+(?= s avant la 3e)' src/debit-patient.js \
   | sed 's/ s avant la 2e tentative, puis / /; s/,/./g' | awk '{ print $1 * 1000, $2 * 1000 }')
@@ -952,6 +961,7 @@ cd ~/boutique
 #? `collectCoverageFrom` mesure tous les fichiers de `src/`, y compris ceux qu'aucun test ne charge, qui comptent alors pour 0 %.
 #? `coverageThreshold` accepte, à côté de `global`, des clés qui sont des chemins de fichiers, comme `./src/prix.js` ; si un seuil n'est pas atteint, `jest --coverage` échoue.
 #? Piège : configurer Jest à la fois dans `package.json` et dans un `jest.config.js` ; Jest refuse alors de démarrer.
+#? Variantes également valables : un `jest.config.js`, les globs `src/**` ou `./src/**/*.js`, un script `npm test -- --coverage` (mais pas `src/*.js`, qui oublie les sous-dossiers).
 node -e '
 const fs = require("fs");
 const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
@@ -1079,6 +1089,7 @@ sed -i 's/livraisonOfferte(totalTTC, pays)/livraisonOfferte(produitsTTC, pays)/;
 #@ J9.3
 #? `test.failing` est vert tant que son contenu échoue, et devient rouge dès qu'il passe : le jour du correctif, la suite rappelle d'en faire un test normal.
 #? Piège : `test.skip` masquerait le bug, et il resterait désactivé pour toujours sans que personne ne le remarque.
+#? `it.failing` convient aussi ; un test normal inversé (`.not.toBe('…59,40')`) est refusé : il ne dit pas ce que la compta attend, et le ticket demande un échec attendu.
 #? Le montant doit rendre le bug visible : 59,4 s'écrit « 59,4 » avec `String`, alors que 12,35 s'écrit pareil avec ou sans le bug ; c'est pourquoi le second test, normal, passe dans les deux cas.
 cat > tests/export-compta.test.js <<'EOF'
 const { ligneComptable } = require('../src/export-compta');
@@ -1112,7 +1123,7 @@ sed -i "s/test\.only\.each(/test.each(/; s/test\.skip(/test(/; s/^  xit(/  test(
 #? `on: [push, pull_request]` déclenche le workflow sur les deux événements, et la matrice `node: [22, 24]` exécute le même job avec chaque version.
 #? L'ordre des étapes compte : récupérer le code (`checkout`), installer Node, installer les dépendances, puis lancer les tests avec la couverture.
 #? `npm ci` installe exactement les versions du `package-lock.json` : contrairement à `npm install`, il rend les résultats de la CI reproductibles.
-#? Variante également valable : lancer `npx jest --coverage` directement au lieu du script `test:coverage`.
+#? Variantes également valables : lancer `npx jest --coverage` directement au lieu du script `test:coverage` ; un job par version de Node, ou une matrice `include`.
 mkdir -p .github/workflows
 cat > .github/workflows/tests.yml <<'EOF'
 name: Tests
@@ -1136,6 +1147,7 @@ EOF
 #? La configuration est déplacée sans rien perdre, puis la clé `jest` est supprimée de `package.json` : avec deux configurations, Jest refuse de démarrer.
 #? `resetMocks` efface appels, implémentations et valeurs programmées avant chaque test, et `restoreMocks` remet en place les méthodes espionnées : `clearMocks` n'aurait effacé que les appels.
 #? Piège : avec `resetMocks`, une doublure programmée une seule fois dans un `beforeAll` est effacée par la remise à zéro automatique ; les fichiers de test la reprogramment donc dans `beforeEach`, qui s'exécute après elle.
+#? Un `jest.config.js` écrit à la main, ou qui exporte une fonction renvoyant la configuration, convient aussi ; `clearMocks: true` en plus ne gêne pas.
 node -e '
 const fs = require("fs");
 const p = JSON.parse(fs.readFileSync("package.json", "utf8"));

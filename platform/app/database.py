@@ -18,6 +18,10 @@ def get_db():
     return db
 
 
+# Filtre d'identifiants d'un parcours -> sa clé (les points de QCM s'ajoutent au score du parcours)
+_COURSE_OF_GLOB: dict = {}
+
+
 def init_db(courses):
     """Crée ou met à jour le schéma, puis applique les changements de version des parcours.
     Retourne la liste des parcours dont la progression a été archivée."""
@@ -114,6 +118,17 @@ def init_db(courses):
             user_id INTEGER NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        -- QCM de fin de cours : une seule tentative par étape
+        CREATE TABLE IF NOT EXISTS quiz_results (
+            user_id INTEGER NOT NULL,
+            course TEXT NOT NULL,
+            step INTEGER NOT NULL,
+            score INTEGER NOT NULL,
+            max_score INTEGER NOT NULL,
+            details TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, course, step)
+        );
         -- Attestations de fin de parcours, vérifiables par leur code
         CREATE TABLE IF NOT EXISTS certificates (
             code TEXT PRIMARY KEY,
@@ -154,6 +169,7 @@ def init_db(courses):
     db.commit()
     db.close()
 
+    _COURSE_OF_GLOB.update({c["id_glob"]: c["key"] for c in courses})
     migrated = [c["key"] for c in courses if _migrate_course(c)]
     _migrate_to_classes()
     _ensure_admin()
@@ -204,6 +220,7 @@ def _migrate_course(course: dict) -> bool:
     db.execute("DELETE FROM hints_used WHERE exercise_id GLOB ?", (course["id_glob"],))
     db.execute("DELETE FROM attempts WHERE exercise_id GLOB ?", (course["id_glob"],))
     db.execute("DELETE FROM step_setup WHERE course = ?", (course["key"],))
+    db.execute("DELETE FROM quiz_results WHERE course = ?", (course["key"],))
     db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (course["meta_key"], course["version"]))
     db.commit()
     db.close()
@@ -409,9 +426,13 @@ def get_user_score(user_id: int, id_glob: str = "*"):
     rows = db.execute(
         "SELECT exercise_id, points FROM progress WHERE user_id = ? AND exercise_id GLOB ?", (user_id, id_glob)
     ).fetchall()
+    course_key = _COURSE_OF_GLOB.get(id_glob)
+    quiz = db.execute("SELECT COALESCE(SUM(score), 0) FROM quiz_results WHERE user_id = ? AND course = ?",
+                      (user_id, course_key)).fetchone()[0] if course_key else 0
     db.close()
     return {
-        "score": sum(r["points"] for r in rows),
+        "score": sum(r["points"] for r in rows) + quiz,
+        "quiz": quiz,
         "completed": [r["exercise_id"] for r in rows],
         "earned": {r["exercise_id"]: r["points"] for r in rows},
     }
@@ -441,10 +462,41 @@ def reset_user_progress(user_id: int, course: dict = None):
     db.execute("DELETE FROM attempts WHERE user_id = ? AND exercise_id GLOB ?", (user_id, glob))
     if course:
         db.execute("DELETE FROM step_setup WHERE user_id = ? AND course = ?", (user_id, course["key"]))
+        db.execute("DELETE FROM quiz_results WHERE user_id = ? AND course = ?", (user_id, course["key"]))
     else:
         db.execute("DELETE FROM step_setup WHERE user_id = ?", (user_id,))
+        db.execute("DELETE FROM quiz_results WHERE user_id = ?", (user_id,))
     db.commit()
     db.close()
+
+
+# ─── QCM de fin de cours ───────────────────────────────────────────────
+
+def get_quiz_result(user_id: int, course_key: str, step: int):
+    db = get_db()
+    row = db.execute("SELECT score, max_score, details FROM quiz_results WHERE user_id = ? AND course = ? AND step = ?",
+                     (user_id, course_key, step)).fetchone()
+    db.close()
+    return {"score": row["score"], "max": row["max_score"], "details": json.loads(row["details"])} if row else None
+
+
+def save_quiz_result(user_id: int, course_key: str, step: int, score: int, max_score: int, details: list) -> bool:
+    """Enregistre la tentative ; False si l'étudiant avait déjà répondu (une seule tentative)."""
+    db = get_db()
+    cur = db.execute("INSERT OR IGNORE INTO quiz_results (user_id, course, step, score, max_score, details) "
+                     "VALUES (?, ?, ?, ?, ?, ?)", (user_id, course_key, step, score, max_score, json.dumps(details)))
+    db.commit()
+    db.close()
+    return cur.rowcount == 1
+
+
+def quiz_scores(user_id: int, course_key: str) -> dict:
+    """Étape -> (points, maximum) des QCM passés par l'étudiant sur ce parcours."""
+    db = get_db()
+    rows = db.execute("SELECT step, score, max_score FROM quiz_results WHERE user_id = ? AND course = ?",
+                      (user_id, course_key)).fetchall()
+    db.close()
+    return {r["step"]: (r["score"], r["max_score"]) for r in rows}
 
 
 # ─── Indices ───────────────────────────────────────────────────────────
@@ -504,8 +556,11 @@ def get_all_students(course: dict, step_of: dict):
     rows = db.execute(
         "SELECT user_id, exercise_id, points FROM progress WHERE exercise_id GLOB ?", (course["id_glob"],)
     ).fetchall()
+    quiz = dict(db.execute("SELECT user_id, SUM(score) FROM quiz_results WHERE course = ? GROUP BY user_id",
+                           (course["key"],)).fetchall())
     db.close()
-    students = {u["id"]: {**dict(u), "score": 0, "exercises_done": 0, "per_step": {}} for u in users}
+    students = {u["id"]: {**dict(u), "score": quiz.get(u["id"], 0), "quiz": quiz.get(u["id"], 0),
+                          "exercises_done": 0, "per_step": {}} for u in users}
     for r in rows:
         s = students.get(r["user_id"])
         step = step_of.get(r["exercise_id"])
@@ -525,7 +580,7 @@ def delete_user(user_id: int):
         db.close()
         return
     for table in ("progress", "sessions", "hints_used", "step_setup", "class_members", "attempts",
-                  "password_resets", "certificates"):
+                  "password_resets", "certificates", "quiz_results"):
         db.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
     db.execute("DELETE FROM users WHERE id = ? AND is_admin = 0", (user_id,))
     db.commit()

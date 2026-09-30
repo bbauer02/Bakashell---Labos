@@ -4,6 +4,8 @@ Chaque parcours a son image Docker, son conteneur par étudiant, son catalogue d
 sa version (un changement de version archive la progression du parcours et recrée les
 conteneurs). Les identifiants d'exercices sont uniques entre parcours (« 4.2 », « J4.2 », « D4.2 », « G4.2 », « A4.2 »).
 """
+import importlib
+import importlib.util
 import os
 
 from .ansible import catalogue as ansible_catalogue
@@ -139,6 +141,8 @@ COURSES = {
 DEFAULT_COURSE = "linux"
 
 # Index global : identifiant d'exercice -> (parcours, étape, position dans l'étape, exercice)
+QUIZ_QUESTIONS = 4  # questions du QCM de fin de cours tirées au sort pour chaque étudiant, 1 point chacune
+
 EXERCISE_INDEX = {}
 for _key, _course in COURSES.items():
     for _num, _step in _course["steps"].items():
@@ -148,6 +152,12 @@ for _key, _course in COURSES.items():
                 assert _ex["ticket"]["from"] in CHARACTERS, f"Personnage inconnu dans {_ex['id']}"
             EXERCISE_INDEX[_ex["id"]] = (_key, _num, _pos, _ex)
     _course["max_score"] = sum(ex["points"] for s in _course["steps"].values() for ex in s["exercises"])
+    # QCM de fin de cours (courses/<parcours>/quiz.py) : QUIZ_QUESTIONS points par étape qui en a un
+    _quiz = (importlib.import_module(f"{__name__}.{_key}.quiz").QUIZ
+             if importlib.util.find_spec(f"{__name__}.{_key}.quiz") else {})
+    _course["quiz"] = {n: q for n, q in _quiz.items() if n in _course["steps"] and len(q) >= QUIZ_QUESTIONS}
+    _course["quiz_max"] = QUIZ_QUESTIONS * len(_course["quiz"])
+    _course["max_score"] += _course["quiz_max"]
     _course["total_exercises"] = sum(len(s["exercises"]) for s in _course["steps"].values())
     _course["ids"] = {ex["id"] for s in _course["steps"].values() for ex in s["exercises"]}
 

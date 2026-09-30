@@ -344,7 +344,7 @@ emit LOT "$lot"
                  ('test -d $H/projets/boutique/src', "Le dossier ~/projets/boutique/src n'existe pas."),
                  ('[ "$(owner $H/projets/boutique)" = etudiant ] && [ "$(owner $H/projets/boutique/src)" = etudiant ]', "Les dossiers boutique et src doivent vous appartenir : créez-les sans sudo."),
                  (r'''l=$(grep -v '^[[:space:]]*$' $H/doc-install.txt | head -n1); [[ $l =~ ^[[:space:]]*mkdir[[:space:]] ]]''', "La première ligne de ~/doc-install.txt n'est pas une commande mkdir (ou le fichier est absent)."),
-                 (r'''l=$(grep -v '^[[:space:]]*$' $H/doc-install.txt | head -n1); [[ $l =~ [[:space:]]/home/etudiant/projets/boutique/src/?[[:space:]]*$ ]]''', "La commande ne se termine pas par le chemin absolu du dossier src (il commence par /home, sans ~)."),
+                 (r'''l=$(grep -v '^[[:space:]]*$' $H/doc-install.txt | head -n1); q="[\"']?"; [[ $l =~ [[:space:]]${q}/home/etudiant/projets/boutique/src/?${q}[[:space:]]*$ ]]''', "La commande ne se termine pas par le chemin absolu du dossier src (il commence par /home, sans ~)."),
                  (r'''l=$(grep -v '^[[:space:]]*$' $H/doc-install.txt | head -n1); [[ $l =~ [[:space:]](-[a-zA-Z]*p[a-zA-Z]*|--parents)([[:space:]]|$) ]]''', "Telle quelle, cette commande échouerait sur un poste où ~/projets/boutique n'existe pas encore."),
              ]},
             {"id": "2.2", "points": 3, "title": "Question piège",
@@ -353,7 +353,7 @@ emit LOT "$lot"
              "hints": ["Ouvrez le manuel de <code>ls</code> et utilisez sa recherche : <kbd>/</kbd> suivi d'un mot anglais de la question (<em>size</em>, <em>extension</em>, <em>version</em>, <em>sort</em>…), puis <kbd>n</kbd> pour l'occurrence suivante.",
                        "Chaque option est décrite en une ligne sous son nom. Attention à la casse : <code>-s</code> et <code>-S</code>, par exemple, ne font pas du tout la même chose."],
              "checks": [
-                 ('a=$(ans $H/reponse-man.txt); [ -n "$LAB_OPT" ] && { [ "$a" = "-$LAB_OPT" ] || [ "$a" = "$LAB_OPT" ] || [ "$a" = "--sort=$LAB_TRI" ]; }', "Ce n'est pas l'option demandée dans ~/question-man.txt (ou ~/reponse-man.txt est absent)."),
+                 ('a=$(ans $H/reponse-man.txt); a=${a#ls}; [ -n "$LAB_OPT" ] && { [ "$a" = "-$LAB_OPT" ] || [ "$a" = "$LAB_OPT" ] || [ "$a" = "--sort=$LAB_TRI" ]; }', "Ce n'est pas l'option demandée dans ~/question-man.txt (ou ~/reponse-man.txt est absent)."),
              ]},
             {"id": "2.3", "points": 4, "title": "Le stagiaire est perdu",
              "ticket": {"from": "julien", "body": "Bonjour, désolé de déranger… Je suis dans <code>~/partage-marc/clients/2024/devis</code> et je dois ouvrir <code>tarifs.txt</code>, que Marc a rangé ailleurs dans <code>~/partage-marc</code>. Mais je ne sais pas quel chemin taper sans repartir de la racine. Tu peux m'aider ?"},
@@ -378,7 +378,7 @@ emit LOT "$lot"
              "hints": ["Toutes les commandes ne sont pas des programmes installés sur le disque : certaines font partie du shell lui-même et n'ont donc pas de page de manuel à leur nom. Cherchez dans <code>man bash</code> la section consacrée à ces commandes intégrées (<em>builtin</em>).",
                        "<code>type</code> suivi du nom de la commande dit ce qu'elle est ; <code>help</code> suivi du même nom affiche sa documentation."],
              "checks": [
-                 ('grep -qi builtin $H/type-commande.txt && grep -qw -- "$LAB_BCMD" $H/type-commande.txt', "~/type-commande.txt ne contient pas la réponse du shell à la question « qu'est-ce que cette commande ? »."),
+                 ('grep -qi builtin $H/type-commande.txt && { grep -qw -- "$LAB_BCMD" $H/type-commande.txt || [ "$(ans $H/type-commande.txt)" = builtin ]; }', "~/type-commande.txt ne contient pas la réponse du shell à la question « qu'est-ce que cette commande ? »."),
                  ('[ -n "$LAB_BOPT" ] && [ "$(ans $H/option-commande.txt)" = "$LAB_BOPT" ]', "~/option-commande.txt ne contient pas l'option demandée dans ~/question-shell.txt."),
              ]},
             {"id": "2.6", "points": 4, "title": "Le rapport le plus récent",
@@ -475,7 +475,7 @@ ls $W | grep -vE '^rapport[1-9]\.txt$' | sort > $REF/rapports-reste
                        "Mettez le titre entre guillemets, accents compris, puis vérifiez avec <code>cat</code>."],
              "checks": [
                  ('test -f $H/documents/procedures/arrivee.txt', "Le fichier ~/documents/procedures/arrivee.txt n'existe pas."),
-                 ('[ "$(head -n1 $H/documents/procedures/arrivee.txt)" = "Procédure arrivée nouveau salarié" ]', "La première ligne n'est pas exactement « Procédure arrivée nouveau salarié » (attention aux accents)."),
+                 ('[ "$(head -n1 $H/documents/procedures/arrivee.txt | sed "s/[[:space:]]*$//")" = "Procédure arrivée nouveau salarié" ]', "La première ligne n'est pas exactement « Procédure arrivée nouveau salarié » (attention aux accents)."),
              ]},
             {"id": "3.3", "points": 3, "title": "Première étape",
              "ticket": {"from": "sophie", "body": "Ajoute la première étape sous le titre : « 1. Créer le compte utilisateur ». Et attention à ne pas écraser le titre, la dernière fois quelqu'un a perdu toute une procédure comme ça…"},
@@ -483,8 +483,9 @@ ls $W | grep -vE '^rapport[1-9]\.txt$' | sort > $REF/rapports-reste
              "hints": ["Des deux symboles de redirection, l'un remplace le contenu, l'autre ajoute à la fin : relisez le tableau du cours.",
                        "Si la ligne a été ajoutée deux fois, réécrivez le fichier : le titre avec un symbole, puis l'étape avec l'autre."],
              "checks": [
-                 ('[ "$(sed -n 2p $H/documents/procedures/arrivee.txt)" = "1. Créer le compte utilisateur" ]', "La 2e ligne n'est pas « 1. Créer le compte utilisateur »."),
-                 ('[ "$(wc -l < $H/documents/procedures/arrivee.txt)" -eq 2 ]', "Le fichier doit contenir exactement 2 lignes."),
+                 ('[ "$(sed -n 2p $H/documents/procedures/arrivee.txt | sed "s/[[:space:]]*$//")" = "1. Créer le compte utilisateur" ]', "La 2e ligne n'est pas « 1. Créer le compte utilisateur »."),
+                 # Lignes jusqu'à la dernière non vide (dernière ligne sans retour à la ligne comprise)
+                 ("[ \"$(awk 'NF { n = NR } END { print n + 0 }' $H/documents/procedures/arrivee.txt)\" -eq 2 ]", "Le fichier doit contenir exactement 2 lignes."),
              ]},
             {"id": "3.4", "points": 3, "title": "Copie pour relecture",
              "ticket": {"from": "sophie", "body": "Je relirai ta procédure ce soir. Dépose-m'en une copie dans les comptes rendus, sous le nom <code>arrivee-a-relire.txt</code>, et garde l'original là où il est."},
@@ -2094,9 +2095,9 @@ emit MANYFILES "${apps[0]}"
              "checks": [
                  ('test -d /mnt/usb', "Le dossier /mnt/usb n'existe pas."),
                  ('test -s $H/fstab-usb.txt', "~/fstab-usb.txt est absent ou vide."),
-                 (r'''read -r a b c d e g x < <(grep -vE '^\s*(#|$)' $H/fstab-usb.txt | head -n1); [ "${a^^}" = "UUID=${LAB_UUID^^}" ]''', "La source n'est pas l'UUID de ce système de fichiers (forme UUID=…)."),
+                 (r'''read -r a b c d e g x < <(grep -vE '^\s*(#|$)' $H/fstab-usb.txt | head -n1); a=${a//\"/}; [ "${a^^}" = "UUID=${LAB_UUID^^}" ]''', "La source n'est pas l'UUID de ce système de fichiers (forme UUID=…)."),
                  (r'''read -r a b c d e g x < <(grep -vE '^\s*(#|$)' $H/fstab-usb.txt | head -n1); [ "${b%/}" = /mnt/usb ] && [ "$c" = "$(blkid -o value -s TYPE /srv/disques/usb-sauvegarde.img)" ]''', "Le point de montage ou le type ne conviennent pas (lisez le type sur l'image)."),
-                 (r'''read -r a b c d e g x < <(grep -vE '^\s*(#|$)' $H/fstab-usb.txt | head -n1); o=",$d,"; [[ $o == *,defaults,* && $o == *,nofail,* && $o != *,noauto,* ]]''', "Les options doivent garder les valeurs par défaut et ne pas bloquer le démarrage si le disque est absent (tout en le montant automatiquement quand il est branché)."),
+                 (r'''read -r a b c d e g x < <(grep -vE '^\s*(#|$)' $H/fstab-usb.txt | head -n1); o=",$d,"; [[ $o == *,nofail,* && $o != *,noauto,* ]] || exit 1; for x in ${d//,/ }; do case $x in defaults|nofail|rw|auto|suid|dev|exec|nouser|async|x-systemd.*) ;; *) exit 1 ;; esac; done''', "Les options doivent garder les valeurs par défaut et ne pas bloquer le démarrage si le disque est absent (tout en le montant automatiquement quand il est branché)."),
                  (r'''read -r a b c d e g x < <(grep -vE '^\s*(#|$)' $H/fstab-usb.txt | head -n1); [ "$e" = 0 ] && [ "$g" = 2 ] && [ -z "$x" ]''', "Les deux derniers champs (dump et pass) ne conviennent pas, ou la ligne a trop de champs."),
              ]},
             {"id": "14.5", "points": 4, "title": "Le dossier fantôme",
@@ -2564,7 +2565,7 @@ chmod 644 /etc/cron.d/sync-catalogue
              "desc": "Ajoutez à <strong>votre</strong> crontab une tâche qui ajoute la date à <code>~/tick.log</code> toutes les minutes. Attendez 2 minutes avant de valider.",
              "hints": ["Chaque utilisateur a sa propre table de tâches planifiées, modifiée par une commande dédiée (voir le cours).", "<code>crontab -e</code>, puis une ligne dont les cinq champs d'horaire valent <code>*</code>, avec le chemin absolu de tick.log."],
              "checks": [
-                 ('crontab -l -u etudiant 2>/dev/null | grep -vE "^\\s*#" | grep tick.log | awk \'{print $1, $2, $3, $4, $5}\' | grep -qE "^(\\*|\\*/1) \\* \\* \\* \\*$"', "Votre crontab ne contient pas de tâche exécutée chaque minute qui écrit dans tick.log."),
+                 ('crontab -l -u etudiant 2>/dev/null | grep -vE "^\\s*#" | grep tick.log | head -n1 | { read -r l; cron_is "$l" "*" "*" "*" "*" "*"; }', "Votre crontab ne contient pas de tâche exécutée chaque minute qui écrit dans tick.log."),
                  ('[ "$(cat /var/log/syslog.1 /var/log/syslog 2>/dev/null | grep -cE "CRON\\[[0-9]+\\]: \\(etudiant\\) CMD \\(.*tick\\.log")" -ge 2 ] && [ "$(sort -u $H/tick.log | wc -l)" -ge 2 ]', "cron n'a pas encore écrit deux horodatages dans ~/tick.log : patientez un peu (grep CRON /var/log/syslog)."),
              ]},
             {"id": "18.2", "points": 5, "title": "Tâche système",
@@ -2618,7 +2619,7 @@ chmod 644 /etc/cron.d/sync-catalogue
              "desc": "Modifiez la tâche pour que sa sortie <strong>et ses erreurs</strong> s'ajoutent à <code>/var/log/export-compta.log</code>. Laissez-la s'exécuter, lisez l'erreur, puis corrigez sa cause pour que la tâche réussisse.",
              "hints": ["Sans serveur de messagerie, cron jette la sortie des tâches (voyez <code>grep CRON /var/log/syslog</code>). Il faut rediriger deux flux : la sortie standard et la sortie d'erreur.", "<code>… &gt;&gt; /var/log/export-compta.log 2&gt;&amp;1</code> à la fin de la ligne ; attendez une minute, puis lisez le journal."],
              "checks": [
-                 ('l=$(cron_line /etc/cron.d/export-compta); [[ $l == *export-compta*">>"*/var/log/export-compta.log* && $l == *"2>&1"* ]] && [ "$(echo "$l" | awk \'{print $6}\')" = root ]', "La tâche (toujours en root) n'ajoute pas sa sortie et ses erreurs à /var/log/export-compta.log."),
+                 ('l=$(cron_line /etc/cron.d/export-compta); [[ $l == *export-compta*">>"*/var/log/export-compta.log* ]] && { [[ $l == *"2>&1"* ]] || [[ $l =~ 2\\>\\>[[:space:]]*/var/log/export-compta\\.log ]]; } && [ "$(echo "$l" | awk \'{print $6}\')" = root ]', "La tâche (toujours en root) n'ajoute pas sa sortie et ses erreurs à /var/log/export-compta.log."),
                  ('grep -q "ERREUR" /var/log/export-compta.log 2>/dev/null', "Le journal ne contient pas encore l'erreur de la tâche : laissez cron l'exécuter au moins une fois avant de corriger quoi que ce soit."),
                  ('cron_run root /etc/cron.d/export-compta export-compta; tail -n1 /var/log/export-compta.log | grep -q "export OK"', "Exécutée exactement comme le fait cron, la tâche ne réussit pas encore : lisez l'erreur capturée et corrigez sa cause."),
              ]},
@@ -3419,7 +3420,7 @@ echo "$b" > $REF/s23-marc-blobs
              "hints": ["awk sait filtrer les lignes de /etc/passwd selon la valeur d'un champ : l'UID est le 3e.", "<code>userdel</code> peut refuser (des processus tournent avec l'UID 0) : verrouillez plutôt son mot de passe et retirez-lui son shell (<code>usermod -s</code>)."],
              "checks": [
                  ('f=$H/uid-zero.txt; x=$LAB_FAUX_ROOT; [ -n "$x" ] && grep -qx root $f && [ -z "$(grep -vxE "\\s*(root|$x)?\\s*" $f)" ] && { grep -qx "$x" $f || ! awk -F: \'$3 == 0\' /etc/passwd | grep -q "^$x:"; }', "~/uid-zero.txt doit lister exactement les comptes d'UID 0 (un nom par ligne)."),
-                 ('x=$LAB_FAUX_ROOT; ! getent passwd "$x" >/dev/null || [ "$(id -u "$x")" != 0 ] || { { [ "$(passwd -S "$x" | awk \'{print $2}\')" = L ] || [ "$(getent shadow "$x" | cut -d: -f8)" = 0 ]; } && getent passwd "$x" | cut -d: -f7 | grep -qE "(nologin|false)$"; }', "Le compte d'UID 0 qui n'est pas root est encore utilisable (mot de passe actif ou shell de connexion)."),
+                 ('x=$LAB_FAUX_ROOT; ! getent passwd "$x" >/dev/null || [ "$(id -u "$x")" != 0 ] || { { [ "$(passwd -S "$x" | awk \'{print $2}\')" = L ] || { e=$(getent shadow "$x" | cut -d: -f8); [ -n "$e" ] && [ "$e" -le $(( $(date +%s) / 86400 )) ]; }; } && getent passwd "$x" | cut -d: -f7 | grep -qE "(nologin|false)$"; }', "Le compte d'UID 0 qui n'est pas root est encore utilisable (mot de passe actif ou shell de connexion)."),
              ]},
             {"id": "23.5", "points": 5, "title": "Vraiment verrouillé",
              "ticket": {"from": "sophie", "body": "Le propriétaire du compte <code>securise</code> part six mois en congé. D'ici son retour, plus personne ne doit pouvoir se connecter avec ce compte, par aucun moyen, mais on ne supprime rien. À son retour, la politique de l'entreprise s'appliquera : changement de mot de passe au moins tous les 90 jours."},

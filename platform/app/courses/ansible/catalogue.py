@@ -130,6 +130,32 @@ for l in sys.stdin:
     if not m or "BECOME-SUCCESS" in l: continue
     t = calendar.timegm(time.strptime(f"{an} {m.group(1)}", "%Y %b %d %H:%M:%S"))
     if t >= int(sys.argv[1]) and m.group(2).rsplit("/", 1)[-1] in suspects: print((m.group(2) + m.group(3))[:90])' "$2"; }
+# coffres : contenu déchiffré (avec la clé configurée de l'étudiant) de tout ce qui est chiffré par Ansible Vault dans
+# ~/infra : fichiers entiers (ansible-vault encrypt) et valeurs « !vault » (ansible-vault encrypt_string)
+coffres() {
+  local f n=0
+  for f in $(grep -rlE '^\$ANSIBLE_VAULT|!vault' $I 2>/dev/null); do
+    if head -c 14 "$f" | grep -q '^\$ANSIBLE_VAULT'; then etu "ansible-vault view '$f'"; continue; fi
+    rm -rf /tmp/lab-coffres && mkdir -p /tmp/lab-coffres && chmod 755 /tmp/lab-coffres
+    python3 - "$f" /tmp/lab-coffres <<'PY' 2>/dev/null
+import os, re, sys, textwrap
+t = open(sys.argv[1], encoding="utf-8").read()
+for i, m in enumerate(re.finditer(r"!vault *\|?-? *\n((?:[ \t]+\S.*\n?)+)", t)):
+    open(os.path.join(sys.argv[2], str(i)), "w").write(textwrap.dedent(m.group(1)))
+PY
+    chmod 644 /tmp/lab-coffres/* 2>/dev/null
+    for n in /tmp/lab-coffres/*; do [ -f "$n" ] && etu "ansible-vault view $n"; echo; done
+  done
+  rm -rf /tmp/lab-coffres
+}
+# cle_coffre : fichier de la clé du coffre désigné par ansible.cfg (vault_password_file, ou vault_identity_list)
+cle_coffre() {
+  local d f
+  d=$(etu "ansible-config dump --only-changed")
+  f=$(sed -n 's/^DEFAULT_VAULT_PASSWORD_FILE([^)]*) = //p' <<<"$d")
+  [ -n "$f" ] || f=$(sed -n "s/^DEFAULT_VAULT_IDENTITY_LIST([^)]*) = \['\([^']*\)'.*/\1/p" <<<"$d" | sed 's/^[^@]*@//')
+  echo "${f/#\~/$H}"
+}
 # sudo_ansible <serveur> : heure (epoch) de chaque commande lancée par Ansible avec become
 sudo_ansible() { sur "$1" "grep BECOME-SUCCESS /var/log/sudo.log 2>/dev/null" | cut -c1-15 | python3 -c '
 import calendar, sys, time
@@ -352,7 +378,8 @@ own $I
              "checks": [
                  ('[ -f $I/ansible.cfg ]', "~/infra/ansible.cfg n'existe pas."),
                  ('etu "ansible-config dump --only-changed" | grep -E "^DEFAULT_HOST_LIST" | grep -q inventaire.ini', "ansible.cfg ne désigne pas l'inventaire inventaire.ini (section [defaults])."),
-                 ('etu "ansible-config dump --only-changed" | grep -E "^DEFAULT_REMOTE_USER" | grep -q "= admin"', "ansible.cfg doit définir le compte distant admin."),
+                 # Compte distant : remote_user dans ansible.cfg, ou ansible_user dans l'inventaire ([all:vars], group_vars…)
+                 ('etu "ansible-config dump --only-changed" | grep -E "^DEFAULT_REMOTE_USER" | grep -q "= admin" || for s in web1 web2 db1; do [ "$(var $s ansible_user)" = admin ] || exit 1; done', "Le compte distant admin n'est pas réglé dans le projet : remote_user dans la section [defaults] d'ansible.cfg (ou ansible_user dans l'inventaire)."),
                  ('[ "$(etu "ansible production -m ping -o" | grep -c "SUCCESS.*pong")" = 3 ]', "ansible production -m ping ne répond pas « pong » pour les trois serveurs (lancé depuis ~/infra)."),
              ]},
             {"id": "A1.4", "points": 4, "title": "Viser juste", "manual": True,
@@ -361,7 +388,8 @@ own $I
              "hints": ["Avant d'écrire une réponse, regardez ce qu'un motif sélectionne : une option d'<code>ansible</code> affiche les serveurs visés sans rien exécuter ni se connecter. Le cours présente l'union, l'intersection, l'exclusion et l'index.", "<code>ansible -i exercices/parc.ini '&lt;motif&gt;' --list-hosts</code> ; <code>groupe1:&amp;groupe2</code> (et), <code>groupe1:!groupe2</code> (sauf), <code>groupe1:groupe2</code> (ou), <code>groupe[0]</code> (le premier), <code>groupe[-1]</code> (le dernier), toujours entre guillemets simples."],
              "checks": [
                  ('[ -s $I/reponses/motifs.txt ]', "~/infra/reponses/motifs.txt n'existe pas ou est vide."),
-                 (r'''for i in 1 2 3 4; do m=$(sed -n "${i}p" $I/reponses/motifs.txt | tr -d '\r' | sed 's/^ *//; s/ *$//')
+                 (r'''for i in 1 2 3 4; do m=$(sed -n "${i}p" $I/reponses/motifs.txt | tr -d '\r' | sed "s/^ *//; s/ *\$//; s/^'\(.*\)'\$/\1/; s/^\"\(.*\)\"\$/\1/")
+  case "$m" in *"'"*) echo "MSG:ligne $i : apostrophe dans le motif"; exit 1;; esac
   [ -n "$m" ] || { echo "MSG:ligne $i vide"; exit 1; }
   for h in $(grep -oE '^[a-z]{3}-[a-z]+[0-9]{2}' $I/exercices/parc.ini | sort -u); do
     case "$m" in *"$h"*) echo "MSG:ligne $i : $h est un nom de serveur, pas un groupe"; exit 1;; esac; done
@@ -489,7 +517,8 @@ for f in message-julien message-thomas message-lea; do own $H/$f.txt; chmod 600 
              "checks": [
                  ('ssh_ok $LAB_REINSTALLE', "Pas de connexion SSH non interactive vers le serveur réinstallé (compte admin) : ancienne empreinte encore présente, ou clé publique à réinstaller sur le serveur neuf."),
                  ('cur=$(sur $LAB_REINSTALLE "cat /etc/ssh/ssh_host_*_key.pub" | awk "{print \\$2}"); k=$(etu "ssh-keygen -F $LAB_REINSTALLE; ssh-keygen -F $LAB_REINSTALLE_IP" | grep -v "^#" | awk "{print \\$3}"); [ -n "$k" ] && for x in $k; do grep -qxF "$x" <<<"$cur" || exit 1; done', "~/.ssh/known_hosts contient encore une ancienne empreinte du serveur réinstallé (ssh-keygen -R)."),
-                 ('! etu "ansible-config dump --only-changed" | grep -q "^HOST_KEY_CHECKING" && ! grep -qsiE "StrictHostKeyChecking *=? *(no|off)|UserKnownHostsFile *=? */dev/null" $H/.ssh/config && ! grep -qs "ANSIBLE_HOST_KEY_CHECKING" $H/.bashrc $H/.profile $H/.bash_profile', "La vérification des empreintes est désactivée (ansible.cfg, ~/.ssh/config ou variable d'environnement) : retirez ce réglage."),
+                 # host_key_checking = True (explicite) reste permis ; ssh_args -o StrictHostKeyChecking=no est refusé aussi
+                 (r'''! etu "ansible-config dump --only-changed -t all" | grep -qiE "^HOST_KEY_CHECKING.*= *False|StrictHostKeyChecking *=? *(no|off)|UserKnownHostsFile *=? */dev/null" && ! grep -qsiE "StrictHostKeyChecking *=? *(no|off)|UserKnownHostsFile *=? */dev/null" $H/.ssh/config && ! grep -qsiE "ANSIBLE_HOST_KEY_CHECKING *= *[\"']?(false|no|off|0)" $H/.bashrc $H/.profile $H/.bash_profile''',"La vérification des empreintes est désactivée (ansible.cfg, ~/.ssh/config ou variable d'environnement) : retirez ce réglage."),
              ]},
             {"id": "A2.5", "points": 4, "title": "L'export oublié",
              "ticket": {"from": "sophie", "body": "L'audit RGPD est formel : un export de la base clients (un fichier <code>clients-&lt;code&gt;.csv</code>) traîne quelque part sous <code>/srv</code>, <code>/home</code> ou <code>/var/backups</code> sur un de nos trois serveurs. Trouve-le avec Ansible, note où il était dans <code>~/infra/reponses/rgpd.txt</code> (<code>serveur:chemin</code>), et supprime-le. <strong>Lui seul</strong> : il y a des fichiers qui lui ressemblent, on en a besoin."},
@@ -600,7 +629,7 @@ own $I
              "desc": "Une tâche de <code>web.yml</code> dépose <code>~/infra/fichiers/index.html</code> à la place de <code>/var/www/html/index.html</code> ; web1 et web2 servent cette page.",
              "hints": ["Quel module dépose un fichier du poste de contrôle sur les serveurs ? Et par rapport à quoi Ansible cherche-t-il un chemin source relatif ?", "<code>ansible.builtin.copy</code> avec <code>src: fichiers/index.html</code> (relatif au playbook), <code>dest:</code> et <code>mode: \"0644\"</code> ; vérifiez avec <code>curl http://web1</code>."],
              "checks": [
-                 ("taches $I/web.yml | jq -s -e \"$M\"' any(.[]; (mod(\"copy\") or mod(\"template\")) and (tostring | test(\"/var/www/html/index.html\")))' >/dev/null", "Aucune tâche de web.yml ne dépose la page /var/www/html/index.html (module copy)."),
+                 ("taches $I/web.yml | jq -s -e \"$M\"' any(.[]; (mod(\"copy\") or mod(\"template\")) and (tostring | test(\"index\\\\.html\")))' >/dev/null", "Aucune tâche de web.yml ne dépose la page d'accueil (module copy, src: fichiers/index.html, vers /var/www/html/index.html)."),
                  ('for s in web1 web2; do page $s | grep -qF "$LAB_JETON" || exit 1; done', "web1 et web2 ne servent pas la page de ~/infra/fichiers/index.html (rejouez le playbook)."),
              ]},
             {"id": "A3.3", "points": 5, "title": "Les tâches de Julien", "manual": True,
@@ -694,7 +723,8 @@ own $I
              "desc": "<code>environnement</code> vaut <code>recette</code> pour web2 et <code>production</code> pour web1, sans modifier le modèle, <code>web.yml</code> ni les variables du groupe web ; les pages l'affichent.",
              "hints": ["La valeur ne change que pour un serveur. Quel dossier contient des variables propres à un serveur, et qui l'emporte entre une variable de groupe et une variable d'hôte ?", "Un fichier <code>host_vars/web2.yml</code> ; <code>ansible-inventory --host web2</code> pour vérifier, puis rejouez le playbook."],
              "checks": [
-                 ('ls -d $I/host_vars/web2.yml $I/host_vars/web2.yaml $I/host_vars/web2.json $I/host_vars/web2 >/dev/null 2>&1 || ls $I/host_vars/web2* >/dev/null 2>&1', "Pas de variables propres à web2 (dossier host_vars)."),
+                 # host_vars/web2.yml, host_vars/web2/…, ou variable d'hôte dans l'inventaire : seul le résultat compte
+                 ('[ "$(var web2 environnement)" = recette ]', "environnement ne vaut pas recette pour web2 : pas de variable propre à web2 (host_vars/web2.yml)."),
                  ('[ "$(var web2 environnement)" = recette ] && [ "$(var web1 environnement)" = production ]', "environnement doit valoir recette pour web2 et production pour web1."),
                  ('texte web2 | grep -q recette && texte web1 | grep -q production', "Les pages n'affichent pas le bon environnement (rejouez le playbook)."),
              ]},
@@ -728,7 +758,7 @@ for s in web1 web2 db1; do serveur $s; done
 ''',
         "exercises": [
             {"id": "A5.1", "points": 6, "title": "Le port 8080",
-             "ticket": {"from": "sophie", "body": "Le nouveau pare-feu de l'hébergeur n'ouvre que le port <strong>8080</strong> vers les serveurs web. Configure nginx pour qu'il serve la boutique sur ce port (et plus sur le port 80), avec un modèle de configuration. Le numéro de port doit être une variable <code>http_port</code> du groupe web, et nginx ne doit être rechargé que si sa configuration change."},
+             "ticket": {"from": "sophie", "body": "Le nouveau pare-feu de l'hébergeur n'ouvre que le port <strong>8080</strong> vers les serveurs web. Configure nginx pour qu'il serve la boutique sur ce port (et plus sur le port 80), avec un modèle de configuration qui remplace le site par défaut de Debian, <code>/etc/nginx/sites-available/default</code> : nos outils de contrôle lisent ce fichier. Le numéro de port doit être une variable <code>http_port</code> du groupe web, et nginx ne doit être rechargé que si sa configuration change."},
              "desc": "<code>http_port: 8080</code> pour le groupe web ; nginx de web1 et web2 sert la page sur le port 8080 et plus sur le port 80 ; dans <code>web.yml</code>, la tâche qui déploie la configuration de nginx notifie un handler qui recharge nginx.",
              "hints": ["Trois pièces : une variable pour le groupe web ; un modèle de configuration qui remplace le site par défaut de nginx sur Debian ; une réaction qui ne se déclenche que si ce fichier change.", "<code>templates/site.conf.j2</code> (<code>listen {{ http_port }} default_server;</code>, <code>root</code>, <code>index</code>) déployé sur <code>/etc/nginx/sites-available/default</code> avec <code>notify:</code> ; une section <code>handlers:</code> au même niveau que <code>tasks:</code>."],
              "checks": [
@@ -736,14 +766,16 @@ for s in web1 web2 db1; do serveur $s; done
                  ('page web1:8080 | grep -q web1 && page web2:8080 | grep -q web2', "Les serveurs web ne servent pas leur page sur le port 8080 (le handler a-t-il rechargé nginx ?)."),
                  ('! page web1:80 >/dev/null 2>&1', "nginx répond encore sur le port 80 de web1 : la configuration par défaut est-elle toujours active ?"),
                  ("taches $I/web.yml | jq -s -e \"$M\"' any(.[]; mod(\"template\") and (tostring | test(\"sites-available/default\")) and has(\"notify\"))' >/dev/null", "Dans web.yml, la tâche qui déploie /etc/nginx/sites-available/default doit notifier un handler (notify)."),
-                 ("taches $I/web.yml | jq -s -e \"$M\"' any(.[]; mod(\"service\") and (tostring | test(\"nginx\")) and (tostring | test(\"reloaded|restarted\")))' >/dev/null", "web.yml n'a pas de handler qui recharge nginx (module service, state: reloaded)."),
+                 # Handler : module service (ou systemd), ou commande de rechargement (nginx -s reload, service nginx reload…)
+                 ("taches $I/web.yml | jq -s -e \"$M\"' any(.[]; ((mod(\"service\") or mod(\"systemd\") or mod(\"systemd_service\")) and (tostring | test(\"nginx\")) and (tostring | test(\"reloaded|restarted\"))) or ((mod(\"command\") or mod(\"shell\")) and (tostring | test(\"nginx +-s +reload|(service|systemctl) +nginx +(reload|restart)|systemctl +(reload|restart) +nginx\"))))' >/dev/null", "web.yml n'a pas de handler qui recharge nginx (module service, state: reloaded)."),
              ]},
             {"id": "A5.2", "points": 5, "title": "Le test de fumée", "manual": True,
              "ticket": {"from": "lea", "body": "Un déploiement n'est fini que quand le site répond. Ajoute à la fin de <code>web.yml</code> une vérification : chaque serveur doit servir sa page sur son port, sinon le playbook échoue. Je la testerai avec un autre port (<code>-e http_port=8089</code>), avec un serveur qui ne sert plus sa page, puis normalement, deux fois : et là, rien ne doit changer ni être rechargé."},
              "desc": "<code>web.yml</code> se termine par une vérification HTTP (module <code>uri</code>) : avec <code>-e http_port=8089</code>, le jeu réussit et nginx sert sur 8089 ; si un serveur ne sert plus sa page, le jeu échoue ; relancé normalement, il revient sur 8080 ; rejoué, il ne change rien et ne recharge pas nginx.",
              "hints": ["Au moment où votre vérification s'exécute, le handler qui recharge nginx a-t-il déjà tourné ? Cherchez comment exécuter les handlers en attente au milieu d'un play.", "<code>- ansible.builtin.meta: flush_handlers</code>, puis <code>ansible.builtin.uri</code> avec <code>url: \"http://localhost:{{ http_port }}/\"</code> : un code autre que 200 fait échouer la tâche."],
              "checks": [
-                 ("taches $I/web.yml | jq -s -e \"$M\"' any(.[]; mod(\"uri\"))' >/dev/null", "web.yml ne contient pas de vérification HTTP (module uri)."),
+                 # uri, get_url, ou curl/wget : les essais qui suivent jugent son comportement
+                 ("taches $I/web.yml | jq -s -e \"$M\"' any(.[]; mod(\"uri\") or mod(\"get_url\") or ((mod(\"command\") or mod(\"shell\")) and (tostring | test(\"curl|wget\"))))' >/dev/null", "web.yml ne contient pas de vérification HTTP (module uri)."),
                  ('joue web.yml -e http_port=8089 || recap', "Avec -e http_port=8089, le playbook échoue : au moment de la vérification, nginx a-t-il déjà été rechargé ?"),
                  ('page web1:8089 >/dev/null', "Avec http_port=8089, nginx n'écoute pas sur 8089 : le port vient-il de la variable, et le handler recharge-t-il nginx ?"),
                  ('sur web1 "chmod 000 /var/www/html"; joue web.yml; r=$?; sur web1 "chmod 755 /var/www/html"; [ $r != 0 ] && echec_attendu', "Le vérificateur a rendu la page de web1 illisible (erreur 403) : le playbook a pourtant réussi. La vérification doit échouer quand la page n'est pas servie."),
@@ -767,7 +799,8 @@ for s in web1 web2 db1; do serveur $s; done
              "desc": "Si une tâche échoue sur un serveur après une modification de la configuration de nginx, les handlers notifiés sont exécutés quand même. (Test : le vérificateur provoque l'échec du dépôt de la page sur web1 pendant un changement de port ; dans web.yml, la configuration est déployée avant la page, comme dans le cours.)",
              "hints": ["Quand une tâche échoue sur un serveur, que deviennent les handlers déjà notifiés pour ce serveur ? Et au passage suivant, la tâche de configuration est-elle encore « changed » ? Le cours cite un réglage qui change ce comportement.", "<code>force_handlers: true</code> au niveau du play (ou <code>force_handlers = True</code> dans la section <code>[defaults]</code> d'ansible.cfg)."],
              "checks": [
-                 ('yjson $I/web.yml | jq -e "any(.[]; .force_handlers == true)" >/dev/null || etu "ansible-config dump --only-changed" | grep -q "^DEFAULT_FORCE_HANDLERS.*True"', "Rien ne force l'exécution des handlers quand un serveur échoue (ni dans le play de web.yml, ni dans ansible.cfg)."),
+                 # force_handlers dans le play ou dans ansible.cfg, ou un rescue qui exécute les handlers (meta: flush_handlers)
+                 ('yjson $I/web.yml | jq -e "any(.[]; .force_handlers == true)" >/dev/null || etu "ansible-config dump --only-changed" | grep -q "^DEFAULT_FORCE_HANDLERS.*True" || taches $I/web.yml | jq -s -e "any(.[]; (.rescue // []) + (.always // []) | tostring | test(\\"flush_handlers\\"))" >/dev/null', "Rien ne force l'exécution des handlers quand un serveur échoue (ni dans le play de web.yml, ni dans ansible.cfg)."),
                  ('sur web1 "mv /var/www/html /var/www/html.sauve && ln -s /nulle-part /var/www/html"; joue web.yml -e http_port=8094; sur web1 "rm -f /var/www/html; mv /var/www/html.sauve /var/www/html"; echec_attendu || recap', "Le vérificateur a rendu impossible le dépôt de la page sur web1 : le playbook aurait dû échouer sur web1 (voir le récapitulatif)."),
                  ('sur web1 "grep -q 8094 /etc/nginx/sites-available/default"', "Pendant ce test (port 8094, échec sur web1), la configuration de web1 n'a pas été modifiée : dans web.yml, la tâche de configuration doit précéder celle de la page."),
                  ('page web1:8094 >/dev/null', "La configuration de web1 est passée sur le port 8094, mais nginx n'a pas été rechargé après l'échec : le handler a été perdu."),
@@ -844,7 +877,8 @@ own $I $H/demandes
              "desc": "La page de web2 (recette) affiche <code>RECETTE</code>, pas celle de web1 ; <code>htop</code> est installé sur web2 et pas sur web1, par une tâche de <code>web.yml</code> soumise à une condition.",
              "hints": ["Deux endroits réagissent à l'environnement : une tâche (qui ne doit s'exécuter que sur certains serveurs) et le modèle de la page (qui n'affiche le bandeau que sur certains serveurs).", "<code>when: environnement == \"recette\"</code> sur la tâche <code>apt</code> ; <code>{% if environnement == \"recette\" %}…{% endif %}</code> dans le modèle."],
              "checks": [
-                 ("taches $I/web.yml | jq -s -e \"$M\"' any(.[]; mod(\"apt\") and (tostring | test(\"htop\")) and has(\"when\"))' >/dev/null", "La tâche qui installe htop doit dépendre d'une condition (when)."),
+                 # when sur la tâche (apt ou package) ou sur un bloc qui la contient
+                 ("taches $I/web.yml | jq -s -e \"$M\"' any(.[]; has(\"when\") and (tostring | test(\"htop\")) and (mod(\"apt\") or mod(\"package\") or has(\"block\")))' >/dev/null", "La tâche qui installe htop doit dépendre d'une condition (when)."),
                  ('paquet web2 htop', "htop n'est pas installé sur web2 (recette)."),
                  ('! paquet web1 htop', "htop ne doit être installé qu'en recette : web1 est en production."),
                  ('page web2:8080 | grep -q RECETTE', "La page de web2 doit afficher un bandeau RECETTE."),
@@ -868,7 +902,7 @@ own $I $H/demandes
              "desc": "<code>ansible-playbook julien/maintenance.yml</code> dépose <code>/var/www/html/maintenance.html</code> sur le seul serveur que Julien a mis en maintenance, et la retire des autres ; avec <code>-e &lt;variable de Julien&gt;=false</code>, elle n'existe plus nulle part. Le choix du serveur reste dans les variables de Julien.",
              "hints": ["Pour Jinja2, que vaut une chaîne de caractères non vide ? Et une chaîne comparée à un booléen ? Affichez la valeur et son type sur chaque serveur : <code>ansible web -m debug -a \"msg={{ &lt;variable&gt; | type_debug }}\"</code> (depuis <code>~/infra</code>, avec l'option <code>--playbook-dir julien</code> pour qu'Ansible charge les variables de Julien). Et de quel type sont les valeurs passées par <code>-e</code> ?", "Le filtre <code>| bool</code> dans les deux conditions (par exemple <code>when: ma_variable | bool</code>) : c'est la seule solution qui marche aussi avec <code>-e ma_variable=false</code>."],
              "checks": [
-                 ("yjson $I/julien/maintenance.yml | jq -e 'any(.[]; .hosts == \"web\")' >/dev/null && [ -z \"$(ls $I/julien/host_vars | grep -v \"^$LAB_MAINT\\.\")\" ]", "Le playbook de Julien doit toujours viser le groupe web, et seul le serveur choisi par Julien doit avoir des host_vars : corrigez la condition, pas la cible."),
+                 ("yjson $I/julien/maintenance.yml | jq -e 'any(.[]; .hosts == \"web\")' >/dev/null && [ -z \"$(ls $I/julien/host_vars | grep -vE \"^$LAB_MAINT(\\.|$)\")\" ]", "Le playbook de Julien doit toujours viser le groupe web, et seul le serveur choisi par Julien doit avoir des host_vars : corrigez la condition, pas la cible."),
                  ('for s in web1 web2; do sur $s "rm -f /var/www/html/maintenance.html"; done; sur web1 "touch /var/www/html/maintenance.html"; sur web2 "touch /var/www/html/maintenance.html"; joue julien/maintenance.yml || recap', "ansible-playbook julien/maintenance.yml échoue (voir le récapitulatif)."),
                  ('for s in web1 web2; do if [ $s = "$LAB_MAINT" ]; then sur $s "test -f /var/www/html/maintenance.html" || { echo "MSG:$s devrait être en maintenance"; exit 1; }; else ! sur $s "test -e /var/www/html/maintenance.html" || { echo "MSG:$s ne devrait pas être en maintenance"; exit 1; }; fi; done', "La page de maintenance n'est pas là où Julien l'a demandée (et seulement là)."),
                  ('joue julien/maintenance.yml -e $LAB_MAINTVAR=false || recap', "Avec -e <variable de Julien>=false, le playbook de Julien échoue (voir le récapitulatif)."),
@@ -929,12 +963,13 @@ emit SUDOERS "$sf"
              "desc": "Le rôle <code>roles/web</code> contient les tâches, les handlers et les modèles ; <code>site.yml</code> l'applique au groupe <code>web</code> et ne contient plus de tâches ; <code>roles/web/vars/main.yml</code> ne fixe ni <code>environnement</code> ni <code>http_port</code> ; <code>ansible-playbook site.yml</code> reconstruit une page supprimée et, rejoué, ne change rien.",
              "hints": ["Un rôle, c'est une arborescence convenue : chaque morceau de web.yml a sa place (tâches, handlers, modèles, valeurs par défaut). Qu'est-ce qui reste alors dans site.yml ?", "<code>ansible-galaxy init --init-path roles web</code> ; tâches dans <code>roles/web/tasks/main.yml</code>, handlers dans <code>handlers/main.yml</code>, modèles dans <code>templates/</code> (<code>src: index.html.j2</code> suffit), valeurs par défaut dans <code>defaults/main.yml</code> ; <code>site.yml</code> : <code>hosts: web</code>, <code>become: true</code>, <code>roles: [web]</code>."],
              "checks": [
-                 ('[ -f $I/roles/web/tasks/main.yml ] && [ -f $I/roles/web/handlers/main.yml ]', "Le rôle web doit avoir tasks/main.yml et handlers/main.yml (ansible-galaxy init --init-path roles web)."),
-                 ('ls $I/roles/web/templates/*.j2 >/dev/null 2>&1', "Les modèles doivent être rangés dans roles/web/templates/."),
-                 ("yjson $I/site.yml | jq -e 'any(.[]; .hosts == \"web\" and ((.roles // []) | map(if type == \"string\" then . else (.role // .name) end) | index(\"web\")))' >/dev/null", "site.yml doit appliquer le rôle web au groupe web (roles: - web)."),
+                 # main.yml, main.yaml ou main/ : les trois formes sont chargées par Ansible
+                 ('ls -d $I/roles/web/tasks/main.yml $I/roles/web/tasks/main.yaml $I/roles/web/tasks/main 2>/dev/null | grep -q . && ls -d $I/roles/web/handlers/main.yml $I/roles/web/handlers/main.yaml $I/roles/web/handlers/main 2>/dev/null | grep -q .', "Le rôle web doit avoir tasks/main.yml et handlers/main.yml (ansible-galaxy init --init-path roles web)."),
+                 ('find $I/roles/web/templates -type f 2>/dev/null | grep -q .', "Les modèles doivent être rangés dans roles/web/templates/."),
+                 ("yjson $I/site.yml | jq -e 'any(.[]; ([.hosts] | flatten) == [\"web\"] and ((.roles // []) | map(if type == \"string\" then . else (.role // .name) end) | index(\"web\")))' >/dev/null", "site.yml doit appliquer le rôle web au groupe web (roles: - web)."),
                  ("yjson $I/site.yml | jq -e 'all(.[]; (.tasks // []) | length == 0)' >/dev/null", "site.yml contient encore des tâches : elles doivent être dans le rôle (roles/web/tasks/main.yml)."),
-                 ("taches \"$I/roles/web/tasks/*.yml\" | jq -s -e \"$M\"' any(.[]; mod(\"template\") and (tostring | test(\"index.html\")))' >/dev/null", "Les tâches du rôle web ne génèrent pas la page d'accueil (module template)."),
-                 (r'''! grep -qsE '^[[:space:]]*(environnement|http_port)[[:space:]]*:' $I/roles/web/vars/main.yml''', "roles/web/vars/main.yml fixe environnement ou http_port : ces valeurs doivent pouvoir être surchargées (defaults/main.yml)."),
+                 ("taches \"$I/roles/web/tasks/*.y*ml\" \"$I/roles/web/tasks/*/*.y*ml\" | jq -s -e \"$M\"' any(.[]; mod(\"template\") and (tostring | test(\"index.html\")))' >/dev/null", "Les tâches du rôle web ne génèrent pas la page d'accueil (module template)."),
+                 (r'''! grep -rqsE '^[[:space:]]*(environnement|http_port)[[:space:]]*:' $I/roles/web/vars/main.yml $I/roles/web/vars/main.yaml $I/roles/web/vars/main''', "roles/web/vars/main.yml fixe environnement ou http_port : ces valeurs doivent pouvoir être surchargées (defaults/main.yml)."),
                  ('sur web2 "rm -f /var/www/html/index.html"; joue site.yml || recap', "ansible-playbook site.yml échoue (voir le récapitulatif)."),
                  ('joue site.yml && rien_change || recap', "Rejoué, site.yml modifie encore quelque chose : il n'est pas idempotent."),
                  ('page web1:8080 | grep -q web1 && page web2:8080 | grep -q web2', "Après site.yml, les serveurs web ne servent plus leur page sur le port 8080 (le vérificateur avait supprimé celle de web2)."),
@@ -1036,15 +1071,16 @@ fi
         "exercises": [
             {"id": "A8.1", "points": 6, "title": "Le mot de passe de Redis", "manual": True,
              "ticket": {"from": "sophie", "body": "L'API aura besoin d'un Redis sur <code>db1</code>, accessible depuis le réseau (port 6379), mais <strong>protégé par mot de passe</strong>. Je t'ai laissé le mot de passe dans <code>~/message-sophie.txt</code>. Écris un rôle <code>redis</code> appliqué au groupe <code>bdd</code> dans <code>site.yml</code>, et range le mot de passe dans un fichier chiffré avec Ansible Vault : je ne veux le voir en clair nulle part dans <code>~/infra</code>, ni la clé du coffre. Je ferai réinstaller db1 à neuf pour vérifier que ton code suffit à tout remettre en place."},
-             "desc": "Le rôle <code>redis</code>, appliqué au groupe <code>bdd</code> par <code>site.yml</code>, installe Redis sur db1, le fait écouter sur le réseau et exiger le mot de passe de Sophie ; le mot de passe est dans <code>group_vars/bdd/vault.yml</code>, chiffré ; ni lui ni la clé du coffre n'apparaissent en clair dans <code>~/infra</code>. Test : db1 est réinstallé à neuf, puis <code>site.yml --limit bdd</code> doit suffire. (Attention : « Réinitialiser les fichiers de cette étape » tire un nouveau mot de passe et réinstalle web3.)",
+             "desc": "Le rôle <code>redis</code>, appliqué au groupe <code>bdd</code> par <code>site.yml</code>, installe Redis sur db1, le fait écouter sur le réseau et exiger le mot de passe de Sophie ; le mot de passe est chiffré par Ansible Vault (par exemple dans <code>group_vars/bdd/vault.yml</code>) ; ni lui ni la clé du coffre n'apparaissent en clair dans <code>~/infra</code>. Test : db1 est réinstallé à neuf, puis <code>site.yml --limit bdd</code> doit suffire. (Attention : « Réinitialiser les fichiers de cette étape » tire un nouveau mot de passe et réinstalle web3.)",
              "hints": ["Le rôle doit tout faire sur un serveur neuf : installer, régler deux lignes de la configuration de Redis, et redémarrer Redis seulement si elles changent. Le secret, lui, vit dans un fichier chiffré que les serveurs du groupe bdd chargent automatiquement ; la clé du coffre reste hors du projet.", "Rôle <code>redis</code> : <code>apt</code> redis-server, deux <code>lineinfile</code> sur <code>/etc/redis/redis.conf</code> (lignes <code>bind</code> et <code>requirepass</code>, cette dernière est commentée à l'origine), un handler qui redémarre <code>redis-server</code>. <code>ansible-vault encrypt group_vars/bdd/vault.yml</code> et <code>vault_password_file</code> dans ansible.cfg."],
              "checks": [
-                 ('[ -f $I/roles/redis/tasks/main.yml ]', "Le rôle redis n'existe pas (roles/redis/tasks/main.yml)."),
-                 ("yjson $I/site.yml | jq -e 'any(.[]; .hosts == \"bdd\" and ((.roles // []) | map(if type == \"string\" then . else (.role // .name) end) | index(\"redis\")))' >/dev/null", "site.yml doit appliquer le rôle redis au groupe bdd."),
-                 ('head -c 14 $I/group_vars/bdd/vault.yml 2>/dev/null | grep -q "^\\$ANSIBLE_VAULT"', "group_vars/bdd/vault.yml doit exister et être chiffré avec ansible-vault."),
-                 ('etu "ansible-vault view group_vars/bdd/vault.yml" | grep -qF -- "$LAB_REDISPW"', "Le coffre group_vars/bdd/vault.yml ne contient pas le mot de passe de Sophie, ou ne s'ouvre pas avec la clé configurée (vault_password_file)."),
+                 ('ls -d $I/roles/redis/tasks/main.yml $I/roles/redis/tasks/main.yaml $I/roles/redis/tasks/main 2>/dev/null | grep -q .', "Le rôle redis n'existe pas (roles/redis/tasks/main.yml)."),
+                 ("yjson $I/site.yml | jq -e 'any(.[]; ([.hosts] | flatten) == [\"bdd\"] and ((.roles // []) | map(if type == \"string\" then . else (.role // .name) end) | index(\"redis\")))' >/dev/null", "site.yml doit appliquer le rôle redis au groupe bdd."),
+                 # Fichier entier chiffré (group_vars/bdd/vault.yml, ou un autre nom) ou valeur chiffrée par encrypt_string
+                 ("grep -rqE '^\\$ANSIBLE_VAULT|!vault' $I","Aucun fichier chiffré avec ansible-vault dans ~/infra (group_vars/bdd/vault.yml, par exemple)."),
+                 ('coffres | grep -qF -- "$LAB_REDISPW"', "Le coffre (group_vars/bdd/vault.yml) ne contient pas le mot de passe de Sophie, ou ne s'ouvre pas avec la clé configurée (vault_password_file)."),
                  ('! grep -rqF -- "$LAB_REDISPW" $I', "Le mot de passe de Redis apparaît en clair dans ~/infra : il ne doit être que dans le fichier chiffré."),
-                 (r'''f=$(etu "ansible-config dump --only-changed" | sed -n 's/^DEFAULT_VAULT_PASSWORD_FILE([^)]*) = //p'); [ -n "$f" ] && case "$f" in $I/*|*/infra/*) exit 1;; esac; k=$(head -1 "$f" 2>/dev/null); [ -n "$k" ] && ! grep -rqF -- "$k" $I''', "La clé du coffre doit être dans un fichier hors de ~/infra, désigné par vault_password_file dans ansible.cfg, et n'apparaître dans aucun fichier du projet."),
+                 (r'''f=$(cle_coffre); [ -n "$f" ] && case "$f" in $I/*|*/infra/*) exit 1;; esac; if [ -x "$f" ]; then k=$(etu "$f" | head -1); else k=$(head -1 "$f" 2>/dev/null); fi; [ -n "$k" ] && ! grep -rqF -- "$k" $I''', "La clé du coffre doit être dans un fichier hors de ~/infra, désigné par vault_password_file dans ansible.cfg, et n'apparaître dans aucun fichier du projet."),
                  ('reconstruit db1 && joue site.yml --limit bdd || recap', "Le vérificateur a réinstallé db1 à neuf : site.yml --limit bdd échoue (voir le récapitulatif)."),
                  ('r=$(redis PING); [ "${r%% *}" = -NOAUTH ]', "Sur db1 réinstallé, après site.yml, Redis ne répond pas sur 10.10.0.21:6379, ou accepte les commandes sans mot de passe : le rôle ne fait pas tout."),
                  ('[ "$(redis "AUTH $LAB_REDISPW" PING)" = +PONG ]', "Redis n'accepte pas le mot de passe donné par Sophie."),
@@ -1077,7 +1113,7 @@ fi
              "desc": "Après <code>site.yml</code>, web2 affiche le bandeau RECETTE et a htop, web1 non : plus rien, dans le projet, n'impose <code>environnement</code> au-dessus de <code>host_vars</code>, et <code>roles/web/vars/main.yml</code> ne fixe ni <code>environnement</code> ni <code>http_port</code> (les valeurs par défaut du rôle vont là où elles peuvent être surchargées).",
              "hints": ["<code>ansible-inventory</code> ne voit que l'inventaire : ni les variables des rôles, ni celles des plays, ni celles que les tâches définissent. Affichez la valeur de <code>environnement</code> <strong>pendant le jeu</strong>, sur web2, puis cherchez qui la définit : lesquelles de ces sources l'emportent sur <code>host_vars</code> ? (Tableau du jour 4.)", "<code>grep -rn environnement ~/infra --include=*.yml</code> : <code>vars/</code> d'un rôle, <code>vars:</code> d'un play, <code>set_fact</code> ou <code>include_vars</code> passent tous avant <code>host_vars</code>. Retirez ce que Julien a ajouté ; les valeurs par défaut vont dans <code>roles/web/defaults/main.yml</code>."],
              "checks": [
-                 (r'''! grep -qsE '^[[:space:]]*(environnement|http_port)[[:space:]]*:' $I/roles/web/vars/main.yml''', "roles/web/vars/main.yml fixe encore environnement ou http_port : ces variables y ont une priorité plus forte que host_vars."),
+                 (r'''! grep -rqsE '^[[:space:]]*(environnement|http_port)[[:space:]]*:' $I/roles/web/vars/main.yml $I/roles/web/vars/main.yaml $I/roles/web/vars/main''', "roles/web/vars/main.yml fixe encore environnement ou http_port : ces variables y ont une priorité plus forte que host_vars."),
                  ('joue site.yml || recap', "ansible-playbook site.yml échoue (voir le récapitulatif)."),
                  ('page web2:8080 | grep -q RECETTE && p=$(page web1:8080) && ! grep -q RECETTE <<<"$p"', "Après site.yml, web2 n'affiche pas le bandeau RECETTE (ou web1 l'affiche)."),
                  ('paquet web2 htop', "htop n'est pas installé sur web2 (recette) après site.yml."),

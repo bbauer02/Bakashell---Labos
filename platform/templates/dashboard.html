@@ -315,6 +315,10 @@ tr.flash td { animation:flash 2.5s ease-out; }
             addFeed('attempt', `<b>${esc(nameOf(e))}</b> vérifie « ${esc(whereLabel(e.course, e.step))} » sans nouveau succès (${e.count}${e.count > 1 ? 'e' : 're'} fois, ${e.remaining} exercice(s) restant(s))`, e.at);
             renderPresence();
         });
+        source.addEventListener('quiz', (m) => {
+            const e = JSON.parse(m.data);
+            addFeed('progress', `<b>${esc(nameOf(e))}</b> a répondu au QCM de « ${esc(whereLabel(e.course, e.step))} » : ${e.score}/${e.max}`, e.at);
+        });
         source.addEventListener('hint', (m) => {
             const e = JSON.parse(m.data);
             addFeed('hint', `<b>${esc(nameOf(e))}</b> a demandé l'indice n°${e.count} sur ${esc(e.exercise)} « ${esc(e.title)} »`, e.at);

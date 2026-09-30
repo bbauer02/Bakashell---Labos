@@ -38,6 +38,7 @@ ansible-inventory -i inventaire.ini --graph
 #? Lancé depuis `~/infra`, Ansible lit le fichier `ansible.cfg` du dossier courant : la section `[defaults]` y fixe l'inventaire (`inventory`) et le compte distant (`remote_user`) une fois pour toutes.
 #? `ansible-config dump --only-changed` montre les réglages réellement pris en compte : pratique pour repérer une faute de frappe dans un nom de clé, qu'Ansible ne signale pas toujours.
 #? Le module `ping` n'est pas un ping réseau : il vérifie toute la chaîne (connexion SSH, Python sur le serveur, exécution d'un module) et répond `pong` si tout fonctionne.
+#? Variante acceptée : le compte peut aussi être donné dans l'inventaire (`ansible_user=admin` sous `[all:vars]`, ou dans `group_vars/all.yml`) plutôt que par `remote_user`.
 cat > ansible.cfg <<'EOF'
 [defaults]
 inventory = inventaire.ini
@@ -48,6 +49,7 @@ ansible production -m ping
 #? Un motif combine des groupes : `a:b` pour l'union, `a:&b` pour l'intersection, `a:!b` pour l'exclusion, `a[0]` pour le premier serveur du groupe `a` et `a[-1]` pour le dernier, dans l'ordre de l'inventaire.
 #? Le piège était de recopier des noms de serveurs : le motif doit rester juste le jour où le parc change, et seuls des noms de groupes le permettent.
 #? Entourez toujours le motif de guillemets simples : sans eux, le shell interprète lui-même `!` et `&` avant qu'Ansible ne les voie.
+#? L'ordre des termes ne compte pas (`lyon:&web` vaut `web:&lyon`), et la virgule peut remplacer les deux-points (`web,&lyon`) : seuls les serveurs visés sont vérifiés.
 #? `--list-hosts` affiche les serveurs visés sans rien exécuter : c'est le moyen sûr de tester un motif. Les villes du parc et les quatre demandes sont tirées au sort : vos motifs diffèrent de ceux d'un camarade, même quand les phrases se ressemblent.
 cat exercices/demandes.txt
 # Pour chaque demande, le motif correspondant, vérifié avec --list-hosts (aucune connexion).
@@ -74,6 +76,7 @@ done
 #? Une empreinte qui change peut signaler une réinstallation… ou une attaque de l'homme du milieu : on ne fait confiance à la nouvelle qu'après l'avoir comparée à une source sûre, ici le message de Léa.
 #? `ssh-keygen -R <serveur>` oublie l'ancienne empreinte, puis on enregistre la nouvelle ; comme le serveur est neuf, sa liste de clés autorisées est vide et il faut y réinstaller votre clé publique avec `ssh-copy-id`.
 #? Le piège était de désactiver la vérification des empreintes (`host_key_checking = False`, `StrictHostKeyChecking no`) : la connexion passe, mais vous accepteriez n'importe quel serveur, y compris celui d'un attaquant.
+#? `StrictHostKeyChecking accept-new` (accepte un serveur inconnu, refuse une empreinte changée) ou `host_key_checking = True` explicite restent permis.
 #? Le serveur réinstallé est tiré au sort (db1, web1 ou web2), et son empreinte dépend de votre propre environnement : refaire les commandes d'un camarade ne répare pas forcément le bon serveur.
 #? Ce corrigé passe en premier : tant que l'accès au serveur réinstallé n'est pas rétabli, Ansible ne peut plus le joindre, et les autres exercices qui le visent échouent.
 cd ~/infra
@@ -146,6 +149,7 @@ cat reponses/rgpd.txt
 #? Un playbook décrit un état : « nginx présent, démarré, activé au démarrage ». Les modules `apt` et `service` ne font que ce qui manque, d'où `changed=0` au second passage.
 #? `hosts: web` limite le play aux serveurs web, db1 n'est donc jamais touché ; `become: true` est nécessaire pour installer un paquet.
 #? Le piège classique sur un serveur neuf est l'erreur « No package matching » : le cache APT est vide, d'où `update_cache: true`, et `cache_valid_time: 3600` évite de le rafraîchir à chaque passage.
+#? `ansible.builtin.package` au lieu d'`apt`, des noms courts (`apt:`, `service:`) ou `become: true` sur chaque tâche plutôt que sur le play donnent le même résultat.
 cd ~/infra
 cat > web.yml <<'EOF'
 - name: Serveurs web de la boutique
@@ -169,6 +173,7 @@ ansible-playbook web.yml
 #@ A3.2
 #? Le module `copy` compare l'empreinte du fichier local à celle du fichier distant : il ne copie (et ne répond `changed`) que si le contenu diffère.
 #? Un `src:` relatif est cherché à côté du playbook : `fichiers/index.html` désigne donc `~/infra/fichiers/index.html`.
+#? `template` au lieu de `copy`, ou `dest: /var/www/html/` (un dossier : le nom du fichier source est repris), conviennent aussi.
 #? Écrivez toujours les droits entre guillemets avec le zéro initial (`"0644"`) : sans guillemets, YAML lit un entier décimal et les droits obtenus sont absurdes.
 cat >> web.yml <<'EOF'
 
@@ -295,6 +300,7 @@ ansible-playbook web.yml
 #? `host_vars/web2.yml` définit des variables pour le seul serveur web2 ; elles l'emportent sur celles du groupe (`group_vars/web.yml`), sans toucher ni au modèle ni au playbook.
 #? `ansible-inventory --host web2` affiche les variables fusionnées de web2 : on y voit `environnement: recette` avant même de lancer le playbook.
 #? Le piège était de modifier `group_vars/web.yml` ou d'ajouter un test dans le modèle : on décrit une exception au bon niveau, celui du serveur.
+#? Une variable d'hôte dans l'inventaire (`web2 environnement=recette`) ou un dossier `host_vars/web2/` conviennent aussi : les variables d'hôte l'emportent toujours sur celles du groupe.
 mkdir -p host_vars
 echo "environnement: recette" > host_vars/web2.yml
 ansible-inventory --host web2
@@ -333,6 +339,7 @@ cd ~/infra
 #? nginx n'est donc rechargé que lorsque sa configuration change réellement ; `state: reloaded` relit la configuration sans couper les connexions en cours, contrairement à `restarted`.
 #? Le modèle remplace le site par défaut de Debian (`sites-available/default`) : c'est ce qui fait disparaître l'écoute sur le port 80.
 #? Le piège était une tâche qui recharge nginx à chaque passage : le playbook ne serait jamais à `changed=0`.
+#? Le handler peut aussi utiliser `state: restarted`, un nom d'écoute (`listen:`), ou la commande `nginx -s reload` : seul compte qu'il ne s'exécute que sur notification.
 cd ~/infra
 echo "http_port: 8080" >> group_vars/web.yml
 cat > templates/site.conf.j2 <<'EOF'
@@ -407,6 +414,7 @@ ansible-playbook web.yml
 #? Les handlers attendent normalement la fin du play : sans `meta: flush_handlers`, le test s'exécuterait alors que nginx écoute encore sur l'ancien port.
 #? Le module `uri` échoue si le code HTTP n'est pas 200 (valeur par défaut de `status_code`) : une page illisible (403) fait donc échouer le jeu, comme demandé.
 #? `-e http_port=8089` a la priorité la plus forte : le modèle change, le handler recharge nginx, le test vise 8089. Relancé normalement, tout revient sur 8080, puis un troisième passage ne recharge plus rien.
+#? Variante acceptée : placer le test dans `post_tasks`, car les handlers notifiés par `tasks` sont exécutés à la fin de cette section, avant `post_tasks`.
 # Les handlers en attente sont exécutés AVANT le test : sinon nginx n'écoute pas encore sur le nouveau port
 cat > /tmp/fumee.yml <<'EOF'
     - name: Recharger nginx maintenant si la configuration a changé
@@ -446,6 +454,7 @@ ansible-playbook web.yml -e http_port=abc || echo "Refusé, comme prévu : la co
 #? Par défaut, quand une tâche échoue sur un serveur, celui-ci est retiré du jeu, et les handlers qu'il avait en attente ne sont jamais exécutés : la configuration est modifiée, mais nginx n'est pas rechargé.
 #? `force_handlers: true` au niveau du play exécute quand même les handlers notifiés ; `force_handlers = True` dans la section `[defaults]` d'`ansible.cfg` est une variante également acceptée.
 #? L'option `--force-handlers` de la ligne de commande a le même effet, mais elle dépend de la mémoire de la personne qui lance le playbook : l'écrire dans le code est plus sûr.
+#? Autre variante acceptée : un `block` dont le `rescue` exécute `meta: flush_handlers` avant d'échouer (`fail`).
 # Même si une tâche échoue ensuite, les handlers notifiés sont exécutés
 sed -i 's/^  become: true$/&\n  force_handlers: true/' web.yml
 ansible-playbook web.yml
@@ -474,6 +483,7 @@ ansible-playbook web.yml
 #? `when:` s'évalue pour chaque serveur : la tâche est exécutée sur web2 (recette) et marquée `skipping` sur web1 ; l'expression s'écrit sans `{{ }}`.
 #? Dans le modèle, `{% if … %}…{% endif %}` joue le même rôle : le bandeau n'est écrit que sur les pages des serveurs de recette.
 #? Le piège était de viser web2 par son nom : la condition porte sur la variable `environnement`, donc un futur serveur de recette recevra lui aussi le bandeau et htop.
+#? `package` au lieu d'`apt`, ou un `block` portant le `when:` et contenant la tâche d'installation, conviennent aussi.
 cat > /tmp/htop.yml <<'EOF'
     - name: Outils de diagnostic, en recette seulement
       ansible.builtin.apt:
@@ -489,6 +499,7 @@ ansible-playbook web.yml
 #@ A6.3
 #? Une seule liste de fiches alimente deux tâches : `selectattr('actif')` garde les actifs pour créer leurs comptes, `rejectattr('actif')` garde les anciens pour les supprimer.
 #? `state: absent` avec `remove: true` supprime le compte et son dossier personnel ; sans `remove`, les fichiers des anciens resteraient sur le disque.
+#? Variante acceptée : une seule tâche sur `personnel`, avec `state: "{{ item.actif | ternary('present', 'absent') }}"` et `remove: "{{ not item.actif }}"`.
 #? Le piège était d'écrire `actif: "false"` entre guillemets : c'est une chaîne non vide, donc considérée comme vraie, et l'ancien garderait son compte. Les booléens s'écrivent `true` et `false`, sans guillemets.
 #? La composition de l'équipe est tirée au sort : vos noms diffèrent de ceux d'un camarade.
 # Une seule liste de fiches, tirée de equipe.csv, remplace equipe_web
@@ -568,6 +579,7 @@ ansible-playbook web.yml
 #? `defaults/main.yml` a la priorité la plus faible de toutes : ces valeurs servent si rien d'autre ne les définit, et `group_vars` ou `host_vars` les surchargent.
 #? Le piège était de mettre ces valeurs dans `vars/main.yml`, dont la priorité dépasse celle de `host_vars` : web2 ne serait plus en recette (c'est exactement l'incident du jour 8).
 #? `site.yml` ne contient plus que la cible, `become` et la liste des rôles : c'est le point d'entrée de toute l'infrastructure.
+#? Un rôle créé à la main (sans `ansible-galaxy init`), des tâches réparties en plusieurs fichiers avec `import_tasks`, ou des fichiers `main.yaml`, sont aussi acceptés.
 ansible-galaxy init --init-path roles web
 mv templates/*.j2 roles/web/templates/
 jour=$(sed -n 's/.*line: "Maintenance prévue le \(.*\)"/\1/p' web.yml)
@@ -719,6 +731,7 @@ ansible-playbook site.yml    # changed=0
 #? La clé du coffre est dans `~/.vault_pass`, hors du projet, désignée par `vault_password_file` dans `ansible.cfg` : le dépôt peut être partagé sans révéler ni le mot de passe, ni la clé.
 #? `lineinfile` avec `regexp` remplace la ligne existante, y compris la ligne `requirepass` commentée d'origine ; `no_log: true` évite d'afficher le mot de passe dans la sortie, et le handler redémarre Redis pour qu'il prenne en compte ces réglages.
 #? Le piège était de laisser le mot de passe en clair dans le rôle, ou la clé du coffre dans `~/infra`. Le mot de passe de Sophie est tiré au sort : le vôtre diffère de celui d'un camarade.
+#? Variantes acceptées : un coffre sous un autre nom, ou une valeur chiffrée par `ansible-vault encrypt_string` dans `group_vars/bdd.yml` ; `vault_identity_list` au lieu de `vault_password_file`.
 cd ~/infra
 ansible-galaxy init --init-path roles redis
 cat > roles/redis/tasks/main.yml <<'EOF'
@@ -1086,6 +1099,7 @@ ansible-playbook deploiement.yml -e version=2025.1
 #? Une étiquette posée sur une tâche permet de n'exécuter qu'elle avec `--tags page` ; posée sur le rôle dans `site.yml`, elle serait héritée par toutes ses tâches, y compris la configuration de nginx.
 #? `--list-tags` et `--list-tasks --tags page` montrent ce qui serait exécuté, sans rien lancer : le bon réflexe avant de s'en servir.
 #? Un `site.yml` complet, sans `--tags`, remet ensuite en ordre tout ce que la page seule n'a pas touché.
+#? Variantes acceptées : l'étiquette sur un `import_tasks` qui ne contient que la page, ou sur un petit rôle `page` appliqué dans `site.yml`.
 # L'étiquette sur la seule tâche de la page (pas sur le rôle : elle s'étendrait à toutes ses tâches)
 sed -i "/^- name: Page d'accueil de la boutique$/,/^    mode:/ s/^    mode: \"0644\"$/&\n  tags: [page]/" roles/web/tasks/main.yml
 ansible-playbook site.yml --list-tags

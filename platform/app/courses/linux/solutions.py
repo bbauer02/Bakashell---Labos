@@ -74,13 +74,14 @@ cd ~
 #? L'option `-p` (ou `--parents`) de `mkdir` crée tous les dossiers intermédiaires manquants et ne proteste pas s'ils existent déjà.
 #? Le piège : sans `-p`, la commande notée dans la documentation échouerait sur un poste où `boutique` n'existe pas encore.
 #? Le chemin doit être absolu et écrit en toutes lettres, sans `~`, pour fonctionner depuis n'importe quel dossier.
+#? Le chemin peut être écrit entre guillemets dans la commande notée (`mkdir -p "/home/etudiant/projets/boutique/src"`) : c'est accepté aussi.
 #? Les guillemets simples autour de la commande dans `echo` empêchent le shell de l'interpréter : on l'écrit dans le fichier, puis on l'exécute une fois pour de bon.
 mkdir -p /home/etudiant/projets/boutique/src
 echo 'mkdir -p /home/etudiant/projets/boutique/src' > ~/doc-install.txt
 #@ 2.2
 #? La question est tirée au sort parmi plusieurs (tri par taille, par extension, par version, ou pas de tri du tout) : la réponse d'un camarade n'est donc pas forcément la vôtre.
 #? La démarche est toujours la même : `man ls`, puis `/` suivi du mot anglais de la question (size, extension, version, sort…) et `n` pour passer à l'occurrence suivante.
-#? Les réponses possibles : `-S` (taille, du plus gros au plus petit), `-X` (extension), `-v` (version), `-U` (pas de tri) ; l'écriture longue `--sort=…` est aussi acceptée.
+#? Les réponses possibles : `-S` (taille, du plus gros au plus petit), `-X` (extension), `-v` (version), `-U` (pas de tri) ; l'écriture longue `--sort=…` est aussi acceptée, tout comme `ls -S` écrit en entier.
 #? Attention à la casse : `-s` affiche la taille sans trier, alors que `-S` trie par taille.
 cat ~/question-man.txt
 case $(cat ~/question-man.txt) in
@@ -112,6 +113,7 @@ cd ~
 #@ 2.5
 #? La commande de la question est tirée au sort (cd, type, export ou jobs) ; toutes sont des commandes internes (builtins) du shell et non des programmes installés sur le disque : c'est pourquoi `man` ne trouve rien.
 #? `type nom` répond « nom is a shell builtin », et `help nom` affiche la documentation des commandes internes (`man bash` la décrit aussi).
+#? `command -V nom` donne la même réponse, et `type -t nom` répond simplement « builtin » : ces réponses sont acceptées aussi.
 #? Les réponses : `cd -P` suit la structure physique des dossiers, `type -a` affiche toutes les définitions d'un nom, `export -n` retire l'export d'une variable, `jobs -l` ajoute le PID des tâches.
 #? Le piège était de conclure que la commande n'avait pas de documentation. Autre piège pour écrire la réponse : `echo -n > fichier` prend `-n` pour une option d'echo et n'écrit rien ; `printf '%s\n' -n > fichier` convient.
 cat ~/question-shell.txt
@@ -162,6 +164,7 @@ echo "Procédure arrivée nouveau salarié" > ~/documents/procedures/arrivee.txt
 #? `>>` ajoute à la fin du fichier, alors que `>` en remplace tout le contenu : c'est la différence qui protège le titre.
 #? Le piège classique : utiliser `>` et effacer le titre, ou lancer deux fois la commande `>>` et obtenir trois lignes au lieu de deux.
 #? En cas d'erreur, réécrivez le titre avec `>`, puis ajoutez l'étape avec `>>`.
+#? Une ligne vide ajoutée à la fin par un éditeur, ou l'absence de retour à la ligne final (avec `printf`), ne comptent pas comme une ligne de plus.
 echo "1. Créer le compte utilisateur" >> ~/documents/procedures/arrivee.txt
 #@ 3.4
 #? `cp` accepte comme destination un chemin qui se termine par un nouveau nom : la copie est créée directement sous ce nom.
@@ -869,6 +872,7 @@ du -sm /srv/data | cut -f1 > ~/taille-data.txt
 #? `blkid` lit l'UUID et le type d'un système de fichiers, même dans un fichier image ; `-o export` les présente sous la forme `UUID=…` et `TYPE=…`, que `eval` transforme en variables.
 #? La ligne a six champs : la source `UUID=…`, le point de montage, le type, les options, dump à 0 et pass à 2 pour un disque vérifié après la racine.
 #? L'option `nofail` laisse le serveur démarrer si le disque est absent ; le piège est `noauto`, qui empêcherait aussi le montage automatique quand il est branché.
+#? `nofail` seul, sans `defaults`, est accepté aussi : les autres options gardent leur valeur par défaut ; des options comme `ro` ou `noexec` les changeraient.
 #? Autre piège : désigner le disque par /dev/sdX, un nom qui dépend de l'ordre de détection des disques.
 #? L'UUID est tiré au sort lors de la mise en place : le vôtre est forcément différent ; `blkid -s UUID -o value fichier` l'affiche seul si besoin.
 sudo mkdir -p /mnt/usb
@@ -1145,7 +1149,7 @@ EOF
     18: r'''
 #@ 18.1
 #? `crontab -e` ouvre votre table personnelle ; le corrigé ajoute la ligne sans éditeur, en recombinant `crontab -l` et la nouvelle ligne envoyées à `crontab -`.
-#? Cinq étoiles signifient « chaque minute » ; `*/1 * * * *` est aussi accepté.
+#? Cinq étoiles signifient « chaque minute » ; `*/1 * * * *` ou `0-59 * * * *` sont aussi acceptés.
 #? Utilisez un chemin absolu vers tick.log : cron ne lance pas la tâche dans votre dossier courant.
 (crontab -l 2>/dev/null; echo '* * * * * date >> /home/etudiant/tick.log') | crontab -
 #@ 18.5
@@ -1167,6 +1171,7 @@ crontab -l | sed '/heure\.log/ s/%/\\%/g' | crontab -
 #@ 18.7
 #? Sans serveur de messagerie, cron jette la sortie des tâches : avant de réparer, il faut la capturer avec `>> /var/log/export-compta.log 2>&1`.
 #? L'ordre des redirections compte : d'abord la sortie standard vers le journal, puis `2>&1` pour que les erreurs suivent le même chemin.
+#? `>> /var/log/export-compta.log 2>> /var/log/export-compta.log` convient aussi ; en revanche `&>>` n'existe pas pour /bin/sh, le shell de cron.
 #? La vérification exige que le journal contienne l'erreur de la tâche : il faut donc laisser cron s'exécuter une fois avant de corriger.
 #? La cause est tirée au sort, et seule l'erreur capturée la donne : dossier d'export absent (on le crée), fichier ordinaire à la place de ce dossier (on le remplace par un dossier), configuration absente (on la recrée à partir du modèle indiqué) ou outil non exécutable (`chmod 755`).
 #? Le piège est d'appliquer la correction d'un camarade sans lire son propre journal : un `mkdir` ne sert à rien si c'est la configuration qui manque.
@@ -1555,7 +1560,7 @@ sudo sed -i "s/^db_password=.*/db_password=$(head -c 12 /dev/urandom | base64 | 
 #@ 23.4
 #? Un compte d'UID 0 est root, quel que soit son nom : `awk -F: '$3 == 0 {print $1}' /etc/passwd` les liste tous. Le nom du faux root est tiré au sort à la mise en place (toor, sysmaint…) : seule cette recherche le révèle.
 #? `userdel` refuse ici, car des processus tournent avec l'UID 0 ; on neutralise donc le compte : mot de passe verrouillé (`passwd -l`) et shell `/usr/sbin/nologin` (ou `/bin/false`).
-#? Faire expirer le compte avec `chage -E 0 nom` est accepté à la place du verrouillage du mot de passe, mais il faut quand même retirer le shell.
+#? Faire expirer le compte avec `chage -E 0 nom` (ou toute date passée, comme `usermod -e 1 nom`) est accepté à la place du verrouillage du mot de passe, mais il faut quand même retirer le shell.
 #? Ne tentez surtout pas `userdel -r` sur ce compte : son dossier personnel est /root.
 awk -F: '$3 == 0 {print $1}' /etc/passwd > ~/uid-zero.txt
 # userdel refuse (des processus tournent en UID 0) : on neutralise le compte qui n'est pas root

@@ -366,6 +366,25 @@
 
         .exercises-list.visible { display: block; }
 
+        /* ─── QCM de fin de cours ─────────────────── */
+        .quiz-content { flex: 1; overflow-y: auto; padding: 12px; display: none; font-size: 13px; line-height: 1.5; }
+        .quiz-content.visible { display: block; }
+        .quiz-intro { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; color: var(--text-dim); }
+        .quiz-q { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+        .quiz-q .quiz-title { font-weight: 600; margin-bottom: 6px; color: var(--text); }
+        .quiz-q label { display: flex; gap: 8px; align-items: flex-start; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+        .quiz-q label:hover { background: rgba(255,255,255,.04); }
+        .quiz-q code, .quiz-explain code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; background: #0a0c10; border-radius: 4px; padding: 1px 4px; }
+        .quiz-choice { padding: 4px 6px; border-radius: 6px; margin: 2px 0; }
+        .quiz-choice.good { background: rgba(0,184,148,.15); }
+        .quiz-choice.bad { background: rgba(225,112,85,.18); text-decoration: line-through; }
+        .quiz-q.ok { border-color: rgba(0,184,148,.6); }
+        .quiz-q.ko { border-color: rgba(225,112,85,.6); }
+        .quiz-explain { margin-top: 6px; font-size: 12.5px; color: var(--text-dim); }
+        .quiz-score { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+        .btn-quiz { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; }
+        .btn-quiz:disabled { opacity: .6; cursor: default; }
+
         .exercises-list::-webkit-scrollbar { width: 6px; }
         .exercises-list::-webkit-scrollbar-track { background: transparent; }
         .exercises-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -783,9 +802,11 @@
             <div class="tab-bar">
                 <button class="tab-btn active" id="tab-lesson" onclick="switchTab('lesson')">Cours</button>
                 <button class="tab-btn" id="tab-exercises" onclick="switchTab('exercises')">Exercices</button>
+                <button class="tab-btn" id="tab-quiz" onclick="switchTab('quiz')" style="display:none">QCM</button>
             </div>
             <div class="lesson-content visible" id="lesson-content"></div>
             <div class="exercises-list" id="exercises-list"></div>
+            <div class="quiz-content" id="quiz-content"></div>
             <div class="validate-bar">
                 <button class="btn-validate" id="btn-validate" onclick="validateStep()">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -1018,21 +1039,79 @@
         }
 
         function switchTab(tab) {
-            const lessonEl = document.getElementById('lesson-content');
-            const exercisesEl = document.getElementById('exercises-list');
-            const tabLesson = document.getElementById('tab-lesson');
-            const tabExercises = document.getElementById('tab-exercises');
+            const panes = { lesson: 'lesson-content', exercises: 'exercises-list', quiz: 'quiz-content' };
+            for (const [name, id] of Object.entries(panes)) {
+                document.getElementById(id).classList.toggle('visible', name === tab);
+                document.getElementById(`tab-${name}`).classList.toggle('active', name === tab);
+            }
+            if (tab === 'quiz') loadQuiz();
+        }
 
-            if (tab === 'lesson') {
-                lessonEl.classList.add('visible');
-                exercisesEl.classList.remove('visible');
-                tabLesson.classList.add('active');
-                tabExercises.classList.remove('active');
-            } else {
-                lessonEl.classList.remove('visible');
-                exercisesEl.classList.add('visible');
-                tabLesson.classList.remove('active');
-                tabExercises.classList.add('active');
+        // ─── QCM de fin de cours ─────────────────────
+        let quizStep = null;
+
+        function quizTabLabel(q) {
+            const tab = document.getElementById('tab-quiz');
+            tab.style.display = q ? '' : 'none';
+            if (q) tab.textContent = q.done ? `QCM ${q.done[0]}/${q.done[1]}` : `QCM · ${q.max} pts`;
+        }
+
+        async function loadQuiz() {
+            const box = document.getElementById('quiz-content');
+            if (quizStep === currentStep) return;
+            quizStep = currentStep;
+            box.innerHTML = '<div class="quiz-intro">Chargement…</div>';
+            try {
+                renderQuiz(await api(`/api/${COURSE}/quiz/${currentStep}`));
+            } catch (e) {
+                box.innerHTML = `<div class="quiz-intro">QCM indisponible : ${e.message}</div>`;
+                quizStep = null;
+            }
+        }
+
+        function renderQuiz(data) {
+            const box = document.getElementById('quiz-content');
+            if (data.done) {
+                box.innerHTML = `<div class="quiz-score">Votre résultat : ${data.score} / ${data.max}</div>` + data.details.map((d, n) => `
+                    <div class="quiz-q ${d.ok ? 'ok' : 'ko'}">
+                        <div class="quiz-title">${n + 1}. ${d.q} ${d.ok ? '✓' : '✗'}</div>
+                        ${d.choices.map((c, i) => `<div class="quiz-choice ${d.correct.includes(i) ? 'good' : (d.chosen.includes(i) ? 'bad' : '')}">${d.correct.includes(i) ? '✓' : (d.chosen.includes(i) ? '✗' : '·')} ${c}</div>`).join('')}
+                        ${d.explain ? `<div class="quiz-explain">${d.explain}</div>` : ''}
+                    </div>`).join('');
+                return;
+            }
+            box.innerHTML = `<div class="quiz-intro">${data.questions.length} questions sur le cours de cette étape, 1 point par bonne réponse, ajouté à votre score.
+                <b>Une seule tentative</b> : relisez le cours avant de valider. Une question à plusieurs réponses n'est juste que si vous cochez exactement toutes les bonnes.</div>`
+                + data.questions.map((q, n) => `
+                    <div class="quiz-q">
+                        <div class="quiz-title">${n + 1}. ${q.q}${q.multi ? ' <em>(plusieurs réponses possibles)</em>' : ''}</div>
+                        ${q.choices.map((c, i) => `<label><input type="${q.multi ? 'checkbox' : 'radio'}" name="quiz-${n}" value="${i}"> <span>${c}</span></label>`).join('')}
+                    </div>`).join('')
+                + `<button class="btn-quiz" id="btn-quiz" onclick="submitQuiz(${data.questions.length})">Valider mes réponses</button>`;
+        }
+
+        async function submitQuiz(count) {
+            const answers = [];
+            let empty = 0;
+            for (let n = 0; n < count; n++) {
+                const picked = [...document.querySelectorAll(`input[name="quiz-${n}"]:checked`)].map((el) => Number(el.value));
+                if (!picked.length) empty++;
+                answers.push(picked);
+            }
+            const warn = empty ? `${empty} question(s) sans réponse. ` : '';
+            if (!confirm(`${warn}Valider définitivement vos réponses ? Vous n'aurez pas d'autre tentative.`)) return;
+            const btn = document.getElementById('btn-quiz');
+            btn.disabled = true;
+            try {
+                const data = await api(`/api/${COURSE}/quiz/${currentStep}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers }),
+                });
+                renderQuiz(data);
+                quizTabLabel({ done: [data.score, data.max], max: data.max });
+                updateScore(data.progress);
+            } catch (e) {
+                btn.disabled = false;
+                showToast(`Envoi impossible : ${e.message}`, 'error');
             }
         }
 
@@ -1087,6 +1166,8 @@
             `).join('');
 
             document.getElementById('btn-reset-step').style.display = stepData.has_setup ? 'block' : 'none';
+            quizTabLabel(stepData.quiz);
+            quizStep = null;
 
             // Show lesson tab by default when switching steps
             switchTab('lesson');

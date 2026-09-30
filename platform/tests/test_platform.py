@@ -167,7 +167,9 @@ def test_attestation(app_client):
     code = r.headers["location"].rsplit("/", 1)[1]
     app_client.cookies.clear()
     page = app_client.get(f"/attestation/{code}")  # page publique
-    assert page.status_code == 200 and "Ada Lovelace" in page.text and f"{LINUX['max_score']} / {LINUX['max_score']}" in page.text
+    # Tous les exercices, aucun QCM : le maximum inclut aussi les points de QCM
+    exercises = LINUX["max_score"] - LINUX["quiz_max"]
+    assert page.status_code == 200 and "Ada Lovelace" in page.text and f"{exercises} / {LINUX['max_score']}" in page.text
     assert app_client.get("/attestation/AAAA-BBBB-CCCC").status_code == 404
 
 
@@ -347,3 +349,30 @@ def test_empreintes_des_images_a_jour():
     from revisions_images import TARGET, all_revisions
     assert json.load(open(TARGET, encoding="utf-8")) == all_revisions(), \
         "images/ modifié : lancez python platform/tests/revisions_images.py"
+
+
+def test_qcm_une_tentative_et_points(app_client, monkeypatch):
+    pool = [{"q": f"Question {i}", "choices": ["bonne", "b", "c", "d"], "answer": 0, "explain": "car"} for i in range(6)]
+    pool[5] = {"q": "Multi", "choices": ["x", "bonne1", "y", "bonne2"], "answer": [1, 3], "explain": ""}
+    monkeypatch.setitem(LINUX, "quiz", {1: pool})
+    student_in_class(app_client)
+    login(app_client, "ada@lab.test", "motdepasse1")
+    assert app_client.get("/api/linux/step/1").json()["quiz"] == {"done": None, "max": 4}
+    q = app_client.get("/api/linux/quiz/1").json()
+    assert not q["done"] and len(q["questions"]) == 4
+    assert "answer" not in str(q) and "explain" not in str(q)  # pas de réponse avant la tentative
+    assert app_client.get("/api/linux/quiz/1").json() == q  # tirage stable
+    # Coche la « bonne » réponse partout (et les deux bonnes pour la question multiple) sauf pour la première question
+    answers = []
+    for n, question in enumerate(q["questions"]):
+        good = [i for i, c in enumerate(question["choices"]) if c.startswith("bonne")]
+        answers.append([] if n == 0 else good)
+    r = app_client.post("/api/linux/quiz/1", json={"answers": answers}).json()
+    assert r["done"] and r["score"] == 3 and r["max"] == 4
+    assert r["progress"]["score"] == 3
+    assert r["details"][0]["correct"] and not r["details"][0]["ok"]
+    # Une seule tentative : un nouvel envoi ne change rien
+    r2 = app_client.post("/api/linux/quiz/1", json={"answers": [[0]] * 4}).json()
+    assert r2["score"] == 3
+    assert app_client.get("/api/linux/step/1").json()["quiz"]["done"] == [3, 4]
+    assert app_client.get("/api/linux/quiz/2").status_code == 404  # pas de QCM pour cette étape

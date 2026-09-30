@@ -35,6 +35,7 @@ git commit -m "Ignorer le brouillon personnel"
 #? En n'indexant que `stock.csv`, le commit ne contient que l'inventaire ; un `git commit -a` ou un `git add .` y aurait mêlé l'essai.
 #? `git restore` sur le fichier de l'essai le ramène à sa version indexée, ici celle du dernier commit : c'est définitif, l'essai n'est enregistré nulle part, et c'est exactement ce que Léa demandait.
 #? Le fichier de l'essai, son texte et la quantité de sacs sont tirés au sort : chez vous, l'essai n'est pas forcément dans le même fichier que chez votre voisin.
+#? Variantes valables : `git checkout -- <fichier>` (ancienne syntaxe de `git restore`), ou `git commit stock.csv -m …`, qui ne commite que ce fichier.
 cd ~/inventaire
 git status                     # stock.csv ET le fichier de l'essai sont modifiés
 git diff                       # l'essai de Julien
@@ -48,6 +49,7 @@ git restore $essai             # jette l'essai (retour à la version du dernier 
 #? Quand les deux modifications sont proches, elles forment un seul morceau : la touche `s` le découpe (ou `e` permet de l'éditer), puis on répond pour chaque partie.
 #? L'ordre des fonctions et la place du debug sont tirés au sort : selon les environnements, les centimes viennent en premier ou en second, dans un morceau à part ou non. Lisez `git diff` avant de répondre.
 #? Le `printf` du corrigé ne fait que simuler vos réponses au clavier, qu'il déduit de `git diff` (nombre de morceaux, ordre des deux modifications).
+#? Variante valable : retirer la ligne de debug du fichier, commiter, puis la remettre ; le résultat est le même qu'avec `git add -p`.
 cd ~/boutique-js
 git diff                       # les centimes et le debug : un ou deux morceaux, dans un ordre qui varie
 rep=""
@@ -74,7 +76,7 @@ git log -S "0.055" --oneline -- js/panier.js > ~/commit-tva.txt
 #? `--diff-filter=D` ne montre que le commit qui a supprimé le fichier ; dans ce commit, le fichier n'existe plus, mais il existe encore dans son parent, noté avec `^`.
 #? `git restore --source=...^ data/fournisseurs.csv` ne récupère que ce fichier dans le répertoire de travail ; il reste à l'ajouter et à le commiter.
 #? Le piège : `git checkout` d'un commit sans nom de fichier (tête détachée) ou un `git reset --hard` ramèneraient tout le dépôt en arrière, au détriment du travail qui a suivi.
-#? Variante valable : l'ancienne syntaxe `git checkout hash^ -- data/fournisseurs.csv`, qui place en plus le fichier directement dans l'index.
+#? Variantes valables : l'ancienne syntaxe `git checkout hash^ -- data/fournisseurs.csv` (qui place en plus le fichier dans l'index), ou `git revert` du commit « Ménage », qui ne contenait que cette suppression.
 cd ~/archives-site
 # Le commit qui a supprimé le fichier ; le fichier existe encore dans son parent (^)
 suppr=$(git log --diff-filter=D --format=%h -- data/fournisseurs.csv)
@@ -84,8 +86,9 @@ git commit -m "Restauration du fichier des fournisseurs"
 #@ G2.3
 #? `git revert` crée un nouveau commit qui applique l'inverse du commit visé : le commit de Marc reste dans l'historique, et son annulation s'y ajoute avec la mention « This reverts commit … ».
 #? C'est la bonne façon d'annuler un commit déjà partagé : un `reset` ou un rebase réécriraient une histoire que d'autres possèdent déjà.
-#? Remettre `0.20` à la main donnerait le même fichier, mais sans trace de ce qu'on annule : la vérification exige un vrai revert.
+#? Remettre `0.20` à la main donnerait le même fichier, mais sans trace de ce qu'on annule : la vérification exige un commit dont le message cite le commit annulé, comme le fait `git revert`.
 #? Le corrigé relit le hash dans `~/commit-tva.txt` (awk en prend le premier mot), et `--no-edit` accepte le message proposé sans ouvrir l'éditeur.
+#? Variantes valables : un titre modifié dans l'éditeur, ou `git revert --no-commit` suivi d'un `git commit` dont le message cite le hash du commit annulé.
 cd ~/archives-site
 git revert --no-edit "$(awk '{ print $1 }' ~/commit-tva.txt)"
 #@ G2.4
@@ -103,6 +106,7 @@ git blame -w --porcelain -L '/standard/,+1' js/port.js | head -n 1 | cut -d ' ' 
 #? On termine par `git add` puis `git revert --continue`, et non par un nouveau `git revert` ; `git revert --abort` aurait tout annulé pour repartir de zéro.
 #? Les seuils et les commentaires sont tirés au sort : le corrigé lit l'ancienne valeur dans le parent du commit annulé (`git show hash^:js/livraison.js`) et le commentaire dans la version actuelle.
 #? Dans le corrigé, `GIT_EDITOR=true` accepte le message proposé sans ouvrir l'éditeur ; dans nano, il suffit d'enregistrer et de quitter.
+#? Variantes valables : `git commit` au lieu de `git revert --continue` (le message proposé est conservé), ou `git checkout --ours` puis l'ancienne valeur remise à la main.
 cd ~/archives-site
 seuil=$(git log --format=%h --grep='^Seuil de livraison relevé$')
 avant=$(git show "$seuil^:js/livraison.js" | sed -n 's/^const SEUIL_LIVRAISON = \([0-9]*\);.*/\1/p')   # l'ancien seuil
@@ -148,6 +152,7 @@ git push -u origin main
 #? Avec `pull.rebase true`, `git pull` rejoue vos commits locaux au-dessus de ceux du distant, au lieu de créer un commit « Merge branch 'main' of … ».
 #? Avec `rebase.autoStash true`, Git met de côté vos modifications non commitées avant un rebase et les remet en place à la fin ; sans ce réglage, le rebase refuse de démarrer.
 #? L'option `--global` est indispensable : la règle doit valoir pour tous vos dépôts, pas seulement pour celui où vous vous trouvez.
+#? Variantes valables : `yes`, `on` ou `1` à la place de `true`, et `pull.rebase merges`, qui rebase en conservant les fusions locales.
 git config --global pull.rebase true
 git config --global rebase.autoStash true
 #@ G4.2
@@ -156,6 +161,7 @@ git config --global rebase.autoStash true
 #? Le piège majeur : `git push --force` aurait effacé du dépôt partagé le travail de Nadia et des autres.
 #? Autre piège : un pull en mode fusion aurait ajouté un commit « Merge branch 'main' of … », contraire à la règle de l'équipe.
 #? Le corrigé insère `$(git config user.name)` : la ligne ajoutée porte donc votre propre nom.
+#? Variantes valables : `git pull --rebase`, ou `git fetch` puis `git rebase origin/main` ; `git push origin HEAD` publie aussi la branche courante.
 cd ~/boutique
 echo "- $(git config user.name) (admin système)" >> EQUIPE.md
 git commit -am "Ajout de $(git config user.name) dans l'équipe"
@@ -177,6 +183,7 @@ git rev-list --count main..origin/main > ~/nouveaux-commits.txt
 #? Pendant un rebase, on termine par `git add` puis `git rebase --continue`, et non `git commit` ; `git rebase --abort` permet de revenir à l'état de départ.
 #? Attention au sens des marqueurs pendant un rebase : la partie `HEAD` (en haut) est la version déjà publiée par Nadia, la partie du bas est le commit de Thomas en train d'être rejoué.
 #? La couleur de Thomas est tirée au sort : elle diffère d'un environnement à l'autre (le corrigé la lit avec `git show HEAD:css/style.css` avant le pull).
+#? Variantes valables : `git fetch` puis `git rebase origin/main`, et une règle `h1` écrite sur plusieurs lignes ou avec les deux propriétés dans l'autre ordre.
 cd ~/poste-thomas
 git push || true                               # refusé : Nadia a publié entre-temps
 coul=$(git show HEAD:css/style.css | sed -n 's/^h1 { color: \(#[0-9a-f]*\);.*/\1/p')   # la couleur de Thomas
@@ -192,6 +199,7 @@ git push
 #? `git push -u origin feature/promo-ete` publie la branche et enregistre son lien de suivi, pour que les prochains `git push` et `git pull` sachent où aller.
 #? Le piège : commiter d'abord, puis créer la branche, laisserait aussi le commit de la promo sur votre `main` local.
 #? Le contenu de `promo.html` est libre : seuls comptent le fichier, la branche et le suivi.
+#? Variantes valables : `git checkout -b`, `git push -u origin HEAD`, ou `git branch -u origin/feature/promo-ete` après un push sans `-u`.
 cd ~/boutique
 git switch -c feature/promo-ete
 echo "<h2>Promo d'été : -15 % sur les sacs</h2>" > promo.html
@@ -213,6 +221,7 @@ git push
 #? `git fetch --prune` fait oublier à votre dépôt les branches distantes qui n'existent plus sur le dépôt partagé, comme celles que d'autres ont supprimées.
 #? `git branch -d` refuse de supprimer une branche dont le travail n'est pas intégré : c'est une sécurité, que `-D` contourne.
 #? Le `2>/dev/null` du corrigé masque seulement l'erreur si la branche locale n'avait jamais été créée.
+#? Variante valable : `git push origin :feature/avis-clients` ; un push qui supprime une branche efface aussi sa branche distante connue chez vous.
 cd ~/boutique
 git push origin --delete feature/avis-clients
 git branch -d feature/avis-clients 2>/dev/null   # seulement si elle avait été créée localement
@@ -222,6 +231,7 @@ git fetch --prune
 #? `git switch` suivi du nom exact, sans `origin/`, crée une branche locale du même nom qui suit automatiquement la branche distante.
 #? Le piège : `git switch origin/…` refuse, et `git checkout origin/…` place sur une tête détachée, sans branche locale ; `git branch -u` permet d'établir le suivi après coup.
 #? Le numéro de la branche et le code promo sont tirés au sort : ils diffèrent chez vous, et seul le code, sans guillemets, doit figurer dans le fichier.
+#? Variantes valables : `git checkout <nom>`, `git checkout -b <nom> origin/<nom>` ou `git branch --track <nom> origin/<nom>`.
 cd ~/boutique
 git fetch
 git branch -r                                  # origin/feature/code-promo-…
@@ -247,6 +257,7 @@ git reset --hard "$base"                       # main recule sur « Script du pa
 #? `git cherry-pick` rejoue ce seul commit sur `main` ; la copie reçoit un nouvel identifiant et `feature/refonte` reste intacte.
 #? L'option `-x` ajoute « (cherry picked from commit …) » au message : c'est la traçabilité demandée par Nadia.
 #? Le piège : fusionner ou rebaser la refonte apporterait sur `main` tout le travail inachevé de Thomas.
+#? Une mention écrite à la main convient aussi, pourvu que le message cite l'identifiant du commit d'origine (7 caractères au moins).
 cd ~/refonte
 fix=$(git log --format=%h main..feature/refonte -- js/formulaire.js)
 git switch main
@@ -258,7 +269,7 @@ git cherry-pick -x "$fix"
 #? La résolution garde une seule ligne qui combine les deux (par exemple « Sac à dos 40 L : 89 euros ») et supprime les trois marqueurs ; `git add` marque le conflit comme résolu et `git commit --no-edit` termine la fusion.
 #? L'article, le libellé et le prix sont tirés au sort : le corrigé prend la ligne de Thomas (côté `HEAD`, en haut) et y met le prix de Nadia (côté de la branche, en bas).
 #? Le piège : une branche publiée se fusionne, elle ne se rebase pas ; et avec `pull.rebase=true`, `git pull origin feature/tarifs` rebaserait votre `main` au lieu de fusionner.
-#? Variante valable : `git merge --continue` termine la fusion aussi bien que `git commit`.
+#? Variantes valables : `git merge --continue` au lieu de `git commit`, `git pull --no-rebase origin feature/tarifs` au lieu du merge ; l'indentation de la ligne est libre.
 cd ~/boutique
 git switch main
 git pull                                   # récupère d'abord le commit de Thomas
@@ -284,6 +295,7 @@ git merge --abort
 #? `git revert -m <n>` crée un nouveau commit qui ramène le contenu à celui du parent n : tout ce que la branche a apporté disparaît (`paiement.js`, le lien), et ce qui a été commité ensuite (mentions légales) reste.
 #? Les pièges : un `reset` ou un rebase réécriraient une histoire publiée, et le mauvais numéro de parent annulerait au contraire ce que `main` avait apporté (la page livraison).
 #? Pour réintégrer la branche plus tard, il faudra annuler cette annulation : pour Git, ses commits sont déjà fusionnés.
+#? Variante valable : `git revert --no-commit -m <n>`, puis un `git commit` dont le message cite la fusion annulée.
 cd ~/boutique-prod
 git log --oneline --graph
 fusion=$(git log --merges --format=%h --grep='^Fusion du nouveau paiement$')
@@ -296,6 +308,7 @@ git revert --no-edit -m "$m" "$fusion"
 #? `git checkout --theirs stock.json` prend la version entière de la branche fusionnée (`--ours` désignerait `main`) ; `git add` puis `git commit --no-edit` terminent la fusion.
 #? Le piège : `git merge -X theirs` ne tranche que les zones en conflit et garderait les retouches de Julien situées ailleurs dans le fichier, comme les lampes.
 #? Les quantités du stock sont tirées au sort : elles peuvent différer dans votre environnement.
+#? Variantes valables : `git checkout maj-stock -- stock.json` ou `git restore --theirs stock.json`, et `git merge --continue` pour terminer.
 cd ~/reserve
 git merge maj-stock                        # CONFLICT dans stock.json ; README.md fusionné seul
 git checkout --theirs stock.json           # la version entière de la branche
@@ -308,6 +321,7 @@ git commit --no-edit
 #? Sur `main`, on corrige et on commite ; de retour sur `feature/newsletter`, `git stash pop` réapplique le brouillon et le retire de la liste.
 #? Le piège : `git stash apply` réapplique aussi, mais laisse l'entrée dans la liste ; il faudrait alors la supprimer avec `git stash drop`.
 #? Commiter le brouillon « pour le mettre de côté » l'aurait fait entrer dans l'historique de la branche avant relecture.
+#? Variante valable : corriger `main` dans un dossier temporaire créé par `git worktree add`, sans toucher au brouillon.
 cd ~/atelier
 git stash                                  # range le brouillon
 git switch main
@@ -320,6 +334,7 @@ git stash pop                              # reprend le brouillon
 #? L'option `-m` fixe le nouveau message ; sans elle, l'éditeur s'ouvre sur l'ancien.
 #? On peut le faire parce que rien n'est poussé : amender un commit publié réécrirait une histoire partagée.
 #? Le piège : un second commit pour le fichier oublié laisserait le message fautif et un commit en trop.
+#? Variante valable : `git reset --soft HEAD~1`, puis un nouveau commit avec le fichier oublié et le bon message.
 cd ~/corrections
 git add js/remise.js
 git commit --amend -m "Correction du calcul du panier"
@@ -338,6 +353,7 @@ git rebase main
 #? Déplacer une retouche au-dessus d'un commit qui touche un autre fichier ne crée pas de conflit, et le contenu final reste identique ; l'ordre des retouches d'un même fichier, lui, doit être conservé.
 #? `squash` fonctionnerait aussi, mais ouvrirait l'éditeur pour combiner les messages, qu'il faudrait ensuite nettoyer.
 #? Le script du corrigé ne fait que réécrire cette liste à votre place, via `GIT_SEQUENCE_EDITOR` ; vous, vous la modifiez dans nano.
+#? Variante valable : `git reset main`, puis deux commits (`contact.html`, puis `validation.js`) avec les bons messages : le contenu final est le même.
 cd ~/contact
 git log --oneline --stat main..feature/contact   # quel fichier chaque retouche modifie-t-elle ?
 # L'étudiant fait « git rebase -i main » et modifie la liste dans nano ; ici, un script fait la même chose :
@@ -376,6 +392,7 @@ git status                                 # ?? notes-perso.txt
 #? `git stash -u` (`--include-untracked`) range aussi les fichiers non suivis : le répertoire de travail est propre et le changement de branche passe.
 #? Après la correction commitée sur `main`, `git stash pop` sur `feature/bandeau` restaure les deux fichiers et vide la liste.
 #? Le corrigé rejoue d'abord l'essai voué à l'échec pour montrer le refus ; vous pouviez utiliser `git stash -u` directement.
+#? Variantes valables : `git stash push -u -m "bandeau"` (le message aide à retrouver l'entrée), ou `git stash apply` suivi de `git stash drop`.
 cd ~/bandeau
 git stash || true
 git switch main || true                    # refusé : bandeau.html (non suivi) serait écrasé
@@ -394,6 +411,7 @@ git stash pop
 #? Le piège : il faut enregistrer `git bisect log` avant `git bisect reset`, qui termine la recherche et efface son journal.
 #? `git log -S` ne sert à rien ici, puisque Marc réécrit la formule à chaque commit ; et la position du bug est tirée au sort, votre commit fautif diffère donc de celui d'un camarade.
 #? À la fin de la recherche, `refs/bisect/bad` désigne le premier commit mauvais : c'est ce que le corrigé écrit dans `~/commit-fautif.txt`.
+#? Variantes valables : `git bisect start HEAD <premier commit>`, la recherche à la main (good ou bad après chaque `./tests.sh`), ou les termes old / new.
 cd ~/calculs
 git bisect start
 git bisect bad                                       # la version actuelle est fausse
@@ -419,6 +437,7 @@ git push --force origin v1.0                         # remplace l'étiquette pub
 #? On repère dans `git reflog` la ligne du commit « Conclusion », la dernière position de `HEAD` avant la perte ; `git branch sauvetage` pose dessus une étiquette qui le met à l'abri.
 #? Ce que Julien a fait ensuite est tiré au sort (rien, d'autres commits, un second reset, un détour par une autre branche) : la conclusion n'est donc pas forcément `HEAD@{1}`. Son hash, lu dans le reflog, ne trompe pas.
 #? Variante : `git reset --hard` sur ce hash remettrait `main` dessus, mais Julien demande une branche `sauvetage` (et il perdrait ce qu'il a fait depuis).
+#? Variante valable : `git switch -c sauvetage <hash>` (ou `git checkout -b`), qui crée la branche et s'y place.
 cd ~/rapport
 git reflog                                 # repérer la ligne du commit « Conclusion »
 perdu=$(git log -g --format='%H %s' | awk '$2 == "Conclusion" { print $1; exit }')
@@ -458,6 +477,7 @@ git commit -m "Règles d'ignorance du catalogue"
 #? Variante recommandée : `git filter-repo --force --invert-paths --path config/api.env`, qui retire le distant `origin` par sécurité : il faut le redéclarer avant de publier.
 #? `git push --force` est ici exceptionnel et justifié : la nouvelle histoire doit remplacer l'ancienne sur le dépôt partagé (ce qui met aussi à jour `origin/main`), en prévenant l'équipe.
 #? Le premier geste reste de révoquer la clé, car les clones déjà faits la conservent ; `git log --all -p | grep` vérifie ensuite qu'aucune référence ne la contient plus.
+#? Variante valable pour une histoire courte : `git rebase -i` avec `edit` sur le commit de la clé, `git rm --cached`, `git commit --amend`, puis `git rebase --skip` du commit de suppression devenu vide.
 cd ~/meteo
 git log --all -p | grep -c API_KEY=                  # la clé est toujours dans l'historique
 git filter-branch --index-filter 'git rm -q --cached --ignore-unmatch config/api.env' -- main

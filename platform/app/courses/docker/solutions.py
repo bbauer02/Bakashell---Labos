@@ -9,12 +9,14 @@ SOLUTIONS = {
 #? `"$(cat ~/message.txt)"` insère le contenu du fichier tel quel, sans réinterpréter le `$` ni l'apostrophe qu'il contient : Docker reçoit la phrase exacte.
 #? Tout ce qui suit le nom de l'image est la commande du conteneur ; `echo` se termine aussitôt, d'où l'état exited avec le code 0 attendu.
 #? La phrase est tirée au sort : celle de votre environnement diffère de celle de l'exemple, mais la commande reste la même.
+#? Variantes valables : `docker create` puis `docker start -a premier`, ou l'image désignée par `docker.io/library/alpine`.
 # "$(cat …)" insère le contenu du fichier tel quel : ni le « $ » ni l'apostrophe ne sont interprétés
 docker run --name premier alpine echo "$(cat ~/message.txt)"
 #@ D1.2
 #? Un conteneur n'est qu'un processus de l'hôte, isolé : `docker inspect -f '{{.State.Pid}}'` (ou `docker top dormeur`) donne son PID vu de l'hôte.
 #? Vu de l'intérieur, grâce à l'espace de noms des PID, ce même `sleep` est le processus n°1 du conteneur, comme le montre `docker exec dormeur ps`.
 #? Le piège : croire que les deux numéros sont égaux. Le PID de l'hôte change à chaque lancement, celui de l'intérieur vaut toujours 1 pour le processus principal.
+#? Avec `--init` ou `sh -c 'sleep 3600; …'`, sleep n'est plus le processus principal : on note alors son vrai numéro interne (`docker exec dormeur pidof sleep`).
 docker run -d --name dormeur alpine sleep 3600
 # Vu de l'hôte : un processus comme un autre, avec son PID
 docker inspect -f '{{.State.Pid}}' dormeur > ~/pid-dormeur.txt
@@ -93,6 +95,7 @@ docker stats --no-stream --format '{{.MemPerc}} {{.Name}}' worker-a worker-b wor
 #? `docker update` modifie à chaud certaines options d'un conteneur (mémoire, CPU, politique de redémarrage), sans le recréer ni le redémarrer.
 #? `--memory-swap` est la limite mémoire + swap : lui donner la même valeur que `--memory` interdit le swap, ce que la vérification contrôle.
 #? `--cpus 0.5` correspond à un demi-CPU (500000000 NanoCpus dans `docker inspect`). Le nom du worker, lu dans `~/gourmand.txt`, dépend de votre tirage.
+#? Équivalent accepté : `--cpu-period 100000 --cpu-quota 50000` (le quota vaut la moitié de la période).
 # Mémoire ET mémoire + swap (même valeur : pas de swap), et un demi-CPU, à chaud
 docker update --memory 128m --memory-swap 128m --cpus 0.5 "$(cat ~/gourmand.txt)"
 #@ D2.7
@@ -177,6 +180,7 @@ sleep 2
 #? Les droits fautifs varient d'un environnement à l'autre (dossier, page d'accueil, sous-dossier `equipes/` ou sa page) : `ls -lnR` les montre tous.
 #? `chmod -R o+rX` ajoute la lecture pour les « autres » partout, et la traversée sur les seuls dossiers (le `X` majuscule), sans recréer le conteneur ; `chmod 755` sur les dossiers et `644` sur les fichiers est équivalent.
 #? Les pièges : `chmod 777` (tout le monde pourrait modifier le site), oublier un sous-dossier, ou faire tourner les processus de travail en root.
+#? Variante valable : donner les fichiers au groupe 101 (celui de nginx) avec `g+rX`, depuis un conteneur jetable, sans rien ouvrir aux « autres ».
 docker logs intranet 2>&1 | tail -3
 docker top intranet
 ls -lnR ~/projet/intranet
@@ -189,6 +193,7 @@ ls -lnR ~/projet/intranet
 #? Un volume nommé est géré par Docker, indépendamment de tout conteneur : les données survivent à `docker rm` et à la mise à jour de l'image.
 #? Les arguments placés après le nom de l'image remplacent la commande par défaut : `redis-server --appendonly yes` fait écrire chaque modification sur disque.
 #? Le piège : sans `--appendonly yes`, Redis n'écrit ses données que de temps en temps, et la clé n'est pas encore sur le volume au moment de la vérification.
+#? Un `redis-cli save` juste après le `set` écrit aussi la clé sur le volume, mais seule la persistance activée protège les écritures suivantes.
 docker volume create donnees-boutique
 docker run -d --name cache -v donnees-boutique:/data redis:7-alpine redis-server --appendonly yes
 sleep 2
@@ -290,6 +295,7 @@ docker volume prune -a -f --filter 'label!=conserver=oui'
 #? Un Dockerfile répond à quatre questions : l'image de départ (`FROM`), l'emplacement du code (`WORKDIR`, `COPY`), le port écouté (`EXPOSE`) et la commande de démarrage (`CMD`).
 #? La forme JSON de `CMD` lance node directement, sans shell intermédiaire ; le dernier argument de `docker build`, ici `.`, est le contexte de construction.
 #? `EXPOSE` ne fait que documenter le port : c'est `-p` qui le publie au lancement. Cette première image embarque encore `.env` et `node_modules`, on le corrige au D6.3.
+#? La vérification contrôle l'image produite : `FROM docker.io/library/node:20-alpine`, un autre `WORKDIR` ou `CMD ["npm", "start"]` conviennent aussi.
 cd ~/projet/api
 cat > Dockerfile <<'EOF'
 FROM node:20-alpine
@@ -331,6 +337,7 @@ sleep 2
 #? On lui fournit le dossier de configuration par un bind mount en lecture seule, là où il le cherche (et la variable s'il la réclame) ; monter le fichier seul fonctionne aussi.
 #? `--restart on-failure:5` ne relance qu'en cas d'échec, 5 fois au plus ; la politique se fixe à la création, d'où la recréation du conteneur.
 #? Le contenu de `stock.conf` est tiré au sort : le message « Synchro OK » de votre environnement diffère.
+#? Aussi accepté (sauf variable à fournir) : `docker cp` de la configuration dans le conteneur, puis `docker update --restart on-failure:5 synchro`.
 # « Restarting (3) » : le programme sort avec le code 3, faute de configuration ; son message dit ce qu'il attend
 docker logs synchro 2>&1 | tail -2
 erreur=$(docker logs synchro 2>&1 | tail -1)
@@ -392,6 +399,7 @@ docker run --rm rapport:1.0
 #? Docker réutilise une couche si l'instruction et tout ce qui la précède sont inchangés : on copie d'abord `package.json` et `package-lock.json`, puis on lance `npm ci`.
 #? Quand seul `server.js` change, l'étape `npm ci` reste en cache ; quand `package-lock.json` change, elle est rejouée, ce que la vérification contrôle.
 #? Le piège : `COPY . .` avant `npm ci`, qui invalide l'installation à chaque modification du code. `--no-audit --no-fund` évitent que npm contacte le registre sans Internet.
+#? Variantes valables : `COPY package*.json ./`, ou `RUN ["npm", "ci", …]` en forme exec.
 cd ~/projet/api
 cat > Dockerfile <<'EOF'
 FROM node:20-alpine
@@ -411,6 +419,7 @@ docker build -t boutique-api:1.0 .
 #? Le PID 1 était un shell : celui qui exécute `demarrer.sh`, ou celui qu'ajoute le `CMD` (forme shell, ou `sh -c` suivi de plusieurs commandes). node n'était que son descendant (lancé au premier plan ou en arrière-plan avec `&`), et un shell en PID 1 ne lui transmet pas SIGTERM : `docker stop` attendait 10 s puis tuait tout.
 #? La cause exacte varie d'un environnement à l'autre, mais le remède est le même : aucun shell ne doit rester entre Docker et node. `docker top` le vérifie.
 #? Dans le script, `exec node pointeuse.js` remplace le shell par node, qui devient le PID 1, reçoit SIGTERM et enregistre les passages avant de s'arrêter ; le `CMD` en forme exec lance le script directement. Et `pointeuse.js` reste intact, comme exigé.
+#? `CMD ["node", "pointeuse.js"]` sans le script convient aussi ; un script qui relaierait SIGTERM par `trap` est refusé : node doit recevoir lui-même le signal.
 cd ~/projet/pointeuse
 cat Dockerfile demarrer.sh
 # Le script prépare, puis se fait remplacer par node (exec) : node devient le PID 1 et reçoit SIGTERM
@@ -443,6 +452,7 @@ docker build -t export-produits:1.0 .
 #? Un `ARG` n'existe que pendant la construction : on le recopie dans un `ENV` pour que l'application le lise, et dans un `LABEL` pour les métadonnées de l'image.
 #? On le déclare après `npm ci` : un ARG est transmis à tous les RUN qui le suivent, et changer sa valeur les reconstruirait tous.
 #? La valeur par défaut (`dev`) ne sert que si l'on oublie `--build-arg` ; la version n'est jamais écrite en dur dans le Dockerfile.
+#? Le nom de l'argument est libre (`ARG VERSION`, puis `ENV APP_VERSION=$VERSION`) : la vérification construit avec celui que recopie l'ENV.
 cd ~/projet/api
 cat > Dockerfile <<'EOF'
 FROM node:20-alpine
@@ -742,6 +752,7 @@ docker compose up -d
 #? Compose lit le fichier `.env` du dossier du projet et remplace `${APP_VERSION}` dans `compose.yaml` à la lecture du fichier.
 #? `docker compose config` montre la configuration réellement appliquée, variable remplacée ; `docker compose up -d` recrée ensuite le service dont la configuration a changé.
 #? Le piège : laisser `2.0` écrit en dur dans `compose.yaml`. Passer la version en argument de construction (`build.args`) est aussi accepté par la vérification.
+#? Autres variantes valables : `env_file: .env` sur le service api, ou `- APP_VERSION` sans valeur dans `environment` (valeur reprise du `.env`).
 echo "APP_VERSION=2.0" > .env
 # Dans compose.yaml, service api : ajout de la variable, lue dans .env
 sed -i 's/      REDIS_HOST: redis/      REDIS_HOST: redis\n      APP_VERSION: ${APP_VERSION}/' compose.yaml
