@@ -1,6 +1,8 @@
 """Gestion des conteneurs Docker des étudiants (un conteneur par étudiant et par parcours)."""
+import json
 import logging
 import os
+import pathlib
 import socket
 import threading
 import time
@@ -80,13 +82,29 @@ def container_status(user_id: int, course: dict) -> str:
     return "running" if container.status == "running" else "stopped"
 
 
+# Empreinte du contenu de chaque image de lab (images/<parcours>), tenue à jour par tests/revisions_images.py
+IMAGE_REVISIONS = json.loads(
+    (pathlib.Path(__file__).with_name("revisions_images.json")).read_text(encoding="utf-8")
+)
+REVISION_LABEL = "linux-lab.image-rev"
+
+
 def _image_changed(container, course: dict) -> bool:
-    """Vrai si l'image du parcours a été reconstruite depuis la création du conteneur."""
+    """Vrai si le contenu de l'image du parcours a changé depuis la création du conteneur.
+    On compare l'empreinte du contenu, pas l'identifiant de l'image : reconstruire une image sans la modifier
+    (images de base retéléchargées…) change son identifiant et ne doit pas recréer les conteneurs en plein cours."""
+    expected = IMAGE_REVISIONS.get(course["key"])
+    rev = container.labels.get(REVISION_LABEL)
+    if rev is not None:
+        return expected is not None and rev != expected
+    # Conteneur créé avant les empreintes : recréé seulement si l'image actuelle est PLUS RÉCENTE que la sienne
+    # (une ancienne construction remise en place par le cache ne doit pas provoquer de recréation)
     try:
-        current = client().images.get(course["image"]).id
+        current = client().images.get(course["image"])
+        own = client().images.get(container.attrs.get("Image"))
     except docker.errors.ImageNotFound:
         return False
-    return container.attrs.get("Image") != current
+    return own.id != current.id and current.attrs.get("Created", "") > own.attrs.get("Created", "")
 
 
 # Copie de secours des dossiers personnels avant recréation d'un conteneur (volume de la plateforme)
@@ -180,6 +198,7 @@ def _get_or_create(user_id: int, course: dict, name: str) -> str:
             "linux-lab.user": str(user_id),
             "linux-lab.course": course["key"],
             "linux-lab.version": course["version"],
+            REVISION_LABEL: IMAGE_REVISIONS.get(course["key"], ""),
         },
     )
     # Laisse start.sh préparer le conteneur avant les premières commandes

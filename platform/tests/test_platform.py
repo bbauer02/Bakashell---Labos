@@ -339,3 +339,11 @@ def test_correction_commentee_apres_reussite(app_client, fake_docker):
     assert app_client.get(f"/api/solution/{second}").status_code == 403
     admin_client(app_client)
     assert "checks" in app_client.get(f"/api/solution/{second}").json()
+
+
+def test_empreintes_des_images_a_jour():
+    # Les conteneurs sont recréés quand l'empreinte de leur image change : elle doit suivre images/<parcours>
+    import json
+    from revisions_images import TARGET, all_revisions
+    assert json.load(open(TARGET, encoding="utf-8")) == all_revisions(), \
+        "images/ modifié : lancez python platform/tests/revisions_images.py"

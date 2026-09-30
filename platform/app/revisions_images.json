@@ -1,0 +1,7 @@
+{
+ "ansible": "71855b5f219c33a5",
+ "docker": "a72cf9f52ccffd58",
+ "git": "529fc49c5de0108b",
+ "jest": "23251b23c188baaa",
+ "linux": "0ea0e2b4be33e317"
+}
