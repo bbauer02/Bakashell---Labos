@@ -199,6 +199,9 @@ async def login_submit(request: Request):
         ratelimit.login_failed(ip, email)
         return templates.TemplateResponse(request, "login.html", {"error": "Email ou mot de passe incorrect."})
     ratelimit.login_succeeded(ip, email)
+    if user.get("disabled"):  # vérifié après le mot de passe : un inconnu n'apprend rien sur le compte
+        return templates.TemplateResponse(request, "login.html", {
+            "error": "Ce compte a été désactivé : contactez l'administrateur de la plateforme."}, status_code=403)
     response = RedirectResponse("/catalogue", status_code=302)
     set_session_cookie(response, db.create_session(user["id"]))
     return response
@@ -244,6 +247,60 @@ async def register_submit(request: Request):
         db.join_class_by_code(user_id, class_code)
 
     response = RedirectResponse("/catalogue", status_code=302)
+    set_session_cookie(response, db.create_session(user_id))
+    return response
+
+
+@app.get("/invitation/{token}", response_class=HTMLResponse)
+async def invitation_page(request: Request, token: str):
+    """Invitation d'un enseignant (lien créé par l'administrateur) : formulaire de création du compte."""
+    invite = db.invite_info(token)
+    return templates.TemplateResponse(request, "invitation.html", {
+        "invite": invite, "error": None, "form": {"email": invite["email"] or ""} if invite else {},
+    }, status_code=200 if invite else 404)
+
+
+@app.post("/invitation/{token}")
+async def invitation_submit(request: Request, token: str):
+    """Mêmes règles et même limitation des tentatives que l'inscription ; crée un compte enseignant et le connecte."""
+    form = await request.form()
+    first_name = form.get("first_name", "").strip()
+    last_name = form.get("last_name", "").strip()
+    email = form.get("email", "").strip()
+    password = form.get("password", "")
+    password2 = form.get("password2", "")
+    ip_key = f"ip:{client_ip(request)}"
+    invite = db.invite_info(token)
+
+    def error(msg, status_code=200):
+        return templates.TemplateResponse(request, "invitation.html", {
+            "invite": invite, "error": msg, "form": {**dict(form), "email": (invite or {}).get("email") or email},
+        }, status_code=status_code)
+
+    wait = ratelimit.REGISTER.blocked(ip_key)
+    if wait:
+        return error(ratelimit.wait_message(wait), 429)
+    if not invite:
+        ratelimit.REGISTER.hit(ip_key)
+        return error(None, 404)
+    if not all([first_name, last_name, email, password]):
+        return error("Tous les champs sont obligatoires.")
+    if password != password2:
+        return error("Les mots de passe ne correspondent pas.")
+    if len(password) < MIN_PASSWORD:
+        return error(f"Mot de passe trop court ({MIN_PASSWORD} caractères minimum).")
+
+    ratelimit.REGISTER.hit(ip_key)
+    user_id, reason = await run_in_threadpool(db.accept_invite, token, first_name, last_name, email, password)
+    if reason == "exists":
+        return error("Un compte existe déjà avec cet email.")
+    if reason == "email":
+        return error("Cette invitation est réservée à une autre adresse e-mail.")
+    if not user_id:
+        invite = None
+        return error(None, 404)
+    log.info("Compte enseignant créé par invitation : %s", email.lower())
+    response = RedirectResponse("/dashboard", status_code=302)
     set_session_cookie(response, db.create_session(user_id))
     return response
 
@@ -454,6 +511,94 @@ async def lab_page(request: Request, course_key: str):
     })
 
 
+# ─── Profils du personnel et cloisonnement ──────────────────────────────
+# Trois profils : étudiant (is_admin = 0), enseignant (is_admin = 1) et administrateur (is_admin = 1 et
+# is_superadmin = 1 : le seul compte ADMIN_EMAIL). is_admin donne l'accès à tous les parcours, au mémo complet et
+# aux corrections. Un enseignant ne voit et n'agit que sur SES classes et sur les étudiants membres d'au moins
+# une d'entre elles ; l'administrateur voit tout. Toutes les pages et API enseignant passent par ces fonctions.
+
+def staff_or_none(request: Request):
+    """Le compte connecté s'il fait partie du personnel (enseignant ou administrateur), sinon None."""
+    user = get_current_user(request)
+    return user if user and user.get("is_admin") else None
+
+
+def is_superadmin(user) -> bool:
+    return bool(user and user.get("is_admin") and user.get("is_superadmin"))
+
+
+def superadmin_or_none(request: Request):
+    """Le compte connecté s'il est l'administrateur de la plateforme, sinon None."""
+    user = get_current_user(request)
+    return user if is_superadmin(user) else None
+
+
+def owner_filter(user):
+    """Propriétaire des classes à montrer : None (toutes) pour l'administrateur, l'enseignant lui-même sinon."""
+    return None if is_superadmin(user) else user["user_id"]
+
+
+def visible_student_ids(user):
+    """None pour l'administrateur (tous les étudiants) ; pour un enseignant, l'ensemble des étudiants membres
+    d'au moins une de ses classes."""
+    return None if is_superadmin(user) else db.owner_student_ids(user["user_id"])
+
+
+def owns_class(user, class_id: int) -> bool:
+    """La classe existe et l'utilisateur peut la gérer : il en est le propriétaire, ou il est l'administrateur."""
+    if not user or not user.get("is_admin") or not class_id:
+        return False
+    if is_superadmin(user):
+        return db.class_exists(class_id)
+    return db.class_owner(class_id) == user["user_id"]
+
+
+def can_see_student(user, student_id: int) -> bool:
+    """Compte étudiant (jamais un compte du personnel) visible par ce membre du personnel."""
+    if not user or not user.get("is_admin"):
+        return False
+    target = db.get_user(student_id)
+    if not target or target["is_admin"]:
+        return False
+    visible = visible_student_ids(user)
+    return visible is None or student_id in visible
+
+
+def class_filter(user, classe: int) -> int:
+    """Filtre de classe demandé s'il porte sur une classe de l'utilisateur ; sinon 0 (toutes ses classes)."""
+    return classe if classe and owns_class(user, classe) else 0
+
+
+def scoped_student_ids(user, classe: int):
+    """Étudiants pris en compte : ceux de la classe filtrée (déjà vérifiée par class_filter), sinon tous ceux que
+    l'utilisateur voit (None : tous, pour l'administrateur)."""
+    return db.class_member_ids(classe) if classe else visible_student_ids(user)
+
+
+def forbidden_page(request: Request):
+    return templates.TemplateResponse(request, "forbidden.html", {}, status_code=403)
+
+
+def staff_redirect(request: Request):
+    """Refus d'une page réservée : un membre du personnel sans le droit voulu reçoit un 403, les autres vont
+    à la page de connexion."""
+    return forbidden_page(request) if staff_or_none(request) else RedirectResponse("/login", status_code=302)
+
+
+def live_filter(user):
+    """Filtre du flux en direct pour une connexion : None pour l'administrateur ; pour un enseignant, ses
+    étudiants, relus au plus toutes les 30 s (un étudiant qui rejoint sa classe apparaît sans recharger)."""
+    if is_superadmin(user):
+        return None
+    cache = {"ids": set(), "at": 0.0}
+
+    def allowed(student_id) -> bool:
+        if time.time() - cache["at"] > 30:
+            cache.update(ids=db.owner_student_ids(user["user_id"]), at=time.time())
+        return student_id in cache["ids"]
+    return allowed
+
+
 # ─── Tableau de bord enseignant ─────────────────────────────────────────
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -464,8 +609,9 @@ async def dashboard(request: Request, course: str = DEFAULT_COURSE, classe: int 
     if not user.get("is_admin"):
         return RedirectResponse("/catalogue", status_code=302)
     c = get_course(course) or COURSES[DEFAULT_COURSE]
-    students = await run_in_threadpool(course_students, c, classe)
-    classes = db.list_classes()
+    classe = class_filter(user, classe)
+    students = await run_in_threadpool(course_students, c, scoped_student_ids(user, classe))
+    classes = db.list_classes(owner_filter(user))
     try:
         container_list = await run_in_threadpool(containers.list_student_containers)
     except Exception:
@@ -491,13 +637,12 @@ async def dashboard(request: Request, course: str = DEFAULT_COURSE, classe: int 
     })
 
 
-def course_students(course: dict, classe: int = 0) -> list:
-    """Étudiants (d'une classe ou tous) avec leur progression sur le parcours et leurs retards."""
+def course_students(course: dict, student_ids=None) -> list:
+    """Étudiants (ceux de student_ids, ou tous si None) avec leur progression sur le parcours et leurs retards."""
     step_of = {ex["id"]: n for n, s in course["steps"].items() for ex in s["exercises"]}
     students = db.get_all_students(course, step_of)
-    if classe:
-        members = db.class_member_ids(classe)
-        students = [s for s in students if s["id"] in members]
+    if student_ids is not None:
+        students = [s for s in students if s["id"] in student_ids]
     deadlines = db.deadlines_per_user(course["key"])
     today = datetime.date.today().isoformat()
     for s in students:
@@ -511,13 +656,15 @@ def course_students(course: dict, classe: int = 0) -> list:
 @app.get("/admin/export.csv")
 async def admin_export(request: Request, course: str = DEFAULT_COURSE, classe: int = 0):
     """Notes du parcours au format CSV (séparateur « ; », UTF-8 avec BOM : s'ouvre directement dans Excel)."""
-    if not admin_or_none(request):
+    user = staff_or_none(request)
+    if not user:
         return RedirectResponse("/login", status_code=302)
     c = get_course(course) or COURSES[DEFAULT_COURSE]
-    students = await run_in_threadpool(course_students, c, classe)
+    classe = class_filter(user, classe)
+    students = await run_in_threadpool(course_students, c, scoped_student_ids(user, classe))
     hints = db.hints_per_user(c["id_glob"])
     last = db.last_completion_per_user(c["id_glob"])
-    class_names = db.class_names_per_user()
+    class_names = db.class_names_per_user(owner_filter(user))
     certificates = {}
     for s in students:
         certificates[s["id"]] = db.user_certificates(s["id"]).get(c["key"], "")
@@ -539,7 +686,7 @@ async def admin_export(request: Request, course: str = DEFAULT_COURSE, classe: i
                    + [f"{s['per_step'].get(n, 0)}/{len(c['steps'][n]['exercises'])}" for n in step_nums])
     suffix = ""
     if classe:
-        match = [cl["name"] for cl in db.list_classes() if cl["id"] == classe]
+        match = [cl["name"] for cl in db.list_classes(owner_filter(user)) if cl["id"] == classe]
         suffix = "-" + re.sub(r"[^A-Za-z0-9_-]+", "-", match[0]).strip("-") if match else ""
     filename = f"notes-{c['key']}{suffix}-{datetime.date.today().isoformat()}.csv"
     return Response("﻿" + out.getvalue(), media_type="text/csv; charset=utf-8",
@@ -555,11 +702,12 @@ def csv_text(value) -> str:
 @app.get("/admin/stats", response_class=HTMLResponse)
 async def admin_stats(request: Request, course: str = DEFAULT_COURSE, classe: int = 0):
     """Statistiques par exercice : où les étudiants bloquent, pour ajuster le catalogue."""
-    user = admin_or_none(request)
+    user = staff_or_none(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
     c = get_course(course) or COURSES[DEFAULT_COURSE]
-    data = await run_in_threadpool(db.exercise_stats, c, db.class_member_ids(classe) if classe else None)
+    classe = class_filter(user, classe)
+    data = await run_in_threadpool(db.exercise_stats, c, scoped_student_ids(user, classe))
     steps = []
     for num, step in c["steps"].items():
         rows = []
@@ -572,8 +720,8 @@ async def admin_stats(request: Request, course: str = DEFAULT_COURSE, classe: in
                          "hints_total": len(ex.get("hints", []))})
         steps.append({"num": num, "title": step["title"], "rows": rows})
     return templates.TemplateResponse(request, "stats.html", {
-        "user": user, "course": c, "courses": courses_menu(), "classes": db.list_classes(), "classe": classe,
-        "steps": steps, "students": data["students"],
+        "user": user, "course": c, "courses": courses_menu(), "classes": db.list_classes(owner_filter(user)),
+        "classe": classe, "steps": steps, "students": data["students"],
     })
 
 
@@ -591,38 +739,38 @@ def _reference_text(course: dict) -> str:
 @app.get("/admin/integrite", response_class=HTMLResponse)
 async def admin_integrity(request: Request, course: str = DEFAULT_COURSE, classe: int = 0):
     """Signaux à examiner : réussites éclair, rafales, collages, commandes identiques entre étudiants."""
-    user = admin_or_none(request)
+    user = staff_or_none(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
     c = get_course(course) or COURSES[DEFAULT_COURSE]
-    names, completions, logs = await run_in_threadpool(
-        db.integrity_data, c, db.class_member_ids(classe) if classe else None)
+    classe = class_filter(user, classe)
+    names, completions, logs = await run_in_threadpool(db.integrity_data, c, scoped_student_ids(user, classe))
     data = integrity.report(c, names, completions, logs, _reference_text(c))
     return templates.TemplateResponse(request, "integrity.html", {
-        "user": user, "course": c, "courses": courses_menu(), "classes": db.list_classes(), "classe": classe,
-        "data": data, "retention": integrity.RETENTION_DAYS,
+        "user": user, "course": c, "courses": courses_menu(), "classes": db.list_classes(owner_filter(user)),
+        "classe": classe, "data": data, "retention": integrity.RETENTION_DAYS,
     })
 
 
 @app.post("/api/admin/reset-link/{user_id}")
 async def admin_reset_link(request: Request, user_id: int):
-    """Lien de réinitialisation du mot de passe, à transmettre à l'étudiant (valable RESET_HOURS heures)."""
-    if not admin_or_none(request):
+    """Lien de réinitialisation du mot de passe, à transmettre à l'étudiant (valable RESET_HOURS heures).
+    Un enseignant : pour ses étudiants seulement ; l'administrateur : pour tout étudiant et tout enseignant."""
+    user = staff_or_none(request)
+    if not user:
         return JSONResponse({"error": "Réservé aux enseignants"}, status_code=403)
     target = db.get_user(user_id)
     if not target:
         return not_found()
+    teacher = target["is_admin"] and not target["is_superadmin"]
+    if not (can_see_student(user, user_id) or (is_superadmin(user) and teacher)):
+        return JSONResponse({"error": "Ce compte n'est pas dans vos classes"}, status_code=403)
     token = db.create_reset_token(user_id)
     return {"link": f"{public_base(request)}/reinitialiser/{token}", "hours": db.RESET_HOURS,
             "name": f"{target['first_name']} {target['last_name']}"}
 
 
-# ─── Classes (admin) ────────────────────────────────────────────────────
-
-def admin_or_none(request: Request):
-    user = get_current_user(request)
-    return user if user and user.get("is_admin") else None
-
+# ─── Classes (chaque enseignant gère les siennes ; l'administrateur, toutes) ──
 
 def back_to_classes(msg: str = "", anchor: str = "", err: bool = False):
     key = "err" if err else "msg"
@@ -632,11 +780,12 @@ def back_to_classes(msg: str = "", anchor: str = "", err: bool = False):
 
 @app.get("/admin/classes", response_class=HTMLResponse)
 async def admin_classes(request: Request, msg: str = "", err: str = ""):
-    user = admin_or_none(request)
+    user = staff_or_none(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
+    # Un enseignant ne choisit que parmi ses propres étudiants ; les autres s'ajoutent par leur adresse e-mail exacte
     return templates.TemplateResponse(request, "admin_classes.html", {
-        "user": user, "classes": db.list_classes(), "students": db.list_students(),
+        "user": user, "classes": db.list_classes(owner_filter(user)), "students": db.list_students(owner_filter(user)),
         "all_courses": [{"key": k, "title": c["title"], "short": c["short"],
                          "steps": [{"num": n, "title": s["title"]} for n, s in c["steps"].items()]}
                         for k, c in COURSES.items()],
@@ -645,11 +794,24 @@ async def admin_classes(request: Request, msg: str = "", err: str = ""):
     })
 
 
+def class_or_refusal(request: Request, class_id: int):
+    """(utilisateur, None) si la classe appartient à l'utilisateur (ou s'il est l'administrateur) ;
+    sinon (None, réponse de refus) : connexion pour un visiteur, « classe inconnue » pour un autre enseignant
+    (sans dire si la classe existe chez quelqu'un d'autre)."""
+    user = staff_or_none(request)
+    if not user:
+        return None, RedirectResponse("/login", status_code=302)
+    if not owns_class(user, class_id):
+        return None, back_to_classes("Classe inconnue.", err=True)
+    return user, None
+
+
 @app.post("/admin/classes/{class_id}/deadlines")
 async def admin_class_deadline(request: Request, class_id: int):
     """Ajoute ou modifie une échéance ; « jusqu'à » applique la même date à toutes les étapes d'un intervalle."""
-    if not admin_or_none(request):
-        return RedirectResponse("/login", status_code=302)
+    user, refusal = class_or_refusal(request, class_id)
+    if refusal:
+        return refusal
     form = await request.form()
     course = get_course(form.get("course", ""))
     due = form.get("due_date", "")
@@ -660,8 +822,6 @@ async def admin_class_deadline(request: Request, class_id: int):
         return back_to_classes("Échéance invalide : choisissez une étape et une date.", f"#classe-{class_id}", err=True)
     if not course:
         return back_to_classes("Parcours inconnu.", f"#classe-{class_id}", err=True)
-    if not db.class_exists(class_id):
-        return back_to_classes("Classe inconnue.", err=True)
     steps = [n for n in course["steps"] if min(first, last) <= n <= max(first, last)]
     if not steps:
         return back_to_classes("Aucune étape dans cet intervalle.", f"#classe-{class_id}", err=True)
@@ -673,8 +833,9 @@ async def admin_class_deadline(request: Request, class_id: int):
 
 @app.post("/admin/classes/{class_id}/deadlines/delete")
 async def admin_class_deadline_delete(request: Request, class_id: int):
-    if not admin_or_none(request):
-        return RedirectResponse("/login", status_code=302)
+    user, refusal = class_or_refusal(request, class_id)
+    if refusal:
+        return refusal
     form = await request.form()
     try:
         db.delete_deadline(class_id, form.get("course", ""), int(form.get("step", "0")))
@@ -685,21 +846,24 @@ async def admin_class_deadline_delete(request: Request, class_id: int):
 
 @app.post("/admin/classes")
 async def admin_class_create(request: Request):
-    if not admin_or_none(request):
+    """Nouvelle classe, qui appartient à son créateur (nom unique parmi ses propres classes)."""
+    user = staff_or_none(request)
+    if not user:
         return RedirectResponse("/login", status_code=302)
     name = (await request.form()).get("name", "").strip()
     if not name:
         return back_to_classes("Donnez un nom à la classe.", err=True)
-    class_id = db.create_class(name)
+    class_id = db.create_class(name, user["user_id"])
     if not class_id:
-        return back_to_classes(f"Une classe « {name} » existe déjà.", err=True)
+        return back_to_classes(f"Vous avez déjà une classe « {name} ».", err=True)
     return back_to_classes(f"Classe « {name} » créée.", f"#classe-{class_id}")
 
 
 @app.post("/admin/classes/{class_id}/courses")
 async def admin_class_courses(request: Request, class_id: int):
-    if not admin_or_none(request):
-        return RedirectResponse("/login", status_code=302)
+    user, refusal = class_or_refusal(request, class_id)
+    if refusal:
+        return refusal
     form = await request.form()
     keys = [k for k in COURSES if form.get(f"course_{k}")]
     db.set_class_courses(class_id, keys)
@@ -708,25 +872,46 @@ async def admin_class_courses(request: Request, class_id: int):
 
 @app.post("/admin/classes/{class_id}/members")
 async def admin_class_add_members(request: Request, class_id: int):
-    if not admin_or_none(request):
-        return RedirectResponse("/login", status_code=302)
-    ids = [int(v) for v in (await request.form()).getlist("user_ids") if str(v).isdigit()]
-    db.add_members(class_id, ids)
-    return back_to_classes(f"{len(ids)} étudiant(s) ajouté(s).", f"#classe-{class_id}")
+    """Ajout d'étudiants : cochés parmi ceux que l'utilisateur voit déjà (ses autres classes ; tous pour
+    l'administrateur), ou désignés par leur adresse e-mail exacte. Aucune liste des étudiants des autres
+    enseignants n'est exposée, et un compte du personnel n'est jamais ajouté."""
+    user, refusal = class_or_refusal(request, class_id)
+    if refusal:
+        return refusal
+    form = await request.form()
+    visible = visible_student_ids(user)
+    if visible is None:
+        visible = {s["id"] for s in db.list_students()}
+    ids = {int(v) for v in form.getlist("user_ids") if str(v).isdigit() and int(v) in visible}
+    unknown = []
+    for email in re.split(r"[\s,;]+", form.get("emails", "")):
+        if email:
+            student_id = db.find_student_by_email(email)
+            if student_id:
+                ids.add(student_id)
+            else:
+                unknown.append(email)
+    db.add_members(class_id, sorted(ids))
+    msg = f"{len(ids)} étudiant(s) ajouté(s)."
+    if unknown:
+        msg += f" Aucun compte étudiant pour : {', '.join(unknown[:10])}{'…' if len(unknown) > 10 else ''}."
+    return back_to_classes(msg, f"#classe-{class_id}", err=bool(unknown))
 
 
 @app.post("/admin/classes/{class_id}/remove/{user_id}")
 async def admin_class_remove_member(request: Request, class_id: int, user_id: int):
-    if not admin_or_none(request):
-        return RedirectResponse("/login", status_code=302)
+    user, refusal = class_or_refusal(request, class_id)
+    if refusal:
+        return refusal
     db.remove_member(class_id, user_id)
     return back_to_classes("Étudiant retiré de la classe.", f"#classe-{class_id}")
 
 
 @app.post("/admin/classes/{class_id}/rename")
 async def admin_class_rename(request: Request, class_id: int):
-    if not admin_or_none(request):
-        return RedirectResponse("/login", status_code=302)
+    user, refusal = class_or_refusal(request, class_id)
+    if refusal:
+        return refusal
     name = (await request.form()).get("name", "").strip()
     if not name or not db.rename_class(class_id, name):
         return back_to_classes("Nom vide ou déjà utilisé.", f"#classe-{class_id}", err=True)
@@ -735,37 +920,43 @@ async def admin_class_rename(request: Request, class_id: int):
 
 @app.post("/admin/classes/{class_id}/code")
 async def admin_class_new_code(request: Request, class_id: int):
-    if not admin_or_none(request):
-        return RedirectResponse("/login", status_code=302)
+    user, refusal = class_or_refusal(request, class_id)
+    if refusal:
+        return refusal
     db.regenerate_code(class_id)
     return back_to_classes("Nouveau code généré (l'ancien ne fonctionne plus).", f"#classe-{class_id}")
 
 
 @app.post("/admin/classes/{class_id}/delete")
 async def admin_class_delete(request: Request, class_id: int):
-    if not admin_or_none(request):
-        return RedirectResponse("/login", status_code=302)
+    user, refusal = class_or_refusal(request, class_id)
+    if refusal:
+        return refusal
     db.delete_class(class_id)
     return back_to_classes("Classe supprimée (les comptes et leur progression sont conservés).")
 
 
 @app.get("/api/admin/live")
 async def admin_live(request: Request):
-    """Flux temps réel (Server-Sent Events) pour le tableau de bord."""
-    user = get_current_user(request)
-    if not user or not user.get("is_admin"):
+    """Flux temps réel (Server-Sent Events) pour le tableau de bord, filtré pour chaque connexion : un enseignant
+    ne reçoit que la présence et les événements de ses étudiants."""
+    user = staff_or_none(request)
+    if not user:
         return unauthorized()
-    return StreamingResponse(live.stream(request.is_disconnected), media_type="text/event-stream",
+    return StreamingResponse(live.stream(request.is_disconnected, live_filter(user)), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.post("/admin/delete-user/{user_id}")
 async def admin_delete_user(request: Request, user_id: int):
-    user = get_current_user(request)
-    if not user or not user.get("is_admin"):
-        return RedirectResponse("/login", status_code=302)
-    await remove_containers_safely(user_id)
-    db.delete_user(user_id)
+    """Suppression définitive d'un compte étudiant : administrateur seulement (un enseignant retire l'étudiant
+    de sa classe)."""
+    if not superadmin_or_none(request):
+        return staff_redirect(request)
+    target = db.get_user(user_id)
+    if target and not target["is_admin"]:
+        await remove_containers_safely(user_id)
+        db.delete_user(user_id)
     return RedirectResponse("/dashboard", status_code=302)
 
 
@@ -779,13 +970,86 @@ async def remove_containers_safely(user_id: int, course: dict = None):
 
 @app.post("/admin/reset-user/{user_id}")
 async def admin_reset_user(request: Request, user_id: int, course: str = DEFAULT_COURSE):
-    user = get_current_user(request)
-    if not user or not user.get("is_admin"):
+    user = staff_or_none(request)
+    if not user:
         return RedirectResponse("/login", status_code=302)
+    if not can_see_student(user, user_id):
+        return forbidden_page(request)
     c = get_course(course) or COURSES[DEFAULT_COURSE]
     db.reset_user_progress(user_id, c)
     await remove_containers_safely(user_id, c)
     return RedirectResponse(f"/dashboard?course={c['key']}", status_code=302)
+
+
+# ─── Comptes enseignants (administrateur seulement) ─────────────────────
+
+def teachers_page(request: Request, user, msg: str = "", err: str = "", new_link: str = "", new_email: str = ""):
+    return templates.TemplateResponse(request, "admin_teachers.html", {
+        "user": user, "teachers": db.list_teachers(), "invites": db.list_pending_invites(),
+        "invite_days": db.INVITE_DAYS, "msg": msg, "err": err, "new_link": new_link, "new_email": new_email,
+    })
+
+
+def back_to_teachers(msg: str = "", err: bool = False):
+    key = "err" if err else "msg"
+    return RedirectResponse(f"/admin/enseignants?{key}={quote_plus(msg)}" if msg else "/admin/enseignants",
+                            status_code=302)
+
+
+@app.get("/admin/enseignants", response_class=HTMLResponse)
+async def admin_teachers(request: Request, msg: str = "", err: str = ""):
+    user = superadmin_or_none(request)
+    if not user:
+        return staff_redirect(request)
+    return teachers_page(request, user, msg=msg, err=err)
+
+
+@app.post("/admin/enseignants/invitation", response_class=HTMLResponse)
+async def admin_teacher_invite(request: Request):
+    """Lien d'invitation à usage unique, valable INVITE_DAYS jours ; affiché une seule fois (seule son empreinte
+    est conservée)."""
+    user = superadmin_or_none(request)
+    if not user:
+        return staff_redirect(request)
+    email = (await request.form()).get("email", "").strip().lower()
+    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+", email):
+        return teachers_page(request, user, err="Adresse e-mail invalide.")
+    token = db.create_invite(user["user_id"], email)
+    return teachers_page(request, user, new_link=f"{public_base(request)}/invitation/{token}", new_email=email)
+
+
+@app.post("/admin/enseignants/invitation/{invite_id}/revoke")
+async def admin_teacher_invite_revoke(request: Request, invite_id: int):
+    if not superadmin_or_none(request):
+        return staff_redirect(request)
+    db.revoke_invite(invite_id)
+    return back_to_teachers("Invitation annulée : le lien ne fonctionne plus.")
+
+
+@app.post("/admin/enseignants/{teacher_id}/{action}")
+async def admin_teacher_action(request: Request, teacher_id: int, action: str):
+    """Désactivation, réactivation ou suppression d'un compte enseignant ; jamais du compte administrateur."""
+    user = superadmin_or_none(request)
+    if not user:
+        return staff_redirect(request)
+    target = db.get_user(teacher_id)
+    if not target or not target["is_admin"]:
+        return back_to_teachers("Compte enseignant inconnu.", err=True)
+    if target["is_superadmin"]:
+        return back_to_teachers("Le compte administrateur ne peut être ni désactivé ni supprimé.", err=True)
+    name = f"{target['first_name']} {target['last_name']}"
+    if action == "disable":
+        db.set_disabled(teacher_id, True)
+        return back_to_teachers(f"Compte de {name} désactivé : ses sessions sont fermées.")
+    if action == "enable":
+        db.set_disabled(teacher_id, False)
+        return back_to_teachers(f"Compte de {name} réactivé.")
+    if action == "delete":
+        await remove_containers_safely(teacher_id)
+        db.delete_teacher(teacher_id, user["user_id"])
+        return back_to_teachers(f"Compte de {name} supprimé : ses classes vous sont rattachées, "
+                                "les étudiants et leur progression sont conservés.")
+    return back_to_teachers("Action inconnue.", err=True)
 
 
 # ─── Mise en place et validation (fonctions bloquantes, exécutées en thread) ──
@@ -1392,13 +1656,15 @@ async def websocket_terminal(ws: WebSocket):
 
 @app.get("/admin/terminal/{user_id}", response_class=HTMLResponse)
 async def admin_watch_page(request: Request, user_id: int, course: str = DEFAULT_COURSE):
-    user = admin_or_none(request)
+    user = staff_or_none(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
     c = get_course(course) or COURSES[DEFAULT_COURSE]
     target = db.get_user(user_id)
     if not target:
         return RedirectResponse(f"/dashboard?course={c['key']}", status_code=302)
+    if not can_see_student(user, user_id):
+        return forbidden_page(request)
     return templates.TemplateResponse(request, "watch.html", {
         "user": user, "target": target, "course": c,
     })
@@ -1415,6 +1681,9 @@ async def websocket_watch(ws: WebSocket):
         target_id = None
     if not user or not user.get("is_admin") or not course or target_id is None:
         await ws.close(code=4001, reason="Unauthorized")
+        return
+    if not can_see_student(user, target_id):  # un enseignant ne regarde que ses étudiants
+        await ws.close(code=4003, reason="Forbidden")
         return
     await ws.accept()
     key = (target_id, course["key"])

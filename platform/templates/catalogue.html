@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_staff.html" import role_badge, teachers_link %}
 {% block title %}Mes labos — {{ APP_SHORT }}{% endblock %}
 {% block extra_css %}
 .page { max-width:1100px; margin:0 auto; padding:32px 20px 60px; }
@@ -48,10 +49,11 @@ h1 { font-size:26px; margin-bottom:6px; }
     <div class="top">
         <div class="logo">&gt;_ {{ APP_TITLE }}</div>
         <div class="top-right">
-            <span>{{ user.first_name }} {{ user.last_name }}</span>
+            <span>{{ user.first_name }} {{ user.last_name }}{% if user.is_admin %}{{ role_badge(user) }}{% endif %}</span>
             {% if user.is_admin %}
             <a class="btn-link" href="/dashboard">Tableau de bord</a>
             <a class="btn-link" href="/admin/classes">Classes</a>
+            {{ teachers_link(user) }}
             {% endif %}
             <a class="btn-link" href="/compte">Mon compte</a>
             <a class="btn-link" href="/logout">Déconnexion</a>
@@ -60,7 +62,7 @@ h1 { font-size:26px; margin-bottom:6px; }
 
     <h1>Mes labos</h1>
     <p class="intro">Choisissez un labo pour reprendre là où vous vous étiez arrêté·e.</p>
-    {% if user.is_admin %}<p class="admin-note">Compte enseignant : tous les labos vous sont ouverts. Les étudiants ne voient que ceux de leurs classes.</p>{% endif %}
+    {% if user.is_admin %}<p class="admin-note">{% if user.is_superadmin %}Compte administrateur{% else %}Compte enseignant{% endif %} : tous les labos vous sont ouverts. Les étudiants ne voient que ceux de leurs classes.</p>{% endif %}
     {% if msg %}<div class="notice ok">{{ msg }}</div>{% endif %}
     {% if err %}<div class="notice err">{{ err }}</div>{% endif %}
 

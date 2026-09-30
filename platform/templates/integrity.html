@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_staff.html" import role_badge, teachers_link %}
 {% block title %}Intégrité — {{ APP_SHORT }}{% endblock %}
 {% block extra_css %}
 .page { max-width:1300px; margin:0 auto; padding:32px 20px 60px; }
@@ -30,11 +31,12 @@ select { padding:7px 10px; background:var(--card); color:var(--text); border:1px
 {% block body %}
 <div class="page">
     <div class="top">
-        <h1>🔎 Intégrité : signaux à examiner</h1>
+        <h1>🔎 Intégrité : signaux à examiner {{ role_badge(user) }}</h1>
         <div class="nav">
             <a class="btn-link" href="/dashboard?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}">Tableau de bord</a>
             <a class="btn-link" href="/admin/stats?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}">Statistiques</a>
             <a class="btn-link" href="/admin/classes">Classes</a>
+            {{ teachers_link(user) }}
         </div>
     </div>
     <nav class="tabs">
@@ -43,7 +45,7 @@ select { padding:7px 10px; background:var(--card); color:var(--text); border:1px
             <input type="hidden" name="course" value="{{ course.key }}">
             <label for="classe" style="font-size:13px; color:var(--dim)">Classe</label>
             <select id="classe" name="classe" onchange="this.form.submit()">
-                <option value="0">Toutes les classes</option>
+                <option value="0">{% if user.is_superadmin %}Toutes les classes{% else %}Toutes mes classes{% endif %}</option>
                 {% for cl in classes %}<option value="{{ cl.id }}" {% if cl.id == classe %}selected{% endif %}>{{ cl.name }}</option>{% endfor %}
             </select>
         </form>

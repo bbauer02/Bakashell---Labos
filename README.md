@@ -18,11 +18,45 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 
 - Après connexion, l'étudiant arrive sur **son catalogue** (`/catalogue`) : les labos ouverts à ses classes, avec sa
   progression dans chacun.
-- L'enseignant (compte admin) gère les **classes** sur `/admin/classes` : il coche les labos ouverts à chaque classe et
-  ajoute ou retire des étudiants. Chaque classe a un **code d'inscription** (ex. `QTQ-V95`) que les étudiants saisissent
-  à l'inscription ou depuis leur catalogue. Un étudiant peut appartenir à plusieurs classes.
-- L'accès est contrôlé côté serveur (pages, API, terminal, éditeur, indices). Un compte admin voit tous les labos, et
-  un bouton « Voir la correction » sur chaque exercice.
+- L'enseignant gère **ses classes** sur `/admin/classes` : il coche les labos ouverts à chaque classe et ajoute ou
+  retire des étudiants (ajout par **adresse e-mail exacte** du compte, ou en cochant un étudiant de ses autres classes).
+  Chaque classe a un **code d'inscription** (ex. `QTQ-V95`) que les étudiants saisissent à l'inscription ou depuis leur
+  catalogue. Un étudiant peut appartenir à plusieurs classes, y compris de plusieurs enseignants.
+- L'accès est contrôlé côté serveur (pages, API, terminal, éditeur, indices). Un compte du personnel (enseignant ou
+  administrateur) voit tous les labos, et un bouton « Voir la correction » sur chaque exercice.
+
+### Comptes : étudiant, enseignant, administrateur
+
+| Profil | Création | Voit et gère |
+|---|---|---|
+| **Étudiant** | inscription libre (`/register`), avec ou sans code de classe | ses labos |
+| **Enseignant** | **invitation** de l'administrateur uniquement (pas d'inscription enseignant libre) | **ses** classes (dont il est propriétaire) et les étudiants membres d'au moins une d'entre elles |
+| **Administrateur** | le compte `ADMIN_EMAIL`, créé ou mis à jour au démarrage | tout : toutes les classes, tous les étudiants, les comptes enseignants |
+
+- **Cloisonnement** : chaque classe a un propriétaire ; le nom d'une classe est unique pour un même enseignant (deux
+  enseignants peuvent avoir chacun leur « BTS SIO 1 »). Un enseignant ne voit que ses étudiants partout : tableau de
+  bord et flux en direct, statistiques, intégrité, export CSV, terminal en lecture seule, lien de réinitialisation du
+  mot de passe, remise à zéro d'un parcours. Il ne peut ni agir sur un compte du personnel, ni supprimer
+  définitivement un étudiant (il le retire de sa classe) : la suppression d'un compte étudiant est réservée à
+  l'administrateur. Chaque page enseignant affiche le profil connecté (« Enseignant » ou « Administrateur »).
+- **Invitation** (`/admin/enseignants`, administrateur seulement) : « Créer un lien d'invitation », éventuellement
+  réservé à une adresse e-mail. Le lien `/invitation/<jeton>` est **à usage unique, valable 7 jours**, et n'est affiché
+  qu'une fois (la base n'en garde que l'empreinte SHA-256, comme pour les liens de réinitialisation) : copiez-le et
+  transmettez-le. La personne y choisit prénom, nom, e-mail et mot de passe (mêmes règles et même limitation des
+  tentatives que l'inscription) ; son compte enseignant est créé et connecté. Une invitation en attente peut être annulée.
+- **Gestion des enseignants** (même page) : nom, e-mail, nombre de classes et d'étudiants, dernière connexion ; lien de
+  réinitialisation du mot de passe ; **désactivation** (connexion refusée, sessions en cours coupées aussitôt) et
+  réactivation ; **suppression** : ses classes sont rattachées à l'administrateur (renommées « Nom (Prénom Nom) » si
+  le nom est déjà pris chez lui), les étudiants et leur progression sont conservés. Le compte administrateur ne peut
+  être ni désactivé ni supprimé.
+- **Mise à jour d'une installation existante** : la migration est automatique au démarrage. Les classes existantes
+  sont rattachées à l'administrateur (identifiants, codes, membres, labos ouverts et échéances conservés) ; les
+  autres comptes qui avaient `is_admin = 1` deviennent des comptes enseignants, sans classe : ils créent les leurs
+  (il n'existe pas de transfert d'une classe vers un autre enseignant). Si `ADMIN_EMAIL` change, l'ancien compte
+  administrateur devient un compte enseignant.
+
+### Suivi, notes et attestations
+
 - Le tableau de bord (`/dashboard`) se filtre par parcours et par classe, et se met à jour en temps réel (présence,
   progression, élèves bloqués, fil d'activité). Depuis la ligne d'un étudiant, l'enseignant peut **regarder son
   terminal en direct** (lecture seule : ses frappes ne sont pas transmises) ou générer un **lien de réinitialisation

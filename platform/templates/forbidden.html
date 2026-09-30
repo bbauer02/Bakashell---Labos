@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Accès refusé — {{ APP_SHORT }}{% endblock %}
+{% block extra_css %}
+.box { max-width:480px; margin:80px auto; background:var(--bg2); border:1px solid var(--border); border-radius:16px; padding:32px; text-align:center; }
+.box h1 { font-size:20px; color:var(--err); margin-bottom:12px; }
+.box p { color:var(--dim); font-size:14px; line-height:1.6; margin-bottom:18px; }
+{% endblock %}
+{% block body %}
+<div class="box">
+    <h1>Accès refusé</h1>
+    <p>Cette page ne concerne pas vos classes, ou elle est réservée à l'administrateur de la plateforme.</p>
+    <a href="/dashboard">← Tableau de bord</a>
+</div>
+{% endblock %}

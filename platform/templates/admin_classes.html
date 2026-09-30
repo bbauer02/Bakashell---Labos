@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_staff.html" import role_badge, teachers_link %}
 {% block title %}Classes — {{ APP_SHORT }}{% endblock %}
 {% block extra_css %}
 .page { max-width:1100px; margin:0 auto; padding:32px 20px 60px; }
@@ -35,6 +36,8 @@ summary { cursor:pointer; font-size:13px; color:var(--accent-l); }
 .pick { max-height:240px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin:8px 0; columns:2; }
 .pick label { display:block; font-size:13px; padding:3px 0; break-inside:avoid; cursor:pointer; }
 .pick .none { color:var(--dim); font-size:11px; }
+textarea { width:100%; min-height:64px; padding:9px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; font-family:inherit; margin:8px 0; }
+.owner { font-size:11px; font-weight:400; color:var(--cyan); background:rgba(0,206,201,.1); border-radius:8px; padding:2px 8px; }
 .tools { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; border-top:1px solid var(--border); padding-top:14px; }
 .empty { color:var(--dim); font-size:13px; }
 .orphans { font-size:13px; color:var(--dim); }
@@ -44,9 +47,10 @@ select, input[type=date] { padding:8px 10px; background:var(--bg); border:1px so
 {% block body %}
 <div class="page">
     <div class="top">
-        <h1>&gt;_ Classes</h1>
+        <h1>&gt;_ {% if user.is_superadmin %}Classes{% else %}Mes classes{% endif %} {{ role_badge(user) }}</h1>
         <div class="nav">
             <a class="btn-link" href="/dashboard">Tableau de bord</a>
+            {{ teachers_link(user) }}
             <a class="btn-link" href="/catalogue">Catalogue</a>
         </div>
     </div>
@@ -55,7 +59,10 @@ select, input[type=date] { padding:8px 10px; background:var(--bg); border:1px so
     <p class="help">
         Une classe regroupe des étudiants et leur ouvre des <strong>labos</strong>. Un étudiant voit dans son catalogue
         les labos de toutes ses classes. Pour inscrire une classe, donnez-lui son <strong>code</strong> : les étudiants
-        le saisissent à l'inscription ou depuis leur catalogue. Vous pouvez aussi les ajouter à la main.
+        le saisissent à l'inscription ou depuis leur catalogue. Vous pouvez aussi les ajouter à la main, par leur
+        adresse e-mail.
+        {% if user.is_superadmin %}Vous voyez les classes de tous les enseignants (le propriétaire est indiqué à côté
+        du nom) ; celles que vous créez vous appartiennent.{% else %}Vous ne voyez que vos classes et leurs étudiants.{% endif %}
     </p>
 
     <div class="box">
@@ -66,7 +73,7 @@ select, input[type=date] { padding:8px 10px; background:var(--bg); border:1px so
     </div>
 
     {% set orphans = students | selectattr('nb_classes', 'equalto', 0) | list %}
-    {% if orphans %}
+    {% if orphans and user.is_superadmin %}
     <div class="box">
         <p class="orphans"><strong style="color:#fdcb6e">{{ orphans | length }} étudiant(s) sans classe</strong> (ils ne voient aucun labo) :
         {% for s in orphans %}{{ s.first_name }} {{ s.last_name }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
@@ -77,6 +84,7 @@ select, input[type=date] { padding:8px 10px; background:var(--bg); border:1px so
     <div class="box" id="classe-{{ c.id }}">
         <h2>
             {{ c.name }}
+            {% if user.is_superadmin and c.owner_id != user.user_id %}<span class="owner" title="Propriétaire de la classe">{{ c.owner_name or "sans propriétaire" }}</span>{% endif %}
             <span class="code" title="Code d'inscription">{{ c.code }}</span>
             <span class="meta">{{ c.members | length }} étudiant(s)</span>
         </h2>
@@ -136,20 +144,22 @@ select, input[type=date] { padding:8px 10px; background:var(--bg); border:1px so
             {% else %}<p class="empty">Aucun étudiant pour l'instant.</p>{% endif %}
             {% set member_ids = c.members | map(attribute='id') | list %}
             {% set candidates = students | rejectattr('id', 'in', member_ids) | list %}
-            {% if candidates %}
             <details>
-                <summary>Ajouter des étudiants ({{ candidates | length }} disponibles)</summary>
+                <summary>Ajouter des étudiants</summary>
                 <form method="post" action="/admin/classes/{{ c.id }}/members">
+                    <textarea name="emails" placeholder="Adresses e-mail exactes des comptes étudiants, séparées par des espaces, virgules ou retours à la ligne"></textarea>
+                    {% if candidates %}
+                    <p class="meta">{% if user.is_superadmin %}Ou cochez parmi les étudiants inscrits :{% else %}Ou cochez parmi les étudiants de vos autres classes :{% endif %}</p>
                     <div class="pick">
                         {% for s in candidates %}
                         <label><input type="checkbox" name="user_ids" value="{{ s.id }}"> {{ s.last_name }} {{ s.first_name }}
                             {% if s.nb_classes == 0 %}<span class="none">(sans classe)</span>{% endif %}</label>
                         {% endfor %}
                     </div>
-                    <button type="submit" class="small primary">Ajouter la sélection</button>
+                    {% endif %}
+                    <button type="submit" class="small primary">Ajouter</button>
                 </form>
             </details>
-            {% endif %}
         </div>
 
         <div class="tools">

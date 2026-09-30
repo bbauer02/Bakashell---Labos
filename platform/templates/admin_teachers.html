@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% from "_staff.html" import role_badge %}
+{% block title %}Enseignants — {{ APP_SHORT }}{% endblock %}
+{% block extra_css %}
+.page { max-width:1100px; margin:0 auto; padding:32px 20px 60px; }
+.top { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
+.top h1 { font-size:24px; color:var(--accent-l); }
+.nav { display:flex; gap:8px; flex-wrap:wrap; }
+.btn-link { padding:7px 14px; border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; background:var(--card); }
+.btn-link:hover { border-color:var(--accent); text-decoration:none; }
+.notice { padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:20px; }
+.notice.ok { background:rgba(0,184,148,.12); border:1px solid var(--ok); color:var(--ok); }
+.notice.err { background:rgba(225,112,85,.12); border:1px solid var(--err); color:var(--err); }
+.help { color:var(--dim); font-size:13px; line-height:1.6; margin-bottom:20px; }
+.box { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:20px 22px; margin-bottom:20px; }
+.box h2 { font-size:16px; margin-bottom:12px; }
+.row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+input[type=email], input[type=text] { padding:9px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; }
+button { padding:8px 14px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:13px; cursor:pointer; }
+button:hover { border-color:var(--accent); }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+button.danger:hover { border-color:var(--err); color:var(--err); }
+button.small { padding:3px 9px; font-size:11px; }
+.new-link { border:1px dashed var(--ok); }
+.new-link input { width:100%; font-family:'JetBrains Mono',monospace; font-size:12px; margin:10px 0; }
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--dim); padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+td { padding:9px 10px; border-bottom:1px solid var(--border); font-size:13px; vertical-align:middle; }
+tr:last-child td { border-bottom:none; }
+tr.off td { opacity:.55; }
+.dim { color:var(--dim); font-size:12px; }
+.actions { display:flex; gap:6px; flex-wrap:wrap; }
+.actions form { margin:0; }
+.state { font-size:11px; padding:1px 7px; border-radius:8px; }
+.state.off { background:rgba(225,112,85,.15); color:var(--err); }
+.empty { color:var(--dim); font-size:13px; }
+{% endblock %}
+{% block body %}
+<div class="page">
+    <div class="top">
+        <h1>&gt;_ Enseignants {{ role_badge(user) }}</h1>
+        <div class="nav">
+            <a class="btn-link" href="/dashboard">Tableau de bord</a>
+            <a class="btn-link" href="/admin/classes">Classes</a>
+            <a class="btn-link" href="/catalogue">Catalogue</a>
+        </div>
+    </div>
+    {% if msg %}<div class="notice ok">{{ msg }}</div>{% endif %}
+    {% if err %}<div class="notice err">{{ err }}</div>{% endif %}
+    <p class="help">
+        Chaque enseignant gère <strong>ses propres classes</strong> et ne voit que les étudiants qui en sont membres
+        (tableau de bord, statistiques, intégrité, export, terminal). Vous, administrateur, voyez tout. Un compte
+        enseignant se crée uniquement par <strong>invitation</strong> : un lien à usage unique, valable {{ invite_days }} jours,
+        que vous transmettez à la personne (messagerie de l'établissement…).
+    </p>
+
+    {% if new_link %}
+    <div class="box new-link">
+        <h2>Lien d'invitation créé{% if new_email %} pour {{ new_email }}{% endif %}</h2>
+        <p class="dim">Copiez-le maintenant : il ne sera plus affiché (la plateforme n'en garde qu'une empreinte).
+            Il permet de créer un seul compte enseignant, pendant {{ invite_days }} jours.</p>
+        <input type="text" id="invite-url" readonly value="{{ new_link }}" onclick="this.select()">
+        <button type="button" class="small primary" onclick="copyInvite(this)">Copier</button>
+    </div>
+    {% endif %}
+
+    <div class="box">
+        <h2>Inviter un enseignant</h2>
+        <form method="post" action="/admin/enseignants/invitation" class="row">
+            <input type="email" name="email" placeholder="Adresse e-mail (facultatif : réserve le lien à cette adresse)" style="flex:1; min-width:280px">
+            <button type="submit" class="primary">Créer un lien d'invitation</button>
+        </form>
+        {% if invites %}
+        <div class="table-wrap" style="margin-top:14px">
+        <table>
+            <thead><tr><th>Invitations en attente</th><th>Créée le (UTC)</th><th>Expire le (UTC)</th><th></th></tr></thead>
+            <tbody>
+            {% for i in invites %}
+            <tr>
+                <td>{{ i.email or "Toute adresse" }}</td>
+                <td class="dim">{{ i.created_at[:16] }}</td>
+                <td class="dim">{{ i.expires_at[:16] }}</td>
+                <td><form method="post" action="/admin/enseignants/invitation/{{ i.id }}/revoke"><button type="submit" class="small danger">Annuler</button></form></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="box">
+        <h2>Comptes du personnel</h2>
+        {% if teachers %}
+        <div class="table-wrap">
+        <table>
+            <thead><tr><th>Nom</th><th>E-mail</th><th>Classes</th><th>Étudiants</th><th>Dernière connexion (UTC)</th><th>Actions</th></tr></thead>
+            <tbody>
+            {% for t in teachers %}
+            <tr class="{% if t.disabled %}off{% endif %}">
+                <td><strong>{{ t.first_name }} {{ t.last_name }}</strong>
+                    {% if t.is_superadmin %}<span class="role-badge admin">Administrateur</span>{% endif %}
+                    {% if t.disabled %}<span class="state off">désactivé</span>{% endif %}</td>
+                <td class="dim">{{ t.email }}</td>
+                <td>{{ t.nb_classes }}</td>
+                <td>{{ t.nb_students }}</td>
+                <td class="dim">{{ t.last_login[:16] if t.last_login else "jamais" }}</td>
+                <td>
+                    {% if not t.is_superadmin %}
+                    <div class="actions">
+                        <button type="button" class="small" onclick="resetLink({{ t.id }})" title="Créer un lien pour choisir un nouveau mot de passe">🔑 Mot de passe</button>
+                        {% if t.disabled %}
+                        <form method="post" action="/admin/enseignants/{{ t.id }}/enable"><button type="submit" class="small">Réactiver</button></form>
+                        {% else %}
+                        <form method="post" action="/admin/enseignants/{{ t.id }}/disable" data-confirm="Désactiver le compte de {{ t.first_name }} {{ t.last_name }} ? Ses sessions sont fermées tout de suite ; ses classes et ses étudiants restent en place." onsubmit="return confirm(this.dataset.confirm)"><button type="submit" class="small">Désactiver</button></form>
+                        {% endif %}
+                        <form method="post" action="/admin/enseignants/{{ t.id }}/delete" data-confirm="Supprimer le compte de {{ t.first_name }} {{ t.last_name }} ? Ses {{ t.nb_classes }} classe(s) vous seront rattachées ; les étudiants et leur progression sont conservés." onsubmit="return confirm(this.dataset.confirm)"><button type="submit" class="small danger">Supprimer</button></form>
+                    </div>
+                    {% else %}<span class="dim">—</span>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}<p class="empty">Aucun compte.</p>{% endif %}
+    </div>
+</div>
+<script>
+    // Copie dans le presse-papiers ; en HTTP (hors localhost), navigator.clipboard n'existe pas : repli sur la sélection
+    function copyText(input, done) {
+        const fallback = () => {
+            input.focus(); input.select();
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            if (ok) done(); else alert('Copie automatique impossible : copiez avec Ctrl+C.');
+        };
+        if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(input.value).then(done, fallback);
+        else fallback();
+    }
+
+    function copyInvite(btn) {
+        copyText(document.getElementById('invite-url'), () => { btn.textContent = 'Copié ✓'; setTimeout(() => (btn.textContent = 'Copier'), 1500); });
+    }
+
+    async function resetLink(uid) {
+        if (!confirm("Créer un lien de réinitialisation du mot de passe pour ce compte enseignant ?")) return;
+        try {
+            const res = await fetch(`/api/admin/reset-link/${uid}`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || res.status);
+            prompt(`Lien pour ${data.name}, valable ${data.hours} h (à copier et transmettre) :`, data.link);
+        } catch (e) {
+            alert(`Lien impossible à créer : ${e.message}`);
+        }
+    }
+</script>
+{% endblock %}

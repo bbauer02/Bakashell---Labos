@@ -1,0 +1,7 @@
+{# Éléments communs aux pages enseignant : profil du compte connecté, lien réservé à l'administrateur #}
+{% macro role_badge(user) -%}
+<span class="role-badge{% if user.is_superadmin %} admin{% endif %}" title="{{ user.first_name }} {{ user.last_name }}">{% if user.is_superadmin %}Administrateur{% else %}Enseignant{% endif %}</span>
+{%- endmacro %}
+{% macro teachers_link(user, cls="btn-link") -%}
+{% if user.is_superadmin %}<a class="{{ cls }}" href="/admin/enseignants">Enseignants</a>{% endif %}
+{%- endmacro %}

@@ -77,11 +77,24 @@ def init_db(courses):
             key TEXT PRIMARY KEY,
             value TEXT
         );
+        -- Chaque classe appartient à un enseignant (owner_id) ; le nom est unique pour un même propriétaire
         CREATE TABLE IF NOT EXISTS classes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
             code TEXT UNIQUE NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            owner_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (owner_id, name)
+        );
+        -- Invitations d'enseignants : lien à usage unique (seule l'empreinte du jeton est stockée)
+        CREATE TABLE IF NOT EXISTS teacher_invites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token_hash TEXT UNIQUE NOT NULL,
+            email TEXT,
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            used_at TIMESTAMP,
+            used_by INTEGER
         );
         CREATE TABLE IF NOT EXISTS class_members (
             class_id INTEGER NOT NULL,
@@ -157,6 +170,13 @@ def init_db(courses):
     cols = [r["name"] for r in db.execute("PRAGMA table_info(users)").fetchall()]
     if "last_seen" not in cols:
         db.execute("ALTER TABLE users ADD COLUMN last_seen TIMESTAMP")
+    # Profils : is_admin = 1 pour tout le personnel (enseignants et administrateur), is_superadmin = 1 pour le seul
+    # compte ADMIN_EMAIL ; disabled : compte désactivé par l'administrateur ; last_login : dernière connexion
+    for column, definition in (("is_superadmin", "INTEGER DEFAULT 0"), ("disabled", "INTEGER DEFAULT 0"),
+                               ("last_login", "TIMESTAMP")):
+        if column not in cols:
+            db.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
+    _migrate_class_owner(db)
     # Ancienne table step_setup (un seul parcours) : on la convertit en conservant ses données
     cols = [r["name"] for r in db.execute("PRAGMA table_info(step_setup)").fetchall()]
     if "course" not in cols:
@@ -184,7 +204,63 @@ def init_db(courses):
     migrated = [c["key"] for c in courses if _migrate_course(c)]
     _migrate_to_classes()
     _ensure_admin()
+    _adopt_orphan_classes()
     return migrated
+
+
+def _migrate_class_owner(db):
+    """Ancienne table classes (sans propriétaire, nom unique pour toute la plateforme) : reconstruite avec owner_id
+    et un nom unique par propriétaire. Identifiants, codes et dates sont conservés, donc aussi les membres, les
+    parcours ouverts et les échéances, qui y font référence. Le propriétaire (l'administrateur) est posé ensuite
+    par _adopt_orphan_classes."""
+    cols = [r["name"] for r in db.execute("PRAGMA table_info(classes)").fetchall()]
+    if "owner_id" not in cols:
+        row = db.execute("SELECT seq FROM sqlite_sequence WHERE name = 'classes'").fetchone()
+        seq = row["seq"] if row else 0
+        db.commit()
+        db.executescript("""
+            BEGIN;
+            ALTER TABLE classes RENAME TO classes_old;
+            CREATE TABLE classes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                code TEXT UNIQUE NOT NULL,
+                owner_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (owner_id, name)
+            );
+            INSERT INTO classes (id, name, code, created_at) SELECT id, name, code, created_at FROM classes_old;
+            DROP TABLE classes_old;
+            COMMIT;
+        """)
+        # Le compteur d'identifiants ne recule pas : une classe supprimée avant la migration ne « renaît » pas
+        if db.execute("SELECT 1 FROM sqlite_sequence WHERE name = 'classes'").fetchone():
+            db.execute("UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = 'classes'", (seq,))
+        elif seq:
+            db.execute("INSERT INTO sqlite_sequence (name, seq) VALUES ('classes', ?)", (seq,))
+        db.commit()
+    db.execute("CREATE INDEX IF NOT EXISTS classes_owner ON classes (owner_id)")
+
+
+def _adopt_orphan_classes():
+    """Les classes sans propriétaire (anciennes classes, classe créée par la migration) reviennent à l'administrateur."""
+    db = get_db()
+    admin = db.execute("SELECT id FROM users WHERE email = ?", (ADMIN_EMAIL,)).fetchone()
+    if admin:
+        for c in db.execute("SELECT id, name FROM classes WHERE owner_id IS NULL").fetchall():
+            db.execute("UPDATE classes SET owner_id = ?, name = ? WHERE id = ?",
+                       (admin["id"], _free_class_name(db, admin["id"], c["name"]), c["id"]))
+        db.commit()
+    db.close()
+
+
+def _free_class_name(db, owner_id: int, name: str, suffix: str = "") -> str:
+    """Un nom de classe libre chez ce propriétaire : le nom lui-même, sinon « nom (suffixe) », « nom (suffixe 2) »…"""
+    candidates = [name] + [f"{name} ({suffix or 'reprise'}{'' if n == 1 else ' ' + str(n)})" for n in range(1, 100)]
+    for candidate in candidates:
+        if not db.execute("SELECT 1 FROM classes WHERE owner_id = ? AND name = ?", (owner_id, candidate)).fetchone():
+            return candidate
+    return f"{name} ({secrets.token_hex(3)})"
 
 
 def _migrate_to_classes():
@@ -264,6 +340,10 @@ def _ensure_admin():
         db.execute("UPDATE users SET is_admin = 1 WHERE id = ?", (row["id"],))
         if ADMIN_PASSWORD:
             db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(ADMIN_PASSWORD), row["id"]))
+    # Un seul administrateur (super-utilisateur) : le compte ADMIN_EMAIL, jamais désactivé. Si ADMIN_EMAIL change,
+    # l'ancien compte administrateur devient un compte enseignant.
+    db.execute("UPDATE users SET is_superadmin = 0 WHERE email != ?", (ADMIN_EMAIL,))
+    db.execute("UPDATE users SET is_superadmin = 1, disabled = 0 WHERE email = ?", (ADMIN_EMAIL,))
     db.commit()
     db.close()
 
@@ -330,7 +410,8 @@ def authenticate(email: str, password: str):
 
 def get_user(user_id: int):
     db = get_db()
-    row = db.execute("SELECT id, first_name, last_name, email, is_admin FROM users WHERE id = ?", (user_id,)).fetchone()
+    row = db.execute("SELECT id, first_name, last_name, email, is_admin, is_superadmin, disabled FROM users WHERE id = ?",
+                     (user_id,)).fetchone()
     db.close()
     return dict(row) if row else None
 
@@ -387,6 +468,133 @@ def reset_token_user(token: str):
     return dict(row) if row else None
 
 
+# ─── Comptes enseignants (gérés par l'administrateur) ──────────────────
+
+INVITE_DAYS = 7
+
+
+def create_invite(created_by: int, email: str = "") -> str:
+    """Nouveau lien d'invitation d'enseignant, à usage unique, éventuellement réservé à une adresse e-mail.
+    Retourne le jeton en clair (affiché une seule fois) ; la base n'en garde que l'empreinte."""
+    token = secrets.token_urlsafe(24)
+    db = get_db()
+    db.execute("INSERT INTO teacher_invites (token_hash, email, created_by) VALUES (?, ?, ?)",
+               (_token_hash(token), email.strip().lower() or None, created_by))
+    db.commit()
+    db.close()
+    return token
+
+
+_INVITE_VALID = f"used_at IS NULL AND created_at >= datetime('now', '-{INVITE_DAYS} days')"
+
+
+def invite_info(token: str):
+    """L'invitation correspondant à un jeton encore valable (non utilisée, non expirée), ou None."""
+    if not token:
+        return None
+    db = get_db()
+    row = db.execute(f"SELECT id, email, created_at FROM teacher_invites WHERE token_hash = ? AND {_INVITE_VALID}",
+                     (_token_hash(token),)).fetchone()
+    db.close()
+    return dict(row) if row else None
+
+
+def accept_invite(token: str, first_name: str, last_name: str, email: str, password: str):
+    """Crée le compte enseignant et consomme l'invitation, en une seule transaction.
+    Retourne (identifiant, None) ou (None, motif) : « invalid » (lien inconnu, expiré, déjà utilisé),
+    « email » (adresse différente de celle de l'invitation), « exists » (compte déjà existant)."""
+    email = email.strip().lower()
+    password_hash = hash_password(password)
+    db = get_db()
+    try:
+        invite = db.execute(f"SELECT id, email FROM teacher_invites WHERE token_hash = ? AND {_INVITE_VALID}",
+                            (_token_hash(token),)).fetchone()
+        if not invite:
+            return None, "invalid"
+        if invite["email"] and invite["email"] != email:
+            return None, "email"
+        try:
+            cur = db.execute("INSERT INTO users (first_name, last_name, email, password_hash, is_admin, is_superadmin) "
+                             "VALUES (?, ?, ?, ?, 1, 0)", (first_name.strip(), last_name.strip(), email, password_hash))
+        except sqlite3.IntegrityError:
+            db.rollback()
+            return None, "exists"
+        # Condition répétée dans la mise à jour : deux envois simultanés du même lien ne créent qu'un compte
+        used = db.execute(f"UPDATE teacher_invites SET used_at = CURRENT_TIMESTAMP, used_by = ? "
+                          f"WHERE id = ? AND {_INVITE_VALID}", (cur.lastrowid, invite["id"]))
+        if used.rowcount != 1:
+            db.rollback()
+            return None, "invalid"
+        db.commit()
+        return cur.lastrowid, None
+    finally:
+        db.close()
+
+
+def list_pending_invites() -> list:
+    db = get_db()
+    rows = db.execute(f"SELECT id, email, created_at, datetime(created_at, '+{INVITE_DAYS} days') AS expires_at "
+                      f"FROM teacher_invites WHERE {_INVITE_VALID} ORDER BY created_at DESC").fetchall()
+    db.close()
+    return [dict(r) for r in rows]
+
+
+def revoke_invite(invite_id: int):
+    db = get_db()
+    db.execute("DELETE FROM teacher_invites WHERE id = ? AND used_at IS NULL", (invite_id,))
+    db.commit()
+    db.close()
+
+
+def list_teachers() -> list:
+    """Comptes du personnel (enseignants, puis l'administrateur) avec leurs classes et leurs étudiants."""
+    db = get_db()
+    rows = db.execute(
+        "SELECT u.id, u.first_name, u.last_name, u.email, u.is_superadmin, u.disabled, u.last_login, u.created_at, "
+        "(SELECT COUNT(*) FROM classes c WHERE c.owner_id = u.id) AS nb_classes, "
+        "(SELECT COUNT(DISTINCT m.user_id) FROM class_members m JOIN classes c ON c.id = m.class_id "
+        " JOIN users s ON s.id = m.user_id WHERE c.owner_id = u.id AND s.is_admin = 0) AS nb_students "
+        "FROM users u WHERE u.is_admin = 1 ORDER BY u.is_superadmin, u.last_name, u.first_name"
+    ).fetchall()
+    db.close()
+    return [dict(r) for r in rows]
+
+
+def set_disabled(user_id: int, disabled: bool) -> bool:
+    """Désactive ou réactive un compte enseignant (jamais l'administrateur). La désactivation ferme ses sessions."""
+    db = get_db()
+    cur = db.execute("UPDATE users SET disabled = ? WHERE id = ? AND is_admin = 1 AND is_superadmin = 0",
+                     (int(disabled), user_id))
+    if cur.rowcount and disabled:
+        db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        db.execute("DELETE FROM password_resets WHERE user_id = ?", (user_id,))
+    db.commit()
+    db.close()
+    return cur.rowcount == 1
+
+
+def delete_teacher(teacher_id: int, admin_id: int) -> bool:
+    """Supprime un compte enseignant (jamais l'administrateur). Ses classes sont rattachées à l'administrateur,
+    renommées si le nom est déjà pris chez lui ; les étudiants et leur progression sont conservés."""
+    db = get_db()
+    row = db.execute("SELECT first_name, last_name FROM users WHERE id = ? AND is_admin = 1 AND is_superadmin = 0",
+                     (teacher_id,)).fetchone()
+    if not row:
+        db.close()
+        return False
+    suffix = f"{row['first_name']} {row['last_name']}"
+    for c in db.execute("SELECT id, name FROM classes WHERE owner_id = ?", (teacher_id,)).fetchall():
+        db.execute("UPDATE classes SET owner_id = ?, name = ? WHERE id = ?",
+                   (admin_id, _free_class_name(db, admin_id, c["name"], suffix), c["id"]))
+    for table in ("progress", "sessions", "hints_used", "step_setup", "class_members", "attempts",
+                  "password_resets", "certificates", "quiz_results", "terminal_log"):
+        db.execute(f"DELETE FROM {table} WHERE user_id = ?", (teacher_id,))
+    db.execute("DELETE FROM users WHERE id = ? AND is_superadmin = 0", (teacher_id,))
+    db.commit()
+    db.close()
+    return True
+
+
 # ─── Sessions ──────────────────────────────────────────────────────────
 
 # La base ne contient que l'empreinte SHA-256 des jetons de session : une copie de la base (sauvegarde)
@@ -396,19 +604,21 @@ def create_session(user_id: int) -> str:
     token = secrets.token_urlsafe(32)
     db = get_db()
     db.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (_token_hash(token), user_id))
+    db.execute("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?", (user_id,))
     db.commit()
     db.close()
     return token
 
 
 def get_session(token: str):
+    """Session valide d'un compte actif : un compte désactivé perd aussitôt toutes ses sessions."""
     if not token:
         return None
     db = get_db()
     row = db.execute(
-        "SELECT s.*, u.first_name, u.last_name, u.email, u.is_admin FROM sessions s "
+        "SELECT s.*, u.first_name, u.last_name, u.email, u.is_admin, u.is_superadmin FROM sessions s "
         "JOIN users u ON s.user_id = u.id "
-        f"WHERE s.token = ? AND s.created_at >= datetime('now', '-{SESSION_HOURS} hours')",
+        f"WHERE s.token = ? AND s.created_at >= datetime('now', '-{SESSION_HOURS} hours') AND COALESCE(u.disabled, 0) = 0",
         (_token_hash(token),),
     ).fetchone()
     db.close()
@@ -649,10 +859,12 @@ def _new_code(db) -> str:
             return code
 
 
-def create_class(name: str):
+def create_class(name: str, owner_id: int):
+    """Nouvelle classe de cet enseignant ; None si le nom est déjà pris parmi ses propres classes."""
     db = get_db()
     try:
-        cur = db.execute("INSERT INTO classes (name, code) VALUES (?, ?)", (name.strip(), _new_code(db)))
+        cur = db.execute("INSERT INTO classes (name, code, owner_id) VALUES (?, ?, ?)",
+                         (name.strip(), _new_code(db), owner_id))
         db.commit()
         return cur.lastrowid
     except sqlite3.IntegrityError:
@@ -727,6 +939,14 @@ def join_class_by_code(user_id: int, code: str):
     return row["name"] if row else None
 
 
+def class_owner(class_id: int):
+    """Identifiant du propriétaire de la classe ; None si la classe n'existe pas (ou n'a pas de propriétaire)."""
+    db = get_db()
+    row = db.execute("SELECT owner_id FROM classes WHERE id = ?", (class_id,)).fetchone()
+    db.close()
+    return row["owner_id"] if row else None
+
+
 def class_exists(class_id: int) -> bool:
     db = get_db()
     row = db.execute("SELECT 1 FROM classes WHERE id = ?", (class_id,)).fetchone()
@@ -764,9 +984,17 @@ def get_user_courses(user_id: int) -> set:
     return {r["course_key"] for r in rows}
 
 
-def list_classes():
+def list_classes(owner_id: int = None):
+    """Classes d'un enseignant (owner_id), ou toutes (administrateur), avec parcours ouverts et membres."""
     db = get_db()
-    classes = [dict(r) for r in db.execute("SELECT id, name, code, created_at FROM classes ORDER BY name").fetchall()]
+    query = ("SELECT c.id, c.name, c.code, c.created_at, c.owner_id, "
+             "COALESCE(u.first_name || ' ' || u.last_name, '') AS owner_name "
+             "FROM classes c LEFT JOIN users u ON u.id = c.owner_id")
+    if owner_id is None:
+        rows = db.execute(query + " ORDER BY c.name, owner_name").fetchall()
+    else:
+        rows = db.execute(query + " WHERE c.owner_id = ? ORDER BY c.name", (owner_id,)).fetchall()
+    classes = [dict(r) for r in rows]
     for c in classes:
         c["courses"] = [r["course_key"] for r in db.execute(
             "SELECT course_key FROM class_courses WHERE class_id = ?", (c["id"],)).fetchall()]
@@ -777,15 +1005,42 @@ def list_classes():
     return classes
 
 
-def list_students():
+def list_students(owner_id: int = None):
+    """Tous les étudiants (administrateur), ou seulement ceux des classes de l'enseignant owner_id ;
+    nb_classes compte alors ses propres classes."""
     db = get_db()
-    rows = db.execute(
-        "SELECT u.id, u.first_name, u.last_name, u.email, "
-        "(SELECT COUNT(*) FROM class_members m WHERE m.user_id = u.id) AS nb_classes "
-        "FROM users u WHERE u.is_admin = 0 ORDER BY u.last_name, u.first_name"
-    ).fetchall()
+    if owner_id is None:
+        rows = db.execute(
+            "SELECT u.id, u.first_name, u.last_name, u.email, "
+            "(SELECT COUNT(*) FROM class_members m WHERE m.user_id = u.id) AS nb_classes "
+            "FROM users u WHERE u.is_admin = 0 ORDER BY u.last_name, u.first_name"
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT u.id, u.first_name, u.last_name, u.email, COUNT(*) AS nb_classes "
+            "FROM users u JOIN class_members m ON m.user_id = u.id JOIN classes c ON c.id = m.class_id "
+            "WHERE u.is_admin = 0 AND c.owner_id = ? GROUP BY u.id ORDER BY u.last_name, u.first_name",
+            (owner_id,)).fetchall()
     db.close()
     return [dict(r) for r in rows]
+
+
+def owner_student_ids(owner_id: int) -> set:
+    """Étudiants membres d'au moins une classe de cet enseignant : les seuls qu'il voit."""
+    db = get_db()
+    rows = db.execute(
+        "SELECT DISTINCT m.user_id FROM class_members m JOIN classes c ON c.id = m.class_id "
+        "JOIN users u ON u.id = m.user_id WHERE c.owner_id = ? AND u.is_admin = 0", (owner_id,)).fetchall()
+    db.close()
+    return {r["user_id"] for r in rows}
+
+
+def find_student_by_email(email: str):
+    """Identifiant du compte étudiant ayant exactement cette adresse, ou None (jamais un compte du personnel)."""
+    db = get_db()
+    row = db.execute("SELECT id FROM users WHERE email = ? AND is_admin = 0", (email.strip().lower(),)).fetchone()
+    db.close()
+    return row["id"] if row else None
 
 
 def class_member_ids(class_id: int) -> set:
@@ -914,10 +1169,15 @@ def last_completion_per_user(glob: str) -> dict:
     return {r["user_id"]: r["t"] for r in rows}
 
 
-def class_names_per_user() -> dict:
+def class_names_per_user(owner_id: int = None) -> dict:
+    """user_id -> noms de ses classes (seulement celles de l'enseignant owner_id, s'il est donné)."""
     db = get_db()
-    rows = db.execute("SELECT m.user_id, c.name FROM class_members m JOIN classes c ON c.id = m.class_id "
-                      "ORDER BY c.name").fetchall()
+    if owner_id is None:
+        rows = db.execute("SELECT m.user_id, c.name FROM class_members m JOIN classes c ON c.id = m.class_id "
+                          "ORDER BY c.name").fetchall()
+    else:
+        rows = db.execute("SELECT m.user_id, c.name FROM class_members m JOIN classes c ON c.id = m.class_id "
+                          "WHERE c.owner_id = ? ORDER BY c.name", (owner_id,)).fetchall()
     db.close()
     out = {}
     for r in rows:

@@ -3,8 +3,13 @@ import asyncio
 import csv
 import datetime
 import io
+import json
 import os
 import re
+import sqlite3
+
+import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from conftest import ADMIN, admin_client, login, make_class, register, user_id
 
@@ -437,3 +442,319 @@ def test_titre_et_auteur(app_client):
     assert "Connexion — Bakashell</title>" in page and "Bakashell — Labo DevOps" in page
     assert "Bauer Baptiste" in page and 'href="mailto:bbauer02@gmail.com"' in page
     assert '<meta name="author" content="Bauer Baptiste (bbauer02@gmail.com)">' in page
+
+
+# ─── Comptes enseignants : invitation, cloisonnement, désactivation ─────
+
+TEACHER_PASSWORD = "motdepasse-ens"
+
+
+def teacher_form(email, first="Alan", last="Turing", password=TEACHER_PASSWORD):
+    return {"first_name": first, "last_name": last, "email": email, "password": password, "password2": password}
+
+
+def invite_path(client, email=""):
+    """Lien d'invitation créé par l'administrateur (chemin relatif /invitation/<jeton>)."""
+    admin_client(client)
+    page = client.post("/admin/enseignants/invitation", data={"email": email})
+    assert page.status_code == 200
+    link = re.search(r'id="invite-url" readonly value="([^"]+)"', page.text).group(1)
+    return "/" + link.split("/", 3)[3]
+
+
+def make_teacher(client, email, first="Alan", last="Turing"):
+    path = invite_path(client)
+    client.cookies.clear()
+    assert client.post(path, data=teacher_form(email, first, last), follow_redirects=False).status_code == 302
+    return user_id(email)
+
+
+def teacher_class(client, teacher_email, name, student_email, first="Ada"):
+    """L'enseignant crée une classe (labo Linux ouvert), un étudiant s'y inscrit avec le code ; retourne (classe, étudiant)."""
+    login(client, teacher_email, TEACHER_PASSWORD)
+    client.post("/admin/classes", data={"name": name})
+    cls = [c for c in db.list_classes(user_id(teacher_email)) if c["name"] == name][0]
+    client.post(f"/admin/classes/{cls['id']}/courses", data={"course_linux": "1"})
+    assert register(client, first=first, email=student_email, code=cls["code"]).status_code == 302
+    return cls["id"], user_id(student_email)
+
+
+def invites_count():
+    conn = db.get_db()
+    n = conn.execute("SELECT COUNT(*) FROM teacher_invites").fetchone()[0]
+    conn.close()
+    return n
+
+
+def test_invitation_enseignant(app_client):
+    path = invite_path(app_client, email="alan@lab.test")
+    app_client.cookies.clear()
+    assert app_client.get(path).status_code == 200
+    r = app_client.post(path, data=teacher_form("autre@lab.test"))
+    assert "réservée à une autre adresse" in r.text
+    r = app_client.post(path, data=teacher_form("alan@lab.test", password="court"))
+    assert "trop court" in r.text
+    r = app_client.post(path, data=teacher_form("alan@lab.test"), follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/dashboard"
+    teacher = db.get_user(user_id("alan@lab.test"))
+    assert teacher["is_admin"] == 1 and teacher["is_superadmin"] == 0
+    page = app_client.get("/dashboard")  # connecté directement
+    assert page.status_code == 200 and ">Enseignant</span>" in page.text and "/admin/enseignants" not in page.text
+    conn = db.get_db()
+    stored = [r[0] for r in conn.execute("SELECT token_hash FROM teacher_invites").fetchall()]
+    conn.close()
+    token = path.rsplit("/", 1)[1]
+    assert token not in stored and db._token_hash(token) in stored  # seule l'empreinte est conservée
+
+    # Lien déjà utilisé, faux ou expiré : refusé, aucun compte créé
+    app_client.cookies.clear()
+    assert app_client.get(path).status_code == 404
+    assert app_client.post(path, data=teacher_form("bis@lab.test"), follow_redirects=False).status_code == 404
+    assert app_client.get("/invitation/jeton-invente").status_code == 404
+    expired = invite_path(app_client)
+    conn = db.get_db()
+    conn.execute("UPDATE teacher_invites SET created_at = datetime('now', '-8 days') WHERE used_at IS NULL")
+    conn.commit()
+    conn.close()
+    app_client.cookies.clear()
+    assert app_client.get(expired).status_code == 404
+    assert app_client.post(expired, data=teacher_form("tard@lab.test"), follow_redirects=False).status_code == 404
+    assert db.find_student_by_email("bis@lab.test") is None
+    conn = db.get_db()
+    assert conn.execute("SELECT COUNT(*) FROM users WHERE email IN ('bis@lab.test', 'tard@lab.test')").fetchone()[0] == 0
+    conn.close()
+
+    # Ni un enseignant ni un étudiant ne créent d'invitation ; pas d'inscription enseignant libre
+    before = invites_count()
+    login(app_client, "alan@lab.test", TEACHER_PASSWORD)
+    assert app_client.get("/admin/enseignants").status_code == 403
+    assert app_client.post("/admin/enseignants/invitation", data={"email": ""}).status_code == 403
+    register(app_client, email="eve@lab.test")
+    assert app_client.post("/admin/enseignants/invitation", follow_redirects=False).status_code == 302
+    assert invites_count() == before
+    assert db.get_user(user_id("eve@lab.test"))["is_admin"] == 0
+
+
+def test_cloisonnement_entre_enseignants(app_client):
+    make_teacher(app_client, "alan@lab.test")
+    make_teacher(app_client, "barbara@lab.test", first="Barbara", last="Liskov")
+    # Même nom de classe pour deux enseignants : autorisé (unique par propriétaire)
+    ca, sa = teacher_class(app_client, "alan@lab.test", "BTS SIO 1", "ada@lab.test")
+    cb, sb = teacher_class(app_client, "barbara@lab.test", "BTS SIO 1", "bob@lab.test", first="Bob")
+    db.add_exercise_completion(sb, FIRST, 3)
+    db.log_terminal(sa, "linux", 1, "collage", "echo " + "a" * 60)
+    db.log_terminal(sb, "linux", 1, "collage", "echo " + "b" * 60)
+    later = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
+    login(app_client, "barbara@lab.test", TEACHER_PASSWORD)
+    app_client.post(f"/admin/classes/{cb}/deadlines", data={"course": "linux", "step": "1", "due_date": later})
+    before_b = [c for c in db.list_classes() if c["id"] == cb][0]
+    deadlines_b = db.list_deadlines()[cb]
+
+    login(app_client, "alan@lab.test", TEACHER_PASSWORD)
+    # Pages de suivi : seulement ses étudiants, même en demandant la classe de B
+    for classe in (0, cb):
+        dash = app_client.get(f"/dashboard?course=linux&classe={classe}").text
+        assert "ada@lab.test" in dash and "bob@lab.test" not in dash
+        assert "1 étudiant(s) pris en compte" in app_client.get(f"/admin/stats?course=linux&classe={classe}").text
+        integ = app_client.get(f"/admin/integrite?course=linux&classe={classe}").text
+        assert "a" * 60 in integ and "b" * 60 not in integ
+        export = app_client.get(f"/admin/export.csv?course=linux&classe={classe}").text
+        assert "ada@lab.test" in export and "bob@lab.test" not in export
+    classes_page = app_client.get("/admin/classes").text
+    assert "bob@lab.test" not in classes_page and before_b["code"] not in classes_page and "Bob" not in classes_page
+
+    # Actions sur l'étudiant de B : refusées ; sur le sien : permises
+    assert app_client.get(f"/admin/terminal/{sb}?course=linux").status_code == 403
+    assert app_client.get(f"/admin/terminal/{sa}?course=linux").status_code == 200
+    with pytest.raises(WebSocketDisconnect):
+        with app_client.websocket_connect(f"/ws/watch?user={sb}&course=linux") as ws:
+            ws.receive_json()
+    with app_client.websocket_connect(f"/ws/watch?user={sa}&course=linux") as ws:
+        assert ws.receive_json()["type"] == "hello"
+    assert app_client.post(f"/api/admin/reset-link/{sb}").status_code == 403
+    assert app_client.post(f"/api/admin/reset-link/{sa}").status_code == 200
+    assert app_client.post(f"/admin/reset-user/{sb}?course=linux").status_code == 403
+    assert db.get_user_score(sb, LINUX["id_glob"])["score"] == 3
+    # Jamais sur un compte du personnel, ni suppression définitive d'un étudiant (même le sien)
+    assert app_client.post(f"/api/admin/reset-link/{user_id('barbara@lab.test')}").status_code == 403
+    assert app_client.post(f"/api/admin/reset-link/{user_id(ADMIN[0])}").status_code == 403
+    assert app_client.post(f"/admin/delete-user/{sa}").status_code == 403
+    assert db.get_user(sa) is not None
+
+    # La classe de B et ses échéances : ni modifiées ni supprimées
+    app_client.post(f"/admin/classes/{cb}/rename", data={"name": "Piratée"})
+    app_client.post(f"/admin/classes/{cb}/courses", data={"course_jest": "1"})
+    app_client.post(f"/admin/classes/{cb}/code")
+    app_client.post(f"/admin/classes/{cb}/remove/{sb}")
+    app_client.post(f"/admin/classes/{cb}/members", data={"emails": "ada@lab.test"})
+    app_client.post(f"/admin/classes/{cb}/deadlines", data={"course": "linux", "step": "2", "due_date": later})
+    app_client.post(f"/admin/classes/{cb}/deadlines/delete", data={"course": "linux", "step": "1"})
+    r = app_client.post(f"/admin/classes/{cb}/delete", follow_redirects=False)
+    assert "err=" in r.headers["location"]
+    after_b = [c for c in db.list_classes() if c["id"] == cb][0]
+    assert after_b == before_b and db.list_deadlines()[cb] == deadlines_b
+    # Ajout à sa classe : une case forgée vers l'étudiant de B est ignorée, un compte du personnel est introuvable
+    app_client.post(f"/admin/classes/{ca}/members", data={"user_ids": str(sb), "emails": "barbara@lab.test"})
+    assert db.class_member_ids(ca) == {sa}
+
+    # Flux en direct : l'événement d'un étudiant de B n'arrive pas chez A
+    token_a = app_client.cookies.get("session")
+    assert [e for e in live_events(token_a, [sb, sa]) if e.get("user_id") == sb] == []
+    assert [e["user_id"] for e in live_events(token_a, [sb, sa]) if e.get("type") == "progress"] == [sa]
+
+    # L'administrateur voit tout, et lui seul supprime un étudiant
+    admin_client(app_client)
+    dash = app_client.get("/dashboard?course=linux").text
+    assert "ada@lab.test" in dash and "bob@lab.test" in dash
+    assert "2 étudiant(s) pris en compte" in app_client.get("/admin/stats?course=linux").text
+    assert app_client.get(f"/admin/terminal/{sb}?course=linux").status_code == 200
+    events = live_events(app_client.cookies.get("session"), [sb, sa])
+    assert {e["user_id"] for e in events if e.get("type") == "progress"} == {sa, sb}
+    assert "Barbara Liskov" in app_client.get("/admin/classes").text
+    assert app_client.post(f"/admin/delete-user/{sb}", follow_redirects=False).status_code == 302
+    assert db.get_user(sb) is None
+
+
+class FakeRequest:
+    """Requête minimale pour appeler directement la route du flux SSE (le client de test n'arrête pas un flux infini)."""
+
+    def __init__(self, token):
+        self.cookies = {"session": token}
+
+    async def is_disconnected(self):
+        return False
+
+
+def live_events(token, publish_for) -> list:
+    """Ouvre /api/admin/live avec cette session : présence de chaque étudiant de publish_for dans l'instantané,
+    puis un événement de progression pour chacun ; retourne les entrées de l'instantané et les événements reçus."""
+    from app import live
+
+    async def scenario():
+        previous = live._loop
+        live.attach_loop(asyncio.get_running_loop())
+        live.presence.clear()
+        try:
+            for uid in publish_for:
+                live.touch(uid, "linux", step=1, force=True)
+            response = await main.admin_live(FakeRequest(token))
+            stream = response.body_iterator
+            received = [await stream.__anext__()]  # instantané
+            for uid in publish_for:
+                live.publish({"type": "progress", "user_id": uid, "course": "linux", "step": 1})
+            live.publish({"type": "fin", "user_id": publish_for[-1]})  # marqueur de fin (étudiant visible)
+            while True:
+                chunk = await asyncio.wait_for(stream.__anext__(), timeout=5)
+                received.append(chunk)
+                if chunk.startswith("event: fin"):
+                    break
+            await stream.aclose()
+        finally:
+            live._loop = previous
+            live.presence.clear()
+        out = []
+        for chunk in received:
+            data = json.loads(chunk.split("data: ", 1)[1])
+            out += data["entries"] if data.get("type") == "snapshot" else [data]
+        return out
+
+    return asyncio.run(scenario())
+
+
+def test_migration_depuis_l_ancien_schema(tmp_path, monkeypatch):
+    path = tmp_path / "ancienne.db"
+    monkeypatch.setattr(db, "DB_PATH", str(path))
+    conn = sqlite3.connect(path)
+    conn.executescript("""
+        CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT NOT NULL, last_name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, is_admin INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, last_seen TIMESTAMP);
+        CREATE TABLE classes (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, code TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE class_members (class_id INTEGER NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY (class_id, user_id));
+        CREATE TABLE class_courses (class_id INTEGER NOT NULL, course_key TEXT NOT NULL, PRIMARY KEY (class_id, course_key));
+        CREATE TABLE deadlines (class_id INTEGER NOT NULL, course_key TEXT NOT NULL, step INTEGER NOT NULL,
+            due_date TEXT NOT NULL, PRIMARY KEY (class_id, course_key, step));
+        CREATE TABLE progress (user_id INTEGER NOT NULL, exercise_id TEXT NOT NULL, points INTEGER NOT NULL,
+            completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, exercise_id));
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+        INSERT INTO users (id, first_name, last_name, email, password_hash, is_admin) VALUES
+            (1, 'Prof', 'Lab', 'prof@lab.test', 'x:y', 1), (2, 'Ada', 'Lovelace', 'ada@lab.test', 'x:y', 0),
+            (3, 'Alan', 'Turing', 'alan@lab.test', 'x:y', 1), (4, 'Grace', 'Hopper', 'grace@lab.test', 'x:y', 1);
+        INSERT INTO classes (id, name, code, created_at) VALUES (3, 'BTS SIO 1', 'ABC-DEF', '2025-09-01 08:00:00'),
+            (5, 'BTS SIO 2', 'GHJ-KLM', '2025-09-02 08:00:00');
+        UPDATE sqlite_sequence SET seq = 7 WHERE name = 'classes';
+        INSERT INTO class_members VALUES (3, 2), (5, 2);
+        INSERT INTO class_courses VALUES (3, 'linux'), (5, 'docker');
+        INSERT INTO deadlines VALUES (3, 'linux', 1, '2026-10-15');
+        INSERT INTO meta VALUES ('classes_migrated', '1'), ('sessions_hashed', '1');
+    """)
+    conn.executemany("INSERT INTO meta VALUES (?, ?)", [(c["meta_key"], c["version"]) for c in COURSES.values()])
+    conn.execute("INSERT INTO progress (user_id, exercise_id, points) VALUES (2, ?, 3)", (FIRST,))
+    conn.commit()
+    conn.close()
+
+    for _ in range(2):  # migration idempotente : un second démarrage ne change rien
+        db.init_db(list(COURSES.values()))
+        classes = {c["id"]: c for c in db.list_classes()}
+        assert {i: (c["name"], c["code"], c["owner_id"], c["created_at"]) for i, c in classes.items()} == {
+            3: ("BTS SIO 1", "ABC-DEF", 1, "2025-09-01 08:00:00"), 5: ("BTS SIO 2", "GHJ-KLM", 1, "2025-09-02 08:00:00")}
+        assert classes[3]["courses"] == ["linux"] and [m["id"] for m in classes[3]["members"]] == [2]
+        assert db.list_deadlines() == {3: [{"class_id": 3, "course_key": "linux", "step": 1, "due_date": "2026-10-15"}]}
+        assert db.get_user_score(2, LINUX["id_glob"])["score"] == 3
+        assert db.get_user_courses(2) == {"linux", "docker"}
+        assert db.get_user(1)["is_superadmin"] == 1 and db.get_user(3)["is_superadmin"] == 0
+        assert db.get_user(3)["disabled"] == 0
+    # Nom unique par propriétaire seulement ; le compteur d'identifiants ne recule pas
+    new_a = db.create_class("BTS SIO 1", 3)
+    assert new_a and new_a > 7
+    assert db.create_class("BTS SIO 1", 4)
+    assert db.create_class("BTS SIO 1", 3) is None and db.create_class("BTS SIO 1", 1) is None
+    assert db.class_owner(new_a) == 3 and db.owner_student_ids(3) == set()
+
+
+def test_compte_desactive_et_administrateur_protege(app_client):
+    tid = make_teacher(app_client, "alan@lab.test")
+    login(app_client, "alan@lab.test", TEACHER_PASSWORD)
+    token = app_client.cookies.get("session")
+    assert db.get_session(token)
+    admin_client(app_client)
+    app_client.post(f"/admin/enseignants/{tid}/disable")
+    assert db.get_user(tid)["disabled"] == 1
+    assert db.get_session(token) is None  # session existante coupée
+    app_client.cookies.clear()
+    app_client.cookies.set("session", token)
+    assert app_client.get("/dashboard", follow_redirects=False).headers["location"] == "/login"
+    r = login(app_client, "alan@lab.test", TEACHER_PASSWORD)
+    assert r.status_code == 403 and "désactivé" in r.text and "session" not in r.cookies
+
+    # L'administrateur ne peut être ni désactivé ni supprimé
+    admin_client(app_client)
+    admin_id = user_id(ADMIN[0])
+    r = app_client.post(f"/admin/enseignants/{admin_id}/disable", follow_redirects=False)
+    assert "err=" in r.headers["location"]
+    app_client.post(f"/admin/enseignants/{admin_id}/delete")
+    assert not db.set_disabled(admin_id, True) and not db.delete_teacher(admin_id, admin_id)
+    assert db.get_user(admin_id)["disabled"] == 0 and app_client.get("/admin/enseignants").status_code == 200
+
+    app_client.post(f"/admin/enseignants/{tid}/enable")
+    assert login(app_client, "alan@lab.test", TEACHER_PASSWORD).status_code == 302
+    # Un enseignant ne gère pas les comptes du personnel
+    assert app_client.post(f"/admin/enseignants/{admin_id}/disable").status_code == 403
+    assert app_client.post(f"/admin/enseignants/{tid}/delete").status_code == 403
+    assert db.get_user(tid) is not None
+
+
+def test_suppression_d_un_enseignant(app_client):
+    make_class(app_client, name="BTS SIO 1")  # classe de l'administrateur, même nom que celle de l'enseignant
+    tid = make_teacher(app_client, "alan@lab.test")
+    cid, sid = teacher_class(app_client, "alan@lab.test", "BTS SIO 1", "ada@lab.test")
+    db.add_exercise_completion(sid, FIRST, 3)
+    admin_client(app_client)
+    page = app_client.get("/admin/enseignants").text
+    assert "alan@lab.test" in page and ">Administrateur</span>" in page
+    app_client.post(f"/admin/enseignants/{tid}/delete")
+    assert db.get_user(tid) is None
+    moved = [c for c in db.list_classes() if c["id"] == cid][0]
+    assert moved["owner_id"] == user_id(ADMIN[0]) and moved["name"] == "BTS SIO 1 (Alan Turing)"
+    assert db.class_member_ids(cid) == {sid} and db.get_user_score(sid, LINUX["id_glob"])["score"] == 3

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Invitation enseignant — {{ APP_SHORT }}{% endblock %}
+{% block extra_css %}
+.auth-page { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px; }
+.auth-box { background:var(--bg2); border:1px solid var(--border); border-radius:16px; padding:40px; width:100%; max-width:440px; }
+.auth-logo { text-align:center; font-size:22px; font-weight:700; color:var(--accent-l); margin-bottom:8px; }
+.auth-sub { text-align:center; color:var(--dim); font-size:14px; margin-bottom:28px; line-height:1.5; }
+.row { display:flex; gap:12px; }
+.row .field { flex:1; }
+.field { margin-bottom:18px; }
+.field label { display:block; font-size:13px; font-weight:600; color:var(--dim); margin-bottom:6px; }
+.field input { width:100%; padding:12px 16px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; outline:none; }
+.field input:focus { border-color:var(--accent); }
+.field input[readonly] { color:var(--dim); }
+.btn { width:100%; padding:14px; border:none; border-radius:10px; background:linear-gradient(135deg,var(--accent),#845ec2); color:white; font-size:15px; font-weight:700; cursor:pointer; }
+.error { background:rgba(225,112,85,.15); border:1px solid var(--err); color:var(--err); padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:20px; }
+.link { text-align:center; margin-top:20px; font-size:13px; color:var(--dim); }
+{% endblock %}
+{% block body %}
+<div class="auth-page">
+    <div class="auth-box">
+        <div class="auth-logo">&gt;_ Compte enseignant</div>
+        {% if invite %}
+        <div class="auth-sub">Vous êtes invité·e à rejoindre {{ APP_TITLE }} en tant qu'enseignant·e : vous pourrez créer vos
+            classes et suivre vos étudiants. Ce lien ne sert qu'une fois.</div>
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <form method="post">
+            <div class="row">
+                <div class="field">
+                    <label for="first_name">Prénom</label>
+                    <input type="text" id="first_name" name="first_name" required value="{{ form.first_name or '' }}" autocomplete="given-name">
+                </div>
+                <div class="field">
+                    <label for="last_name">Nom</label>
+                    <input type="text" id="last_name" name="last_name" required value="{{ form.last_name or '' }}" autocomplete="family-name">
+                </div>
+            </div>
+            <div class="field">
+                <label for="email">Adresse email</label>
+                <input type="email" id="email" name="email" required value="{{ form.email or '' }}" autocomplete="email" {% if invite.email %}readonly{% endif %}>
+            </div>
+            <div class="field">
+                <label for="password">Mot de passe (8 caractères minimum)</label>
+                <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+            </div>
+            <div class="field">
+                <label for="password2">Confirmez le mot de passe</label>
+                <input type="password" id="password2" name="password2" required minlength="8" autocomplete="new-password">
+            </div>
+            <button type="submit" class="btn">Créer mon compte enseignant</button>
+        </form>
+        {% else %}
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <div class="auth-sub">Ce lien d'invitation n'est pas valable : il a expiré, il a déjà servi ou il a été annulé.<br><br>
+            Demandez un nouveau lien à l'administrateur de la plateforme.</div>
+        {% endif %}
+        <div class="link"><a href="/login">← Connexion</a></div>
+    </div>
+</div>
+{% endblock %}

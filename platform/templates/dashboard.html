@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_staff.html" import role_badge, teachers_link %}
 {% block title %}Scores — {{ APP_SHORT }}{% endblock %}
 {% block extra_css %}
 .dashboard { max-width:1400px; margin:0 auto; padding:32px 20px; }
@@ -79,12 +80,13 @@ tr.flash td { animation:flash 2.5s ease-out; }
 {% block body %}
 <div class="dashboard">
     <div class="dash-header">
-        <h1>&gt;_ Tableau des scores <span class="live-badge" id="live-badge"><span class="dot"></span><span id="live-label">connexion…</span></span></h1>
+        <h1>&gt;_ Tableau des scores {{ role_badge(user) }} <span class="live-badge" id="live-badge"><span class="dot"></span><span id="live-label">connexion…</span></span></h1>
         <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end">
             <a href="/admin/export.csv?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}" class="back-btn" title="Notes du parcours{% if classe %} pour cette classe{% endif %}, à ouvrir dans un tableur">⬇ Exporter les notes (CSV)</a>
             <a href="/admin/stats?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}" class="back-btn">📊 Statistiques par exercice</a>
             <a href="/admin/integrite?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}" class="back-btn">🔎 Intégrité</a>
-            <a href="/admin/classes" class="back-btn">Classes</a>
+            <a href="/admin/classes" class="back-btn">{% if user.is_superadmin %}Classes{% else %}Mes classes{% endif %}</a>
+            {{ teachers_link(user, "back-btn") }}
             <a href="/catalogue" class="back-btn">Catalogue</a>
         </div>
     </div>
@@ -94,7 +96,7 @@ tr.flash td { animation:flash 2.5s ease-out; }
             <input type="hidden" name="course" value="{{ course.key }}">
             <label for="classe" style="font-size:13px; color:var(--dim)">Classe</label>
             <select id="classe" name="classe" onchange="this.form.submit()" style="padding:7px 10px; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px">
-                <option value="0">Toutes les classes</option>
+                <option value="0">{% if user.is_superadmin %}Toutes les classes{% else %}Toutes mes classes{% endif %}</option>
                 {% for cl in classes %}<option value="{{ cl.id }}" {% if cl.id == classe %}selected{% endif %}>{{ cl.name }} ({{ cl.members | length }})</option>{% endfor %}
             </select>
         </form>
@@ -156,9 +158,11 @@ tr.flash td { animation:flash 2.5s ease-out; }
                         <form method="post" action="/admin/reset-user/{{ s.id }}?course={{ course.key }}" data-confirm="Remettre à zéro le parcours {{ course.short }} de {{ s.first_name }} {{ s.last_name }} et recréer son conteneur ?" onsubmit="return confirm(this.dataset.confirm)">
                             <button type="submit" class="btn-sm">Reset</button>
                         </form>
+                        {% if user.is_superadmin %}
                         <form method="post" action="/admin/delete-user/{{ s.id }}" data-confirm="Supprimer le compte de {{ s.first_name }} {{ s.last_name }} (tous parcours confondus) ? Cette action est irréversible." onsubmit="return confirm(this.dataset.confirm)">
                             <button type="submit" class="btn-sm danger">Supprimer</button>
                         </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -166,7 +170,7 @@ tr.flash td { animation:flash 2.5s ease-out; }
             </table>
             </div>
             {% else %}
-            <div class="empty">Aucun étudiant inscrit pour le moment.</div>
+            <div class="empty">{% if user.is_superadmin %}Aucun étudiant inscrit pour le moment.{% else %}Aucun étudiant dans vos classes pour le moment : donnez-leur le code d'une de vos classes.{% endif %}</div>
             {% endif %}
         </div>
 

@@ -94,12 +94,16 @@ def progressed(user_id: int, course_key: str, step: int):
         stalls.pop((user_id, course_key, step), None)
 
 
-def snapshot() -> dict:
+def snapshot(allowed=None) -> dict:
+    """État courant ; allowed(user_id) -> bool limite aux étudiants visibles par l'enseignant connecté."""
     with _guard:
         entries = [{"user_id": uid, "name": names.get(uid), "course": course, **dict(e)}
                    for (uid, course), e in presence.items()]
         stuck = [{"user_id": uid, "course": course, "step": step, "count": n}
                  for (uid, course, step), n in stalls.items()]
+    if allowed is not None:
+        entries = [e for e in entries if allowed(e["user_id"])]
+        stuck = [a for a in stuck if allowed(a["user_id"])]
     return {"type": "snapshot", "now": time.time(), "entries": entries, "attempts": stuck}
 
 
@@ -107,18 +111,21 @@ def sse(event: dict) -> str:
     return f"event: {event['type']}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
-async def stream(is_disconnected):
-    """Générateur SSE pour un tableau de bord : état initial, puis événements au fil de l'eau."""
+async def stream(is_disconnected, allowed=None):
+    """Générateur SSE pour un tableau de bord : état initial, puis événements au fil de l'eau.
+    allowed(user_id) -> bool : filtre propre à chaque connexion (un enseignant ne reçoit que ses étudiants) ;
+    None : tout est transmis (administrateur)."""
     q = asyncio.Queue(maxsize=500)
     _subscribers.add(q)
     try:
-        yield sse(snapshot())
+        yield sse(snapshot(allowed))
         while True:
             if await is_disconnected():
                 break
             try:
                 event = await asyncio.wait_for(q.get(), timeout=15)
-                yield sse(event)
+                if allowed is None or allowed(event.get("user_id")):
+                    yield sse(event)
             except asyncio.TimeoutError:
                 yield f"event: ping\ndata: {json.dumps({'now': time.time()})}\n\n"
     finally:
