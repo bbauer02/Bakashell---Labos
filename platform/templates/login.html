@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Connexion — Linux CLI Lab{% endblock %}
+{% block title %}Connexion — {{ APP_SHORT }}{% endblock %}
 {% block extra_css %}
 .auth-page { display:flex; align-items:center; justify-content:center; min-height:100vh; }
 .auth-box { background:var(--bg2); border:1px solid var(--border); border-radius:16px; padding:40px; width:100%; max-width:420px; }
@@ -17,7 +17,7 @@
 {% block body %}
 <div class="auth-page">
     <div class="auth-box">
-        <div class="auth-logo">&gt;_ Linux CLI Lab</div>
+        <div class="auth-logo">&gt;_ {{ APP_TITLE }}</div>
         <div class="auth-sub">Connectez-vous pour accéder au lab</div>
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
         <form method="post" action="/login">

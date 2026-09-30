@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="{{ AUTHOR_NAME }} ({{ AUTHOR_EMAIL }})">
     <title>{% if cert %}Attestation — {{ cert.first_name }} {{ cert.last_name }}{% else %}Attestation introuvable{% endif %}</title>
     <style>
         :root { --ink:#1d2033; --dim:#5f6478; --accent:#6c5ce7; --gold:#b7950b; --paper:#fffdf7; --bg:#eceef4; }
@@ -45,7 +46,7 @@
         <button onclick="window.print()">Imprimer / enregistrer en PDF</button>
     </div>
     <div class="sheet">
-        <div class="brand">&gt;_ Linux CLI Lab · Cimes &amp; Sentiers</div>
+        <div class="brand">&gt;_ {{ APP_TITLE }} · Cimes &amp; Sentiers</div>
         <h1>Attestation de réussite</h1>
         <p class="lead">Nous attestons que</p>
         <div class="name">{{ cert.first_name }} {{ cert.last_name }}</div>
@@ -60,7 +61,7 @@
         <ol class="steps">{% for s in cert.steps %}<li>{{ s }}</li>{% endfor %}</ol>
         {% endif %}
         <div class="foot">
-            <span>Délivrée le {{ cert.issued }}</span>
+            <span>Délivrée le {{ cert.issued }} par {{ AUTHOR_NAME }}, enseignant ({{ AUTHOR_EMAIL }})</span>
             <span>Code de vérification : <span class="code">{{ cert.code }}</span></span>
         </div>
     </div>

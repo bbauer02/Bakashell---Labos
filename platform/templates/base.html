@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Linux CLI Lab{% endblock %}</title>
+    <title>{% block title %}{{ APP_TITLE }}{% endblock %}</title>
+    <meta name="author" content="{{ AUTHOR_NAME }} ({{ AUTHOR_EMAIL }})">
     <style>
         :root {
             --bg: #0f1117; --bg2: #161822; --bg3: #1a1d2e; --card: #232639;
@@ -15,8 +16,12 @@
         a { color:var(--accent-l); text-decoration:none; }
         a:hover { text-decoration:underline; }
         code { background:var(--bg); padding:2px 6px; border-radius:4px; font-family:'JetBrains Mono','Fira Code',monospace; font-size:12px; color:var(--cyan); }
+        .site-footer { text-align:center; color:var(--dim); font-size:12px; padding:18px 16px 24px; }
+        .site-footer a { color:var(--dim); text-decoration:underline; }
         {% block extra_css %}{% endblock %}
     </style>
 </head>
-<body>{% block body %}{% endblock %}</body>
+<body>{% block body %}{% endblock %}
+<footer class="site-footer">{{ APP_TITLE }} · plateforme conçue par {{ AUTHOR_NAME }} — <a href="mailto:{{ AUTHOR_EMAIL }}">{{ AUTHOR_EMAIL }}</a></footer>
+</body>
 </html>

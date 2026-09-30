@@ -1,4 +1,6 @@
-# Linux CLI Lab
+# Bakashell — Labo DevOps
+
+Auteur : Bauer Baptiste — bbauer02@gmail.com · en ligne sur https://bakashell.fr
 
 Plateforme d'apprentissage (BTS SIO / DevOps) : chaque étudiant dispose, dans son navigateur, d'un conteneur
 personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq parcours et une épreuve de synthèse :

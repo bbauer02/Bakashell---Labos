@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ course.short }} — Linux CLI Lab</title>
+    <title>{{ course.short }} — {{ APP_SHORT }}</title>
+    <meta name="author" content="{{ AUTHOR_NAME }} ({{ AUTHOR_EMAIL }})">
     <link rel="stylesheet" href="/static/vendor/xterm/css/xterm.css">
     <style>
         :root {
@@ -762,7 +763,7 @@
                     <polyline points="4 17 10 11 4 5"></polyline>
                     <line x1="12" y1="19" x2="20" y2="19"></line>
                 </svg>
-                Linux CLI Lab
+                {{ APP_TITLE }}
             </a>
             <nav class="course-switch">
                 {% for c in courses %}<a href="/lab/{{ c.key }}" class="{% if c.key == course.key %}active{% endif %}" title="{{ c.title }}">{{ c.short }}</a>{% endfor %}
@@ -817,6 +818,7 @@
                 <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text-dim)">{% if course.auto_validate %}Vérification automatique toutes les 5 s (sauf exercices « manuel »){% else %}Vos tests sont exécutés à chaque vérification : comptez quelques secondes par exercice{% endif %}</div>
                 <button class="btn-reset-step" id="btn-reset-step" onclick="resetStep()" style="display:none">Réinitialiser les fichiers de cette étape</button>
                 <div style="text-align:center;margin-top:6px;font-size:10.5px;color:var(--text-dim)">Les commandes saisies dans le terminal sont enregistrées pour le suivi pédagogique (conservées {{ integrity_days }} jours, visibles par l'enseignant).</div>
+                <div style="text-align:center;margin-top:4px;font-size:10.5px;color:var(--text-dim)">{{ APP_TITLE }} · plateforme conçue par {{ AUTHOR_NAME }} — <a href="mailto:{{ AUTHOR_EMAIL }}" style="color:inherit">{{ AUTHOR_EMAIL }}</a></div>
             </div>
         </div>
 

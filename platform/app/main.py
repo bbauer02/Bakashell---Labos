@@ -39,8 +39,14 @@ logging.basicConfig(level=logging.INFO)
 
 APP_DIR = os.environ.get("APP_DIR", "/app")
 
-app = FastAPI(title="Linux CLI Lab")
+# Nom de l'application et auteur, affichés sur toutes les pages
+APP_TITLE, APP_SHORT = "Bakashell — Labo DevOps", "Bakashell"
+AUTHOR_NAME, AUTHOR_EMAIL = "Bauer Baptiste", "bbauer02@gmail.com"
+
+app = FastAPI(title=APP_TITLE)
 templates = Jinja2Templates(directory=os.path.join(APP_DIR, "templates"))
+templates.env.globals.update(APP_TITLE=APP_TITLE, APP_SHORT=APP_SHORT,
+                             AUTHOR_NAME=AUTHOR_NAME, AUTHOR_EMAIL=AUTHOR_EMAIL)
 templates.env.filters["heure"] = lambda ts: datetime.datetime.fromtimestamp(ts).strftime("%d/%m %H:%M")
 # xterm.js et Monaco servis par la plateforme (installés dans l'image) : pas besoin d'Internet en salle
 if os.path.isdir(os.path.join(APP_DIR, "static")):
