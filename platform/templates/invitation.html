@@ -48,6 +48,7 @@
                 <input type="password" id="password2" name="password2" required minlength="8" autocomplete="new-password">
             </div>
             <button type="submit" class="btn">Créer mon compte enseignant</button>
+            <p style="font-size:12px;color:var(--dim);margin-top:12px;line-height:1.5">Vos données (compte, progression, commandes saisies dans le terminal) servent uniquement au suivi pédagogique. <a href="/confidentialite">En savoir plus et exercer vos droits</a>.</p>
         </form>
         {% else %}
         {% if error %}<div class="error">{{ error }}</div>{% endif %}

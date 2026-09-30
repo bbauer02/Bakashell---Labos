@@ -354,6 +354,12 @@ async def account_submit(request: Request):
     return RedirectResponse("/compte?ok=1", status_code=302)
 
 
+@app.get("/confidentialite", response_class=HTMLResponse)
+async def privacy_page(request: Request):
+    """Mentions légales et politique de confidentialité (page publique)."""
+    return templates.TemplateResponse(request, "confidentialite.html", {"integrity_days": integrity.RETENTION_DAYS})
+
+
 @app.get("/reinitialiser/{token}", response_class=HTMLResponse)
 async def reset_page(request: Request, token: str):
     target = db.reset_token_user(token)

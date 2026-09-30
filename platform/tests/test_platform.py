@@ -758,3 +758,11 @@ def test_suppression_d_un_enseignant(app_client):
     moved = [c for c in db.list_classes() if c["id"] == cid][0]
     assert moved["owner_id"] == user_id(ADMIN[0]) and moved["name"] == "BTS SIO 1 (Alan Turing)"
     assert db.class_member_ids(cid) == {sid} and db.get_user_score(sid, LINUX["id_glob"])["score"] == 3
+
+
+def test_page_confidentialite(app_client):
+    page = app_client.get("/confidentialite")  # page publique, sans connexion
+    assert page.status_code == 200
+    for attendu in ("Hetzner Online GmbH", "Bauer Baptiste", "CNIL", "120 jours", "session"):
+        assert attendu in page.text
+    assert 'href="/confidentialite"' in app_client.get("/register").text

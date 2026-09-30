@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Mentions légales et confidentialité — {{ APP_SHORT }}{% endblock %}
+{% block extra_css %}
+.page { max-width:860px; margin:0 auto; padding:32px 20px 40px; line-height:1.65; font-size:14.5px; }
+.page h1 { font-size:26px; color:var(--accent-l); margin-bottom:6px; }
+.page .maj { color:var(--dim); font-size:13px; margin-bottom:26px; }
+.page h2 { font-size:18px; margin:30px 0 10px; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:6px; }
+.page h3 { font-size:15px; margin:18px 0 6px; color:var(--accent-l); }
+.page p, .page li { color:var(--text); margin-bottom:8px; }
+.page ul { padding-left:22px; margin-bottom:10px; }
+.page table { width:100%; border-collapse:collapse; margin:10px 0 16px; font-size:13.5px; }
+.page th, .page td { border:1px solid var(--border); padding:8px 10px; text-align:left; vertical-align:top; }
+.page th { background:var(--card); color:var(--dim); font-weight:600; }
+.page .back { display:inline-block; margin-bottom:18px; font-size:13px; }
+.note { background:var(--bg2); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:8px; padding:12px 14px; margin:12px 0; }
+{% endblock %}
+{% block body %}
+<div class="page">
+    <a class="back" href="/">← Retour</a>
+    <h1>Mentions légales et confidentialité</h1>
+    <p class="maj">Dernière mise à jour : 30 septembre 2026</p>
+
+    <div class="note">En bref : cette plateforme sert uniquement à l'apprentissage. Vos données ne sont ni vendues, ni
+    partagées, ni utilisées pour de la publicité ; il n'y a aucun traceur ni aucune mesure d'audience. Elles sont
+    hébergées dans l'Union européenne. Vous pouvez à tout moment demander à les consulter, à les corriger ou à les
+    faire supprimer en écrivant à <a href="mailto:{{ AUTHOR_EMAIL }}">{{ AUTHOR_EMAIL }}</a>.</div>
+
+    <h2>1. Éditeur et hébergeur</h2>
+    <p><b>Éditeur et responsable de la publication :</b> {{ AUTHOR_NAME }}, enseignant —
+        <a href="mailto:{{ AUTHOR_EMAIL }}">{{ AUTHOR_EMAIL }}</a>.</p>
+    <p><b>Hébergeur :</b> Hetzner Online GmbH, Industriestr. 25, 91710 Gunzenhausen, Allemagne — téléphone :
+        +49 9831 505-0 — <a href="https://www.hetzner.com">www.hetzner.com</a>. Le serveur est situé dans l'Union européenne.</p>
+    <p>{{ APP_TITLE }} est une plateforme d'apprentissage des métiers de l'administration système et du DevOps
+        (Linux, Git, Docker, Ansible, tests avec Jest) : chaque étudiant y dispose d'un environnement de travail
+        personnel, d'un cours et d'exercices corrigés automatiquement. L'entreprise « Cimes &amp; Sentiers » et ses
+        personnages sont fictifs.</p>
+
+    <h2>2. Responsable du traitement</h2>
+    <p>Le responsable du traitement des données est {{ AUTHOR_NAME }}
+        (<a href="mailto:{{ AUTHOR_EMAIL }}">{{ AUTHOR_EMAIL }}</a>). Les enseignants invités sur la plateforme
+        accèdent aux données des étudiants inscrits dans leurs propres classes, pour le suivi pédagogique, et ne
+        voient pas celles des autres classes.</p>
+
+    <h2>3. Données traitées, finalités et durées de conservation</h2>
+    <table>
+        <thead><tr><th>Données</th><th>Pourquoi</th><th>Combien de temps</th></tr></thead>
+        <tbody>
+            <tr><td>Compte : prénom, nom, adresse e-mail, mot de passe (stocké sous forme d'empreinte, jamais en clair), dates de création, de dernière connexion et de dernière activité</td>
+                <td>Vous identifier, vous donner accès aux labos de vos classes, permettre à l'enseignant de suivre sa classe</td>
+                <td>Tant que le compte existe (jusqu'à sa suppression, sur demande ou lors du nettoyage des classes terminées)</td></tr>
+            <tr><td>Classes et codes d'inscription, échéances</td>
+                <td>Organiser les classes et ouvrir les labos</td>
+                <td>Tant que la classe existe</td></tr>
+            <tr><td>Progression : exercices réussis, points, indices demandés, historique des vérifications demandées, réponses aux QCM, attestations délivrées</td>
+                <td>Évaluation et suivi pédagogique ; statistiques par exercice pour améliorer les cours</td>
+                <td>Tant que le compte existe ; lors d'une refonte d'un parcours, l'ancienne progression est archivée</td></tr>
+            <tr><td>Commandes saisies dans le terminal web (lignes tapées et blocs collés)</td>
+                <td>Suivi pédagogique et intégrité des évaluations : repérer les réponses copiées entre étudiants ou les réussites anormalement rapides. Ces signaux sont examinés par l'enseignant et ne donnent lieu à aucune décision automatique</td>
+                <td>{{ integrity_days }} jours, puis suppression automatique</td></tr>
+            <tr><td>Fichiers et programmes créés dans votre environnement de travail (conteneur personnel)</td>
+                <td>Réaliser les exercices et les vérifier</td>
+                <td>Tant que le compte existe ; l'environnement peut être réinitialisé lors d'une mise à jour d'un labo (vos fichiers personnels sont alors recopiés)</td></tr>
+            <tr><td>Adresse IP, pages demandées, date et heure (journaux techniques du serveur)</td>
+                <td>Sécurité : limiter les tentatives de connexion, diagnostiquer les pannes</td>
+                <td>Journaux à taille limitée, écrasés au fil de l'eau (en pratique quelques jours à quelques semaines)</td></tr>
+            <tr><td>Sauvegardes de la base de données</td>
+                <td>Pouvoir restaurer les données en cas d'incident</td>
+                <td>14 sauvegardes quotidiennes sur le serveur ; 60 copies quotidiennes conservées sur le poste de l'éditeur</td></tr>
+        </tbody>
+    </table>
+    <p><b>Base légale :</b> l'exécution de la mission d'enseignement et de formation, et l'intérêt légitime à
+        garantir la sincérité des évaluations et la sécurité de la plateforme (article 6 du RGPD).</p>
+    <p>Une <b>attestation de fin de parcours</b> (nom, parcours, score) est consultable par toute personne qui en
+        connaît le lien ou le code de vérification : c'est ce qui permet de la présenter. Ne partagez ce lien que si
+        vous le souhaitez.</p>
+
+    <h2>4. Destinataires</h2>
+    <ul>
+        <li>L'éditeur de la plateforme ;</li>
+        <li>les enseignants, pour les étudiants inscrits dans leurs classes ;</li>
+        <li>l'hébergeur, uniquement pour l'exploitation technique du serveur.</li>
+    </ul>
+    <p>Aucune donnée n'est vendue, cédée ni transmise à des tiers, ni utilisée à des fins publicitaires. Aucune
+        donnée n'est transférée hors de l'Union européenne.</p>
+
+    <h2>5. Cookies</h2>
+    <p>La plateforme dépose un seul cookie, <code>session</code>, strictement nécessaire pour vous garder connecté
+        (valable 24 heures, transmis uniquement en HTTPS, inaccessible aux scripts). Il n'y a ni cookie de mesure
+        d'audience, ni cookie publicitaire, ni contenu tiers : aucun consentement n'est donc demandé. Certaines
+        préférences d'affichage (étape en cours, taille des panneaux) sont gardées dans votre navigateur
+        (stockage local) et ne quittent pas votre ordinateur.</p>
+
+    <h2>6. Sécurité</h2>
+    <p>Connexions chiffrées (HTTPS), mots de passe stockés sous forme d'empreinte (scrypt), limitation des tentatives
+        de connexion, environnements des étudiants isolés les uns des autres, accès des enseignants limité à leurs
+        propres classes.</p>
+
+    <h2>7. Vos droits</h2>
+    <p>Conformément au Règlement général sur la protection des données (RGPD) et à la loi « Informatique et
+        libertés », vous disposez d'un droit d'accès, de rectification, d'effacement, de limitation, d'opposition et
+        de portabilité de vos données. Pour les exercer, écrivez à
+        <a href="mailto:{{ AUTHOR_EMAIL }}">{{ AUTHOR_EMAIL }}</a> depuis l'adresse de votre compte ; une réponse vous
+        sera apportée dans un délai d'un mois. Vous pouvez modifier votre mot de passe vous-même depuis la page
+        <a href="/compte">Mon compte</a>.</p>
+    <p>Si vous estimez que vos droits ne sont pas respectés, vous pouvez adresser une réclamation à la CNIL
+        (<a href="https://www.cnil.fr">www.cnil.fr</a>).</p>
+
+    <h2>8. Propriété intellectuelle</h2>
+    <p>Les cours, exercices, schémas et questionnaires de la plateforme sont la propriété de leur auteur,
+        {{ AUTHOR_NAME }}. Leur reproduction hors de la plateforme nécessite son accord.</p>
+</div>
+{% endblock %}
