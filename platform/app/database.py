@@ -118,6 +118,17 @@ def init_db(courses):
             user_id INTEGER NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        -- Saisie dans le terminal web (suivi d'intégrité : collages, commandes partagées), purgée après quelques mois
+        CREATE TABLE IF NOT EXISTS terminal_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            course TEXT NOT NULL,
+            step INTEGER,
+            kind TEXT NOT NULL,
+            text TEXT NOT NULL,
+            at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS terminal_log_course ON terminal_log (course, at);
         -- QCM de fin de cours : une seule tentative par étape
         CREATE TABLE IF NOT EXISTS quiz_results (
             user_id INTEGER NOT NULL,
@@ -470,6 +481,44 @@ def reset_user_progress(user_id: int, course: dict = None):
     db.close()
 
 
+# ─── Suivi d'intégrité ─────────────────────────────────────────────────
+
+def log_terminal(user_id: int, course_key: str, step, kind: str, text: str):
+    db = get_db()
+    db.execute("INSERT INTO terminal_log (user_id, course, step, kind, text) VALUES (?, ?, ?, ?, ?)",
+               (user_id, course_key, step, kind, text))
+    db.commit()
+    db.close()
+
+
+def purge_terminal_log(days: int) -> int:
+    db = get_db()
+    cur = db.execute("DELETE FROM terminal_log WHERE at < datetime('now', ?)", (f"-{int(days)} days",))
+    db.commit()
+    db.close()
+    return cur.rowcount
+
+
+def integrity_data(course: dict, user_ids=None):
+    """Noms des étudiants, réussites (user, exercice, secondes) et saisies (user, type, texte, secondes) d'un parcours."""
+    db = get_db()
+    students = {r["id"]: f"{r['first_name']} {r['last_name']}" for r in db.execute(
+        "SELECT id, first_name, last_name FROM users WHERE is_admin = 0").fetchall()
+        if user_ids is None or r["id"] in set(user_ids)}
+    completions = [(r["user_id"], r["exercise_id"], _epoch(r["completed_at"])) for r in db.execute(
+        "SELECT user_id, exercise_id, completed_at FROM progress WHERE exercise_id GLOB ?", (course["id_glob"],))
+        if r["user_id"] in students]
+    logs = [(r["user_id"], r["kind"], r["text"], _epoch(r["at"])) for r in db.execute(
+        "SELECT user_id, kind, text, at FROM terminal_log WHERE course = ? ORDER BY at", (course["key"],))
+        if r["user_id"] in students]
+    db.close()
+    return students, completions, logs
+
+
+def _epoch(value) -> float:
+    return datetime.datetime.fromisoformat(str(value)).replace(tzinfo=datetime.timezone.utc).timestamp()
+
+
 # ─── QCM de fin de cours ───────────────────────────────────────────────
 
 def get_quiz_result(user_id: int, course_key: str, step: int):
@@ -580,7 +629,7 @@ def delete_user(user_id: int):
         db.close()
         return
     for table in ("progress", "sessions", "hints_used", "step_setup", "class_members", "attempts",
-                  "password_resets", "certificates", "quiz_results"):
+                  "password_resets", "certificates", "quiz_results", "terminal_log"):
         db.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
     db.execute("DELETE FROM users WHERE id = ? AND is_admin = 0", (user_id,))
     db.commit()

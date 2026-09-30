@@ -816,6 +816,7 @@
                 </button>
                 <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text-dim)">{% if course.auto_validate %}Vérification automatique toutes les 5 s (sauf exercices « manuel »){% else %}Vos tests sont exécutés à chaque vérification : comptez quelques secondes par exercice{% endif %}</div>
                 <button class="btn-reset-step" id="btn-reset-step" onclick="resetStep()" style="display:none">Réinitialiser les fichiers de cette étape</button>
+                <div style="text-align:center;margin-top:6px;font-size:10.5px;color:var(--text-dim)">Les commandes saisies dans le terminal sont enregistrées pour le suivi pédagogique (conservées {{ integrity_days }} jours, visibles par l'enseignant).</div>
             </div>
         </div>
 
@@ -1049,6 +1050,7 @@
 
         // ─── QCM de fin de cours ─────────────────────
         let quizStep = null;
+        let currentExam = false;  // épreuve : pas de correction commentée après réussite
 
         function quizTabLabel(q) {
             const tab = document.getElementById('tab-quiz');
@@ -1157,7 +1159,7 @@
                     <div class="ticket-body">${ex.ticket.body}</div>
                     <div class="exercise-desc"><span class="deliverable-label">À livrer :</span> ${ex.desc}</div>` : `
                     <div class="exercise-desc">${ex.desc}</div>`}
-                    ${IS_ADMIN || ex.completed ? solutionZone(ex.id) : ''}
+                    ${IS_ADMIN || (ex.completed && !stepData.exam) ? solutionZone(ex.id) : ''}
                     <div class="hint-zone" id="hints-${ex.id}" data-ticket="${ex.ticket ? 1 : ''}">${renderHints(ex.id, ex.hints, ex.hints_total, ex.completed, !!ex.ticket)}</div>
                     <div class="exercise-result">${ex.completed ? '<div class="exercise-status pass">&#10003; Validé</div>' : ''}</div>
                     ${ex.completed ? '' : `<button class="btn-check" onclick="validateExercise('${ex.id}', this)">▶ Vérifier cet exercice</button>`}
@@ -1168,6 +1170,7 @@
             document.getElementById('btn-reset-step').style.display = stepData.has_setup ? 'block' : 'none';
             quizTabLabel(stepData.quiz);
             quizStep = null;
+            currentExam = !!stepData.exam;
 
             // Show lesson tab by default when switching steps
             switchTab('lesson');
@@ -1402,7 +1405,7 @@ ${s.preamble}
                 card.querySelector('.btn-check')?.remove();
                 zone.innerHTML = `<div class="exercise-status pass">&#10003; ${r.already ? 'Validé' : 'Validé ! +' + r.earned + ' pts'}</div>`;
                 // Exercice réussi : la correction commentée devient accessible
-                if (!card.querySelector('.solution-zone')) zone.insertAdjacentHTML('beforebegin', solutionZone(r.id));
+                if (!card.querySelector('.solution-zone') && !currentExam) zone.insertAdjacentHTML('beforebegin', solutionZone(r.id));
                 const pts = card.querySelector('.exercise-points');
                 if (pts && r.earned) pts.textContent = `${r.earned}/${r.points} pts`;
             } else if (r.skipped) {

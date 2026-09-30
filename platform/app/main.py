@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import posixpath
+import html as html_lib
 import re
 import threading
 import time
@@ -23,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 from . import containers
 from . import database as db
 from . import live
+from . import integrity
 from . import memo
 from . import quiz
 from . import ratelimit
@@ -39,6 +41,7 @@ APP_DIR = os.environ.get("APP_DIR", "/app")
 
 app = FastAPI(title="Linux CLI Lab")
 templates = Jinja2Templates(directory=os.path.join(APP_DIR, "templates"))
+templates.env.filters["heure"] = lambda ts: datetime.datetime.fromtimestamp(ts).strftime("%d/%m %H:%M")
 # xterm.js et Monaco servis par la plateforme (installés dans l'image) : pas besoin d'Internet en salle
 if os.path.isdir(os.path.join(APP_DIR, "static")):
     app.mount("/static", StaticFiles(directory=os.path.join(APP_DIR, "static")), name="static")
@@ -83,6 +86,7 @@ async def startup():
     memo.check(COURSES, EXERCISE_INDEX)
     for key in db.init_db(list(COURSES.values())):
         log.warning("Parcours %s : nouvelle version du catalogue, l'ancienne progression a été archivée.", key)
+    db.purge_terminal_log(integrity.RETENTION_DAYS)
     asyncio.create_task(idle_reaper())
     if BACKUP_DIR:
         asyncio.create_task(backup_loop())
@@ -440,6 +444,7 @@ async def lab_page(request: Request, course_key: str):
         "course": {"key": course["key"], "title": course["title"], "short": course["short"],
                    "editor": bool(course["editor_root"]), "auto_validate": course["auto_validate"]},
         "courses": courses_menu(user),
+        "integrity_days": integrity.RETENTION_DAYS,
     })
 
 
@@ -563,6 +568,33 @@ async def admin_stats(request: Request, course: str = DEFAULT_COURSE, classe: in
     return templates.TemplateResponse(request, "stats.html", {
         "user": user, "course": c, "courses": courses_menu(), "classes": db.list_classes(), "classe": classe,
         "steps": steps, "students": data["students"],
+    })
+
+
+def _reference_text(course: dict) -> str:
+    """Tout ce que les étudiants lisent (cours, tickets, consignes, indices) : une commande qui en vient n'est pas suspecte."""
+    parts = []
+    for step in course["steps"].values():
+        parts.append(step.get("lesson", ""))
+        for ex in step["exercises"]:
+            parts += [ex.get("desc", ""), (ex.get("ticket") or {}).get("body", ""), *ex.get("hints", [])]
+    text = re.sub(r"<br\s*/?>", "\n", " ".join(parts))
+    return html_lib.unescape(re.sub(r"<[^>]+>", "", text))
+
+
+@app.get("/admin/integrite", response_class=HTMLResponse)
+async def admin_integrity(request: Request, course: str = DEFAULT_COURSE, classe: int = 0):
+    """Signaux à examiner : réussites éclair, rafales, collages, commandes identiques entre étudiants."""
+    user = admin_or_none(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    c = get_course(course) or COURSES[DEFAULT_COURSE]
+    names, completions, logs = await run_in_threadpool(
+        db.integrity_data, c, db.class_member_ids(classe) if classe else None)
+    data = integrity.report(c, names, completions, logs, _reference_text(c))
+    return templates.TemplateResponse(request, "integrity.html", {
+        "user": user, "course": c, "courses": courses_menu(), "classes": db.list_classes(), "classe": classe,
+        "data": data, "retention": integrity.RETENTION_DAYS,
     })
 
 
@@ -951,6 +983,8 @@ async def api_step(request: Request, course_key: str, num: int):
         "has_setup": runner.has_setup(step),
         # Étape modifiée depuis sa préparation : l'étudiant est invité à la réinitialiser
         "setup_outdated": runner.setup_outdated(course, num, step, db.get_setup(user["user_id"], course["key"], num)),
+        # Épreuve : ni indices ni correction affichée aux étudiants
+        "exam": bool(course.get("exam")),
         # QCM de fin de cours : absent, à faire (None) ou (points, maximum)
         "quiz": ({"done": db.quiz_scores(user["user_id"], course["key"]).get(num), "max": QUIZ_QUESTIONS}
                  if num in course["quiz"] else None),
@@ -1101,6 +1135,8 @@ async def api_solution(request: Request, exercise_id: str):
         return not_found()
     if not user.get("is_admin"):
         course = course_for(user, key)
+        if course and course.get("exam"):
+            return JSONResponse({"error": "Pas de correction pendant une épreuve"}, status_code=403)
         if not course or exercise_id not in db.get_user_score(user["user_id"], course["id_glob"])["completed"]:
             return JSONResponse({"error": "Correction disponible une fois l'exercice réussi"}, status_code=403)
         return {"exercise": exercise_id, "preamble": sol["preamble"], "code": sol["code"],
@@ -1291,6 +1327,11 @@ async def websocket_terminal(ws: WebSocket):
     raw_sock.setblocking(False)
     loop = asyncio.get_running_loop()
 
+    def save_input(kind, text):  # suivi d'intégrité (écriture en base hors de la boucle asyncio)
+        step = live.presence.get(key, {}).get("step")
+        loop.run_in_executor(None, db.log_terminal, user_id, course["key"], step, kind, text)
+    recorder = integrity.InputRecorder(save_input)
+
     async def read_from_container():
         try:
             while True:
@@ -1320,12 +1361,14 @@ async def websocket_terminal(ws: WebSocket):
                 payload = json.loads(msg["text"])
                 if payload.get("type") == "input":
                     await loop.sock_sendall(raw_sock, payload["data"].encode())
+                    recorder.feed(payload["data"])
                 elif payload.get("type") == "resize":
                     rows, cols = int(payload.get("rows", 24)), int(payload.get("cols", 80))
                     containers.resize_exec(exec_id, rows=rows, cols=cols)
                     terminals.resized(key, term_id, cols, rows)
             elif msg.get("bytes") is not None:
                 await loop.sock_sendall(raw_sock, msg["bytes"])
+                recorder.feed(msg["bytes"].decode(errors="replace"))
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:

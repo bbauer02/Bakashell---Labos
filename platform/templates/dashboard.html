@@ -83,6 +83,7 @@ tr.flash td { animation:flash 2.5s ease-out; }
         <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end">
             <a href="/admin/export.csv?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}" class="back-btn" title="Notes du parcours{% if classe %} pour cette classe{% endif %}, à ouvrir dans un tableur">⬇ Exporter les notes (CSV)</a>
             <a href="/admin/stats?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}" class="back-btn">📊 Statistiques par exercice</a>
+            <a href="/admin/integrite?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}" class="back-btn">🔎 Intégrité</a>
             <a href="/admin/classes" class="back-btn">Classes</a>
             <a href="/catalogue" class="back-btn">Catalogue</a>
         </div>

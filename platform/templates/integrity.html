@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Intégrité — Linux CLI Lab{% endblock %}
+{% block extra_css %}
+.page { max-width:1300px; margin:0 auto; padding:32px 20px 60px; }
+.top { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
+.top h1 { font-size:24px; color:var(--accent-l); }
+.nav { display:flex; gap:8px; flex-wrap:wrap; }
+.btn-link { padding:7px 14px; border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; background:var(--card); }
+.btn-link:hover { border-color:var(--accent); text-decoration:none; }
+.tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+.tabs a { padding:8px 16px; border:1px solid var(--border); border-radius:8px; color:var(--dim); font-size:13px; }
+.tabs a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+.tabs a:hover { text-decoration:none; }
+.help { color:var(--dim); font-size:13px; line-height:1.6; margin-bottom:18px; }
+.help b { color:var(--text); }
+.block { background:var(--bg2); border:1px solid var(--border); border-radius:12px; margin-bottom:16px; overflow:hidden; }
+.block h2 { font-size:14px; padding:12px 16px; background:var(--card); border-bottom:1px solid var(--border); }
+.block h2 .n { color:var(--dim); font-weight:400; margin-left:6px; }
+.block .explain { padding:10px 16px 0; color:var(--dim); font-size:12.5px; line-height:1.5; }
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--dim); padding:8px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+td { padding:9px 12px; border-bottom:1px solid var(--border); font-size:13px; vertical-align:top; }
+tr:last-child td { border-bottom:none; }
+.id { color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:12px; white-space:nowrap; }
+.cmd { font-family:'JetBrains Mono',monospace; font-size:12px; white-space:pre-wrap; word-break:break-all; background:var(--bg); border-radius:6px; padding:4px 8px; margin:2px 0; max-height:160px; overflow:auto; display:block; }
+.none { color:var(--dim); padding:12px 16px; font-size:13px; }
+select { padding:7px 10px; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:8px; }
+{% endblock %}
+{% block body %}
+<div class="page">
+    <div class="top">
+        <h1>🔎 Intégrité : signaux à examiner</h1>
+        <div class="nav">
+            <a class="btn-link" href="/dashboard?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}">Tableau de bord</a>
+            <a class="btn-link" href="/admin/stats?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}">Statistiques</a>
+            <a class="btn-link" href="/admin/classes">Classes</a>
+        </div>
+    </div>
+    <nav class="tabs">
+        {% for c in courses %}<a href="/admin/integrite?course={{ c.key }}{% if classe %}&classe={{ classe }}{% endif %}" class="{% if c.key == course.key %}active{% endif %}">{{ c.title }}</a>{% endfor %}
+        <form method="get" action="/admin/integrite" style="margin-left:auto; display:flex; gap:8px; align-items:center">
+            <input type="hidden" name="course" value="{{ course.key }}">
+            <label for="classe" style="font-size:13px; color:var(--dim)">Classe</label>
+            <select id="classe" name="classe" onchange="this.form.submit()">
+                <option value="0">Toutes les classes</option>
+                {% for cl in classes %}<option value="{{ cl.id }}" {% if cl.id == classe %}selected{% endif %}>{{ cl.name }}</option>{% endfor %}
+            </select>
+        </form>
+    </nav>
+    <p class="help">
+        Ces signaux sont des <b>indices à vérifier, jamais des preuves</b> : un élève rapide ou qui a préparé sa commande
+        n'a pas forcément triché. Ils s'appuient sur les réussites et sur la saisie dans le terminal web (les commandes
+        tapées et les blocs <b>collés</b>), conservée {{ retention }} jours ; les élèves en sont informés sur la page du labo.
+        Les exercices faits dans l'éditeur de code (Jest, Dockerfile…) ne sont pas couverts par la saisie du terminal.
+    </p>
+
+    <div class="block">
+        <h2>Commandes identiques entre élèves<span class="n">({{ data.similar|length }})</span></h2>
+        <p class="explain">Paires d'élèves qui ont saisi au moins deux mêmes commandes longues (25 caractères ou plus), absentes du cours, des tickets et des indices, et utilisées par 2 ou 3 élèves seulement.</p>
+        {% if data.similar %}<div class="table-wrap"><table>
+            <thead><tr><th>Élèves</th><th>Commandes communes</th><th>Exemples</th></tr></thead>
+            <tbody>{% for p in data.similar %}<tr>
+                <td>{{ p.users[0] }}<br>{{ p.users[1] }}</td><td>{{ p.count }}</td>
+                <td>{% for c in p.examples %}<code class="cmd">{{ c }}</code>{% endfor %}</td>
+            </tr>{% endfor %}</tbody>
+        </table></div>{% else %}<p class="none">Aucune paire.</p>{% endif %}
+    </div>
+
+    <div class="block">
+        <h2>Réussites éclair<span class="n">({{ data.rapid|length }})</span></h2>
+        <p class="explain">Exercice réussi en moins de 20 s ou en moins de 20 % du temps médian de la classe, pour un exercice qui prend d'habitude au moins 2 minutes (temps compté depuis la réussite précédente).</p>
+        {% if data.rapid %}<div class="table-wrap"><table>
+            <thead><tr><th>Quand</th><th>Élève</th><th>Exercice</th><th>Temps</th><th>Médiane de la classe</th></tr></thead>
+            <tbody>{% for r in data.rapid %}<tr>
+                <td class="id">{{ r.at | heure }}</td><td>{{ r.user }}</td><td><span class="id">{{ r.exercise }}</span> {{ r.title }}</td>
+                <td>{{ r.seconds }} s</td><td>{{ (r.median / 60) | round(1) }} min</td>
+            </tr>{% endfor %}</tbody>
+        </table></div>{% else %}<p class="none">Aucune.</p>{% endif %}
+    </div>
+
+    <div class="block">
+        <h2>Rafales de réussites<span class="n">({{ data.bursts|length }})</span></h2>
+        <p class="explain">Au moins 5 exercices réussis en 3 minutes.</p>
+        {% if data.bursts %}<div class="table-wrap"><table>
+            <thead><tr><th>Quand</th><th>Élève</th><th>Exercices</th></tr></thead>
+            <tbody>{% for b in data.bursts %}<tr>
+                <td class="id">{{ b.start | heure }} → {{ b.end | heure }}</td><td>{{ b.user }}</td>
+                <td>{{ b.count }} : <span class="id">{{ b.exercises | join(", ") }}</span></td>
+            </tr>{% endfor %}</tbody>
+        </table></div>{% else %}<p class="none">Aucune.</p>{% endif %}
+    </div>
+
+    <div class="block">
+        <h2>Collages dans le terminal<span class="n">({{ data.pastes|length }})</span></h2>
+        <p class="explain">Blocs de texte de 40 caractères ou plus collés d'un coup, avec les exercices réussis dans les 3 minutes qui suivent. Coller une commande du cours est normal : regardez surtout les longs blocs suivis d'une réussite.</p>
+        {% if data.pastes %}<div class="table-wrap"><table>
+            <thead><tr><th>Quand</th><th>Élève</th><th>Texte collé</th><th>Réussi ensuite</th></tr></thead>
+            <tbody>{% for p in data.pastes %}<tr>
+                <td class="id">{{ p.at | heure }}</td><td>{{ p.user }}</td><td><code class="cmd">{{ p.text }}</code></td>
+                <td class="id">{{ p.then | join(", ") or "—" }}</td>
+            </tr>{% endfor %}</tbody>
+        </table></div>{% else %}<p class="none">Aucun.</p>{% endif %}
+    </div>
+</div>
+{% endblock %}

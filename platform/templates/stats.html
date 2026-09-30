@@ -40,6 +40,7 @@ select { padding:7px 10px; background:var(--card); color:var(--text); border:1px
         <h1>📊 Statistiques par exercice</h1>
         <div class="nav">
             <a class="btn-link" href="/dashboard?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}">Tableau de bord</a>
+            <a class="btn-link" href="/admin/integrite?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}">Intégrité</a>
             <a class="btn-link" href="/admin/classes">Classes</a>
         </div>
     </div>

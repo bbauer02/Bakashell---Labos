@@ -376,3 +376,57 @@ def test_qcm_une_tentative_et_points(app_client, monkeypatch):
     assert r2["score"] == 3
     assert app_client.get("/api/linux/step/1").json()["quiz"]["done"] == [3, 4]
     assert app_client.get("/api/linux/quiz/2").status_code == 404  # pas de QCM pour cette étape
+
+
+def test_mode_epreuve_sans_correction(app_client, fake_docker, monkeypatch):
+    monkeypatch.setitem(LINUX, "exam", True)
+    student_in_class(app_client)
+    login(app_client, "ada@lab.test", "motdepasse1")
+    fake_docker.passing.add(FIRST)
+    assert app_client.post(f"/api/linux/validate/1?exercise={FIRST}").json()["validation"]["results"][0]["passed"]
+    assert app_client.get("/api/linux/step/1").json()["exam"] is True
+    assert app_client.get(f"/api/solution/{FIRST}").status_code == 403  # même après réussite
+    admin_client(app_client)
+    assert app_client.get(f"/api/solution/{FIRST}").status_code == 200
+
+
+# ─── Suivi d'intégrité ──────────────────────────────────────────────────
+
+def test_saisie_terminal_lignes_et_collages():
+    from app.integrity import InputRecorder
+    saved = []
+    rec = InputRecorder(lambda kind, text: saved.append((kind, text)))
+    for ch in "lss\x7f -la\x1b[A\r":  # frappe caractère par caractère, retour arrière, flèche
+        rec.feed(ch)
+    rec.feed("cat /etc/passwd | cut -d: -f1 | sort\r")  # collé d'un coup
+    assert saved == [("ligne", "ls -la"), ("collage", "cat /etc/passwd | cut -d: -f1 | sort"),
+                     ("ligne", "cat /etc/passwd | cut -d: -f1 | sort")]
+
+
+def test_rapport_d_integrite():
+    from app import integrity
+    names = {1: "Ada", 2: "Bob", 3: "Cyd", 4: "Dan"}
+    ids = [ex["id"] for s in LINUX["steps"].values() for ex in s["exercises"]]
+    comp = []
+    for uid in (1, 2, 3):  # trois élèves « normaux » : 5 min par exercice
+        comp += [(uid, ids[i], 1000 + 300 * i) for i in range(4)]
+    comp += [(4, ids[i], 5000 + 10 * i) for i in range(6)]  # Dan : 6 exercices en 50 s
+    rare = "grep -E '^[a-z]+:x:1[0-9]{3}:' /etc/passwd | cut -d: -f1"
+    logs = [(1, "ligne", rare, 1200), (2, "ligne", rare, 1300), (1, "ligne", rare + " | sort", 1250),
+            (2, "ligne", rare + " | sort", 1350), (3, "ligne", "commande du cours bien longue et partagée", 1400),
+            (4, "collage", "x" * 50, 4995)]
+    r = integrity.report(LINUX, names, comp, logs, reference="commande du cours bien longue et partagée")
+    assert {x["user"] for x in r["rapid"]} == {"Dan"}
+    assert r["bursts"] and r["bursts"][0]["user"] == "Dan" and r["bursts"][0]["count"] == 6
+    assert r["pastes"][0]["user"] == "Dan" and r["pastes"][0]["then"]
+    assert len(r["similar"]) == 1 and set(r["similar"][0]["users"]) == {"Ada", "Bob"} and r["similar"][0]["count"] == 2
+
+
+def test_page_integrite(app_client):
+    student_in_class(app_client)
+    login(app_client, "ada@lab.test", "motdepasse1")
+    assert app_client.get("/admin/integrite", follow_redirects=False).status_code == 302
+    db.log_terminal(user_id("ada@lab.test"), "linux", 1, "collage", "echo " + "a" * 60)
+    admin_client(app_client)
+    page = app_client.get("/admin/integrite?course=linux")
+    assert page.status_code == 200 and "Collages dans le terminal" in page.text and "a" * 60 in page.text
