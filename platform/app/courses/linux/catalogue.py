@@ -272,8 +272,38 @@ emit SCRIPT "${pn[0]}"
         "setup": r'''
 P=$H/partage-marc
 mkdir -p $P/clients/2024/devis $P/clients/2023 $P/fournisseurs
-echo "Grille tarifaire clients 2025" > $P/clients/tarifs.txt
+# 2.3 : Marc n'a pas toujours rangé la grille tarifaire au même endroit (variante tirée au sort)
+v=${LAB_VARIANTE_2_3:-$((RANDOM % 4))}
+rm -f $P/tarifs.txt $P/clients/tarifs.txt $P/clients/2023/tarifs.txt $P/clients/2024/tarifs.txt
+t=(clients/tarifs.txt clients/2024/tarifs.txt tarifs.txt clients/2023/tarifs.txt)
+echo "Grille tarifaire clients 2025" > $P/${t[v]}
+emit TARIFS "$P/${t[v]}"
 echo "Devis n°2024-017 - Club alpin de Grenoble" > $P/clients/2024/devis/devis-017.txt
+# 2.4 : le chemin du vieux script de Marc (variante tirée au sort)
+v=${LAB_VARIANTE_2_4:-$((RANDOM % 4))}
+cs=(clients/2024/../.. clients/2024/devis/../../2023 fournisseurs/../clients/./2024/.. clients/../fournisseurs/altitude-pro/..)
+abs=($P $P/clients/2023 $P/clients $P/fournisseurs)
+printf '#!/bin/bash\n# Sauvegarde des devis (script de Marc)\ncd ~/partage-marc/%s || exit 1\ntar -czf /tmp/sauvegarde-devis.tar.gz .\n' "${cs[v]}" > $P/vieux-script.sh
+emit ABS "${abs[v]}"
+# 2.2 : la question sur ls (variante tirée au sort)
+v=${LAB_VARIANTE_2_2:-$((RANDOM % 4))}
+qs=("les trie par taille, du plus gros au plus petit" "les trie par extension (ce qui suit le dernier point du nom)" "les trie par numéro de version (fichier-2 avant fichier-10)" "ne les trie pas du tout (ordre du dossier)")
+opts=(S X v U); tris=(size extension version none)
+printf 'Question de Léa : quelle option de ls, sans rien d'"'"'autre, affiche les fichiers d'"'"'un dossier mais %s ?\n' "${qs[v]}" > $H/question-man.txt
+chown etudiant:etudiant $H/question-man.txt
+emit OPT "${opts[v]}"
+emit TRI "${tris[v]}"
+# 2.5 : une commande interne du shell, sans page de manuel (variante tirée au sort)
+v=${LAB_VARIANTE_2_5:-$((RANDOM % 4))}
+cmds=(cd type export jobs); bopts=(-P -a -n -l)
+qb=("de cd fait arriver dans le vrai dossier quand on passe par un raccourci (un lien symbolique), au lieu de garder le chemin du raccourci"
+    "de type affiche toutes les définitions d'un nom (alias, fonctions, fichiers du PATH), et pas seulement celle qui sera utilisée"
+    "de export retire une variable de l'environnement transmis aux programmes, sans la supprimer du shell"
+    "de jobs affiche aussi le PID de chaque tâche lancée en arrière-plan")
+printf 'man %s répond « No manual entry for %s ». Ma question : quelle option %s ?\n' "${cmds[v]}" "${cmds[v]}" "${qb[v]}" > $H/question-shell.txt
+chown etudiant:etudiant $H/question-shell.txt
+emit BCMD "${cmds[v]}"
+emit BOPT "${bopts[v]}"
 # 2.9 : le catalogue fournisseur à atteindre est tiré au sort
 fr=(altitude-pro sentiers-diffusion montagne-equip)
 for x in "${fr[@]}"; do mkdir -p $P/fournisseurs/$x; for j in 1 2 3 4; do echo "Catalogue $x n°$j" > $P/fournisseurs/$x/catalogue-$j.txt; done; done
@@ -318,38 +348,38 @@ emit LOT "$lot"
                  (r'''l=$(grep -v '^[[:space:]]*$' $H/doc-install.txt | head -n1); [[ $l =~ [[:space:]](-[a-zA-Z]*p[a-zA-Z]*|--parents)([[:space:]]|$) ]]''', "Telle quelle, cette commande échouerait sur un poste où ~/projets/boutique n'existe pas encore."),
              ]},
             {"id": "2.2", "points": 3, "title": "Question piège",
-             "ticket": {"from": "lea", "body": "Petit test, comme en entretien d'embauche 😉 : quelle option de <code>ls</code> trie les fichiers <strong>par taille</strong> ? Interdit de chercher sur Internet, la réponse est dans le manuel."},
-             "desc": "L'option (ex. <code>-x</code>) dans <code>~/reponse-man.txt</code>.",
-             "hints": ["Ouvrez le manuel de <code>ls</code> et utilisez sa recherche : <kbd>/</kbd> suivi d'un mot anglais, puis <kbd>n</kbd> pour l'occurrence suivante.",
-                       "Le mot à chercher est <em>size</em> ; l'option est une lettre majuscule."],
+             "ticket": {"from": "lea", "body": "Petit test, comme en entretien d'embauche 😉 : je t'ai laissé une question sur <code>ls</code> dans <code>~/question-man.txt</code>. Interdit de chercher sur Internet, la réponse est dans le manuel."},
+             "desc": "L'option de <code>ls</code> demandée dans <code>~/question-man.txt</code> (ex. <code>-x</code>) dans <code>~/reponse-man.txt</code>.",
+             "hints": ["Ouvrez le manuel de <code>ls</code> et utilisez sa recherche : <kbd>/</kbd> suivi d'un mot anglais de la question (<em>size</em>, <em>extension</em>, <em>version</em>, <em>sort</em>…), puis <kbd>n</kbd> pour l'occurrence suivante.",
+                       "Chaque option est décrite en une ligne sous son nom. Attention à la casse : <code>-s</code> et <code>-S</code>, par exemple, ne font pas du tout la même chose."],
              "checks": [
-                 ('a=$(ans $H/reponse-man.txt); [ "$a" = "-S" ] || [ "$a" = "S" ] || [ "$a" = "--sort=size" ]', "Ce n'est pas la bonne option (ou le fichier est absent)."),
+                 ('a=$(ans $H/reponse-man.txt); [ -n "$LAB_OPT" ] && { [ "$a" = "-$LAB_OPT" ] || [ "$a" = "$LAB_OPT" ] || [ "$a" = "--sort=$LAB_TRI" ]; }', "Ce n'est pas l'option demandée dans ~/question-man.txt (ou ~/reponse-man.txt est absent)."),
              ]},
             {"id": "2.3", "points": 4, "title": "Le stagiaire est perdu",
-             "ticket": {"from": "julien", "body": "Bonjour, désolé de déranger… Je suis dans <code>~/partage-marc/clients/2024/devis</code> et je dois ouvrir <code>tarifs.txt</code>, qui est dans le dossier <code>clients</code>. Mais je ne sais pas quel chemin taper sans repartir de la racine. Tu peux m'aider ?"},
-             "desc": "Le <strong>chemin relatif</strong> vers <code>tarifs.txt</code> depuis <code>devis</code>, dans <code>~/chemin-relatif.txt</code>. Testez-le avec <code>cd ~/partage-marc/clients/2024/devis &amp;&amp; cat &lt;votre chemin&gt;</code>.",
-             "hints": ["Chaque <code>..</code> remonte d'un dossier : comptez combien de niveaux séparent <code>devis</code> de <code>clients</code>.",
+             "ticket": {"from": "julien", "body": "Bonjour, désolé de déranger… Je suis dans <code>~/partage-marc/clients/2024/devis</code> et je dois ouvrir <code>tarifs.txt</code>, que Marc a rangé ailleurs dans <code>~/partage-marc</code>. Mais je ne sais pas quel chemin taper sans repartir de la racine. Tu peux m'aider ?"},
+             "desc": "Le <strong>chemin relatif</strong> vers <code>tarifs.txt</code> (rangé quelque part dans <code>~/partage-marc</code>) depuis <code>devis</code>, dans <code>~/chemin-relatif.txt</code>. Testez-le avec <code>cd ~/partage-marc/clients/2024/devis &amp;&amp; cat &lt;votre chemin&gt;</code>.",
+             "hints": ["Repérez d'abord où se trouve <code>tarifs.txt</code> (<code>ls -R ~/partage-marc</code>, ou <code>find</code> si vous le connaissez). Ensuite, chaque <code>..</code> remonte d'un dossier : comptez combien de niveaux il faut remonter depuis <code>devis</code>, puis redescendez si besoin.",
                        "Testez votre chemin avec <code>cat</code> depuis <code>devis</code> avant de l'écrire dans le fichier."],
              "checks": [
                  (r'''a=$(head -n1 $H/chemin-relatif.txt 2>/dev/null | tr -d '[:space:]'); [ -n "$a" ] && case $a in /*|"~"*) exit 1;; esac''', "Le chemin doit être relatif : il ne commence ni par / ni par ~ (ou le fichier est absent ou vide)."),
-                 (r'''a=$(head -n1 $H/chemin-relatif.txt | tr -d '[:space:]'); cd $H/partage-marc/clients/2024/devis && [ "$(readlink -f -- "$a")" = $H/partage-marc/clients/tarifs.txt ]''', "Depuis le dossier devis, ce chemin ne mène pas à tarifs.txt."),
+                 (r'''a=$(head -n1 $H/chemin-relatif.txt | tr -d '[:space:]'); cd $H/partage-marc/clients/2024/devis && [ -n "$LAB_TARIFS" ] && [ "$(readlink -f -- "$a")" = "$LAB_TARIFS" ]''', "Depuis le dossier devis, ce chemin ne mène pas à tarifs.txt."),
              ]},
             {"id": "2.4", "points": 3, "title": "Le script mystérieux de Marc",
-             "ticket": {"from": "julien", "body": "Encore moi ! Un vieux script de Marc utilise le chemin <code>~/partage-marc/clients/2024/../..</code>. Je n'y comprends rien : il désigne quel dossier, en vrai ?"},
-             "desc": "Le <strong>chemin absolu</strong> de ce dossier (sans <code>~</code>) dans <code>~/chemin-absolu.txt</code>.",
-             "hints": ["<code>..</code> désigne le dossier parent : lisez le chemin de gauche à droite en remontant d'un cran à chaque <code>..</code>.",
-                       "Ou laissez le shell faire le calcul : allez-y avec <code>cd</code>, puis demandez-lui où vous êtes."],
+             "ticket": {"from": "julien", "body": "Encore moi ! Un vieux script de Marc, <code>~/partage-marc/vieux-script.sh</code>, commence par un <code>cd</code> vers un chemin plein de <code>..</code>. Je n'y comprends rien : il désigne quel dossier, en vrai ?"},
+             "desc": "Le <strong>chemin absolu</strong> (sans <code>~</code>) du dossier où mène le <code>cd</code> de <code>~/partage-marc/vieux-script.sh</code>, dans <code>~/chemin-absolu.txt</code>.",
+             "hints": ["<code>..</code> désigne le dossier parent et <code>.</code> le dossier courant : lisez le chemin de gauche à droite, en remontant d'un cran à chaque <code>..</code>.",
+                       "Ou laissez le shell faire le calcul : allez-y avec <code>cd</code> (le même chemin que dans le script), puis demandez-lui où vous êtes."],
              "checks": [
-                 ('a=$(ans $H/chemin-absolu.txt); a=${a%/}; [ "$a" = "/home/etudiant/partage-marc" ]', "Ce n'est pas le bon chemin absolu (il doit commencer par /)."),
+                 ('a=$(ans $H/chemin-absolu.txt); a=${a%/}; [ -n "$LAB_ABS" ] && [ "$a" = "$LAB_ABS" ]', "Ce n'est pas le chemin absolu du dossier où mène le cd du script (il doit commencer par /)."),
              ]},
-            {"id": "2.5", "points": 5, "title": "« No manual entry for cd »",
-             "ticket": {"from": "julien", "body": "J'ai tapé <code>man cd</code> et il me répond « No manual entry for cd ». Cette commande n'a pas de doc ? En fait, je voudrais savoir quelle option de <code>cd</code> fait arriver dans le <strong>vrai</strong> dossier quand on passe par un raccourci (un lien symbolique), au lieu de garder le chemin du raccourci."},
-             "desc": "Dans <code>~/cd-type.txt</code>, la réponse du shell quand on lui demande ce qu'est <code>cd</code> ; dans <code>~/cd-option.txt</code>, l'option de <code>cd</code> demandée (par exemple <code>-x</code>).",
+            {"id": "2.5", "points": 5, "title": "« No manual entry »",
+             "ticket": {"from": "julien", "body": "J'ai tapé <code>man</code> sur une commande et il me répond « No manual entry ». Cette commande n'a pas de doc ? J'ai noté ma question dans <code>~/question-shell.txt</code>."},
+             "desc": "Dans <code>~/type-commande.txt</code>, la réponse du shell quand on lui demande ce qu'est la commande de la question ; dans <code>~/option-commande.txt</code>, l'option demandée (par exemple <code>-x</code>).",
              "hints": ["Toutes les commandes ne sont pas des programmes installés sur le disque : certaines font partie du shell lui-même et n'ont donc pas de page de manuel à leur nom. Cherchez dans <code>man bash</code> la section consacrée à ces commandes intégrées (<em>builtin</em>).",
-                       "<code>type cd</code> dit ce qu'est <code>cd</code> ; <code>help cd</code> affiche sa documentation."],
+                       "<code>type</code> suivi du nom de la commande dit ce qu'elle est ; <code>help</code> suivi du même nom affiche sa documentation."],
              "checks": [
-                 ('grep -qi builtin $H/cd-type.txt', "~/cd-type.txt ne contient pas la réponse du shell à la question « qu'est-ce que cd ? »."),
-                 ('[ "$(ans $H/cd-option.txt)" = "-P" ]', "~/cd-option.txt ne contient pas l'option qui suit la structure physique des dossiers."),
+                 ('grep -qi builtin $H/type-commande.txt && grep -qw -- "$LAB_BCMD" $H/type-commande.txt', "~/type-commande.txt ne contient pas la réponse du shell à la question « qu'est-ce que cette commande ? »."),
+                 ('[ -n "$LAB_BOPT" ] && [ "$(ans $H/option-commande.txt)" = "$LAB_BOPT" ]', "~/option-commande.txt ne contient pas l'option demandée dans ~/question-shell.txt."),
              ]},
             {"id": "2.6", "points": 4, "title": "Le rapport le plus récent",
              "ticket": {"from": "sophie", "body": "Marc rendait ses rapports dans <code>/opt/rapports-marc</code>, mais ses noms de fichiers ne veulent rien dire : il y a même un « DEFINITIF » et un « final-v2 ». Je veux celui qu'il a modifié <strong>en dernier</strong>."},
@@ -556,12 +586,16 @@ for i in $(seq 1 $nr); do mkdir -p $V/releases/r$i; echo "<h1>Release $i</h1>" >
 ln -s $V/releases/$act $V/current
 chown -hR etudiant:etudiant $V
 emit REL "$act"
-# 4.7 : la bascule ratée de Julien (ln -sf sur un lien vers un dossier)
+# 4.7 : la bascule ratée de Julien (ln -sf sur un lien vers un dossier) ; releases tirées au sort
+v=${LAB_VARIANTE_4_7:-$((RANDOM % 4))}
+anc=(r2 r3 r4 r1); nouv=(r3 r4 r1 r2)
 D=$H/deploi
-rm -rf $D; mkdir -p $D/releases/r1 $D/releases/r2 $D/releases/r3
-for i in 1 2 3; do echo "version $i" > $D/releases/r$i/VERSION; done
-cd $D; ln -s releases/r2 current; ln -sf releases/r3 current; cd /
+rm -rf $D; mkdir -p $D/releases/r1 $D/releases/r2 $D/releases/r3 $D/releases/r4
+for i in 1 2 3 4; do echo "version $i" > $D/releases/r$i/VERSION; done
+printf 'Release à mettre en production : %s\n' "${nouv[v]}" > $D/A-DEPLOYER
+cd $D; ln -s releases/${anc[v]} current; ln -sf releases/${nouv[v]} current; cd /
 chown -hR etudiant:etudiant $D
+emit DEPLOI "${nouv[v]}"
 # 4.8 : un fichier supprimé, mais un lien dur de secours caché quelque part
 G=$H/grilles; C=$H/.cache/sauvegardes-auto
 rm -rf $G $C; mkdir -p $G
@@ -646,14 +680,14 @@ emit FINAL "$fin"
                  ('t=$(mktemp -d); cp -a $H/site-v1 $t/; [ "$(readlink -f $t/site-v1/current)" = "$t/site-v1/releases/$LAB_REL" ]; r=$?; rm -rf $t; exit $r', "Si le dossier site-v1 est déplacé, current ne mène plus à la release en production."),
              ]},
             {"id": "4.7", "points": 5, "title": "À quoi sert -n ?",
-             "ticket": {"from": "lea", "body": "Julien a voulu basculer <code>~/deploi/current</code> de r2 vers r3 avec <code>ln -sf releases/r3 current</code>. Résultat : <code>current</code> pointe toujours vers r2, et un lien bizarre est apparu <strong>dans</strong> r2. Bascule proprement sur r3 et fais le ménage."},
-             "desc": "<code>~/deploi/current</code> est un lien symbolique vers <code>releases/r3</code>, et aucun lien parasite ne traîne dans <code>~/deploi/releases</code>.",
+             "ticket": {"from": "lea", "body": "Julien a voulu basculer <code>~/deploi/current</code> sur la release notée dans <code>~/deploi/A-DEPLOYER</code>, avec <code>ln -sf releases/… current</code>. Résultat : <code>current</code> pointe toujours vers l'ancienne release, et un lien bizarre est apparu <strong>dans</strong> celle-ci. Bascule proprement et fais le ménage."},
+             "desc": "<code>~/deploi/current</code> est un lien symbolique vers la release notée dans <code>~/deploi/A-DEPLOYER</code>, et aucun lien parasite ne traîne dans <code>~/deploi/releases</code>.",
              "hints": ["Quand le nom de destination est un lien vers un <strong>dossier</strong>, <code>ln</code> le traite comme ce dossier et crée le nouveau lien à l'intérieur. Une option de <code>ln</code> lui demande de traiter ce lien comme un simple fichier : cherchez-la dans <code>man ln</code>.",
-                       "Ajoutez <code>-n</code> à <code>-sf</code> pour remplacer le lien lui-même, puis supprimez le lien parasite avec <code>rm</code> (sans <code>-r</code> : c'est un lien, pas un dossier)."],
+                       "Ajoutez <code>-n</code> à <code>-sf</code> pour remplacer le lien lui-même, puis cherchez le lien parasite (<code>find ~/deploi/releases -type l</code>) et supprimez-le avec <code>rm</code> (sans <code>-r</code> : c'est un lien, pas un dossier)."],
              "checks": [
-                 ('test -L $H/deploi/current && [ "$(readlink -f $H/deploi/current)" = "$H/deploi/releases/r3" ]', "~/deploi/current ne pointe pas vers releases/r3."),
+                 ('[ -n "$LAB_DEPLOI" ] && test -L $H/deploi/current && [ "$(readlink -f $H/deploi/current)" = "$H/deploi/releases/$LAB_DEPLOI" ]', "~/deploi/current ne pointe pas vers la release notée dans ~/deploi/A-DEPLOYER."),
                  ('[ -z "$(find $H/deploi/releases -type l)" ]', "Il reste un lien parasite dans ~/deploi/releases."),
-                 ('for r in r1 r2 r3; do test -d $H/deploi/releases/$r && test ! -L $H/deploi/releases/$r || exit 1; done', "Une des releases a disparu : seul le lien parasite devait partir."),
+                 ('for r in r1 r2 r3 r4; do test -d $H/deploi/releases/$r && test ! -L $H/deploi/releases/$r || exit 1; done', "Une des releases a disparu : seul le lien parasite devait partir."),
              ]},
             {"id": "4.8", "points": 5, "title": "Le fichier supprimé qui existe encore",
              "ticket": {"from": "diallo", "body": "J'ai supprimé <code>~/grilles/grille.csv</code> par erreur ! Léa dit que Marc faisait toujours un lien dur de secours, caché quelque part dans ton dossier personnel, et il avait noté le numéro d'inode dans <code>~/grilles/LISEZ-MOI</code>. Remets <code>grille.csv</code> en place, et surtout pas avec une copie : je veux le fichier d'origine."},
@@ -717,6 +751,11 @@ rm -rf $E; mkdir -p $E/anciens.conf
 echo "port=8443" > $E/boutique.conf
 echo "passerelle=banque-populaire" > $E/paiement.conf
 echo "Archives des anciennes configurations" > $E/anciens.conf/LISEZMOI.txt
+# des modules ajoutés au fil du temps, et un raccourci en .conf (variante tirée au sort)
+v=${LAB_VARIANTE_5_1:-$((RANDOM % 4))}
+mods=(stock livraison fidelite newsletter)
+for i in $(seq 0 $v); do echo "actif=oui" > $E/module-${mods[i]}.conf; done
+if [ $((v % 2)) = 0 ]; then ln -s boutique.conf $E/actif.conf; else mkdir -p $E/modeles.conf; fi
 chmod -R a+rX $E
 # 5.8 : des médias de toutes les tailles, autour de 1 Mio
 M=/srv/medias
@@ -854,6 +893,20 @@ mapfile -t ordre < <({ for i in $(seq 1 $nok); do echo O; done; for i in $(seq 1
   done; } > /usr/local/bin/compteur
 chmod 755 /usr/local/bin/compteur
 emit NERRC "$nerr"
+# 6.1 : des marqueurs d'audit cachés dans /etc (leur nombre est tiré au sort)
+rm -f /etc/.audit-cimes-*
+v=${LAB_VARIANTE_6_1:-$((RANDOM % 4))}
+for i in $(seq 0 $v); do echo "audit $i" > /etc/.audit-cimes-$i; chmod 644 /etc/.audit-cimes-$i; done
+# 6.6 : des relevés d'audit sous /etc (leur nombre est tiré au sort)
+rm -rf /etc/cimes-audit
+v=${LAB_VARIANTE_6_6:-$((RANDOM % 4))}
+mkdir -p /etc/cimes-audit
+for i in $(seq 0 $((3 * v + 1))); do echo "relevé $i" > /etc/cimes-audit/releve-$i.txt; done
+chmod -R a+rX /etc/cimes-audit
+# 6.4 : les outils maison installés dans /usr/bin (leur nombre est tiré au sort)
+rm -f /usr/bin/cimes-outil-*
+v=${LAB_VARIANTE_6_4:-$((RANDOM % 4))}
+for i in $(seq 0 $v); do printf '#!/bin/sh\necho "Outil maison %s de Cimes & Sentiers"\n' $i > /usr/bin/cimes-outil-$i; chmod 755 /usr/bin/cimes-outil-$i; done
 mkdir -p $H/texte
 # 6.5 et 6.9 : des badges, noms répétés dans le désordre
 mapfile -t gens < <(shuf -n 8 -e alice.martin bruno.petit chloe.roux david.leroy emma.blanc farid.nasri gael.morin hugo.faure ines.garnier jules.moreau)
@@ -1080,6 +1133,11 @@ own $H/config
         "description": "Décrire précisément ce que l'on cherche : ancres, classes, répétitions, alternatives, captures.",
         "lesson": r"""<h3>Syntaxe</h3><table class="lesson-table"><tr><th>Motif</th><th>Signification</th></tr><tr><td><code>.</code></td><td>N'importe quel caractère (un seul)</td></tr><tr><td><code>^</code> / <code>$</code></td><td>Début / fin de ligne</td></tr><tr><td><code>*</code></td><td>0 fois ou plus l'élément précédent</td></tr><tr><td><code>+</code> / <code>?</code></td><td>1 fois ou plus / 0 ou 1 fois (syntaxe étendue : <code>grep -E</code>, <code>sed -E</code>)</td></tr><tr><td><code>{2}</code>, <code>{2,}</code>, <code>{2,5}</code></td><td>Exactement 2 / au moins 2 / de 2 à 5 fois (syntaxe étendue)</td></tr><tr><td><code>[abc]</code> / <code>[^abc]</code></td><td>Un caractère parmi / hors de la liste</td></tr><tr><td><code>[a-z0-9]</code></td><td>Plages de caractères</td></tr><tr><td><code>[[:space:]]</code></td><td>Un caractère blanc : espace, tabulation… (<code>\s</code> est un raccourci propre à GNU)</td></tr><tr><td><code>\.</code></td><td>Un vrai point</td></tr><tr><td><code>(a|b)</code></td><td>a ou b (syntaxe étendue)</td></tr></table><div class="tip">Sans <code>-E</code>, grep et sed utilisent la syntaxe « de base », où <code>+</code>, <code>?</code>, <code>{</code>, <code>(</code> et <code>|</code> sont des caractères ordinaires.</div><h3>Avec grep</h3><pre>grep '^#' f                  # lignes qui commencent par #<br>grep -v '^$' f               # lignes non vides (-v inverse la sélection)<br>grep -E '^[0-9]{5}$' f       # lignes qui ne sont qu'un code postal<br>grep -oE '[0-9]+' f          # -o : n'affiche que les morceaux qui correspondent</pre><h3>Avec sed</h3><pre>sed 's/[0-9]/#/g' f          # chaque chiffre devient #<br>sed '/^$/d' f                # supprime les lignes vides<br>sed -E 's/([a-z]+)@/\1 at /' f   # (…) capture, \1 réutilise ce qui a été capturé</pre>""",
         "setup": r'''
+# 8.1 : des comptes de service propres à ce serveur (variante tirée au sort)
+for u in rapports sonde relais stock supervision scanner reporting synchro; do userdel "$u" >/dev/null 2>&1 || true; done
+v=${LAB_VARIANTE_8_1:-$((RANDOM % 4))}
+case $v in 0) svc="rapports sonde" ;; 1) svc="relais stock supervision" ;; 2) svc="scanner" ;; 3) svc="reporting synchro" ;; esac
+for u in $svc; do useradd -r -M -d /nonexistent -s /usr/sbin/nologin "$u"; done
 mkdir -p $H/regex
 prenoms=(alice bruno chloe david emma farid gael hugo ines jules)
 doms=(exemple.fr societe.com univ-lyon.fr mail.org)
@@ -1208,6 +1266,16 @@ own $H/regex
         "description": "Analyser des données avec sort, uniq, cut, awk et tr : filtres, comptages, sommes, agrégats.",
         "lesson": r"""<h3>sort &amp; uniq</h3><pre>sort f                 # trier<br>sort f | uniq -c       # compter les lignes identiques (entrée triée !)<br>sort -rn               # tri numérique décroissant<br>sort -t';' -k3 -n f    # trier sur le 3e champ, séparateur ;</pre><h3>cut</h3><pre>cut -d: -f1 /etc/group     # 1er champ, séparateur :<br>tail -n +2 f               # tout sauf la 1re ligne (un en-tête, par exemple)</pre><h3>awk</h3><p>awk découpe chaque ligne en champs <code>$1</code>, <code>$2</code>… (séparateur : les espaces, ou celui donné par <code>-F</code>). <code>NF</code> est le nombre de champs, <code>NR</code> le numéro de ligne.</p><pre>awk '{print $1}' f                       # 1re colonne<br>awk -F: '$4 == 0 {print $1}' /etc/passwd # condition sur un champ, puis action<br>awk '$2 &gt; 100 &amp;&amp; $3 != "OK"' f          # conditions combinées (sans action : affiche la ligne)<br>awk '$1 ~ /^srv/' f                      # ~ : le champ correspond à une regex (!~ : ne correspond pas)</pre><p>awk sait aussi calculer : une variable s'additionne ligne après ligne (<code>s += $2</code>), et le bloc <code>END { … }</code> s'exécute après la dernière ligne. Un tableau peut être indexé par un texte : <code>n[$1]++</code> compte les lignes pour chaque valeur du 1<sup>er</sup> champ.</p><h3>tr</h3><pre>echo "bonjour" | tr 'a-z' 'A-Z'    # remplace caractère par caractère<br>tr -d ',' &lt; f                      # supprime des caractères</pre><h3>Le « top » classique</h3><pre>awk '{print $7}' access.log | sort | uniq -c | sort -rn | head -3    # les 3 pages les plus demandées</pre><div class="tip">Format du journal d'accès : <code>IP - - [jour/mois/année:heure:min:s +0100] "GET /page HTTP/1.1" CODE TAILLE</code>. Avec le séparateur par défaut, l'IP est le 1<sup>er</sup> champ, la page le 7<sup>e</sup>, le code HTTP le 9<sup>e</sup> et la taille le 10<sup>e</sup>.</div>""",
         "setup": r'''
+# 9.1 : des comptes de bornes et d'impression, avec des shells variés (variante tirée au sort)
+for u in imprim kiosque borne1 borne2 borne3 ftpdepot mailrelay; do userdel "$u" >/dev/null 2>&1 || true; done
+v=${LAB_VARIANTE_9_1:-$((RANDOM % 4))}
+case $v in
+  0) cpt="imprim:/bin/sh" ;;
+  1) cpt="ftpdepot:/bin/false mailrelay:/bin/false" ;;
+  2) cpt="kiosque:/bin/dash" ;;
+  3) cpt="borne1:/bin/sh borne2:/usr/sbin/nologin borne3:/bin/sh" ;;
+esac
+for c in $cpt; do useradd -r -M -d /nonexistent -s "${c#*:}" "${c%%:*}"; done
 mkdir -p $H/logs $H/texte
 ips=(); for i in $(seq 1 12); do ips+=("10.0.$i.$((RANDOM % 250 + 2))"); done
 mapfile -t ord < <(printf '%s\n' "${ips[@]}" | shuf)
@@ -1493,6 +1561,15 @@ own $D
         "volatile": True,
         "setup": r'''
 mkuser intrus
+# Variantes tirées à la première ouverture ou à la réinitialisation, conservées après un redémarrage du conteneur
+if first_run 11 || [ ! -f $REF/var-11 ]; then
+  { echo "v2=${LAB_VARIANTE_11_2:-$((RANDOM % 4))}"; echo "v5=${LAB_VARIANTE_11_5:-$((RANDOM % 3))}"; echo "v6=${LAB_VARIANTE_11_6:-$((RANDOM % 3))}"; } > $REF/var-11
+  done_once 11
+fi
+. $REF/var-11
+# 11.2 : le compte qui a lancé rogue-worker
+ru=(intrus prestataire webdev ancien-admin); ru=${ru[v2]}
+mkuser "$ru"
 cat > /usr/local/bin/rogue-worker <<'EOF'
 #!/bin/bash
 trap 'echo "$(date +%T) arrêt propre (signal TERM reçu)" >> /var/log/rogue.log; exit 0' TERM
@@ -1500,32 +1577,54 @@ while true; do sleep 5 & wait $!; done
 EOF
 chmod 755 /usr/local/bin/rogue-worker
 pkill -KILL -x rogue-worker || true
-: > /var/log/rogue.log; chown intrus:intrus /var/log/rogue.log; chmod 644 /var/log/rogue.log
-su -s /bin/bash intrus -c 'setsid /usr/local/bin/rogue-worker >/dev/null 2>&1 < /dev/null &'
-cat > /usr/local/sbin/lab-service <<'EOF'
+: > /var/log/rogue.log; chown "$ru:$ru" /var/log/rogue.log; chmod 644 /var/log/rogue.log
+su -s /bin/bash "$ru" -c 'setsid /usr/local/bin/rogue-worker >/dev/null 2>&1 < /dev/null &'
+# 11.5 : le signal de rechargement, documenté par le service lui-même
+sig=(HUP USR1 USR2); sig=${sig[v5]}
+cat > /usr/local/sbin/lab-service <<EOF
 #!/bin/bash
-trap 'echo "$(date +%T) configuration rechargée" >> /var/log/lab-service.log' HUP
-echo "$(date +%T) démarrage" >> /var/log/lab-service.log
-while true; do sleep 1 & wait $!; done
+# lab-service : service de démonstration de Cimes & Sentiers.
+# « lab-service --aide » affiche la documentation.
+if [ "\${1:-}" = --aide ]; then
+    echo "lab-service : service de démonstration de Cimes & Sentiers."
+    echo "Configuration : /etc/lab-service.conf, relue à chaud à la réception du signal $sig."
+    echo "Tout autre signal l'arrête."
+    exit 0
+fi
+trap 'echo "\$(date +%T) configuration rechargée" >> /var/log/lab-service.log' $sig
+echo "\$(date +%T) démarrage" >> /var/log/lab-service.log
+while true; do sleep 1 & wait \$!; done
 EOF
 chmod 755 /usr/local/sbin/lab-service
+echo "clients_max=200" > /etc/lab-service.conf
 : > /var/log/lab-service.log; chmod 644 /var/log/lab-service.log
 pkill -x lab-service || true
 # pas de nohup : un signal ignoré au démarrage ne peut plus être intercepté par trap
 setsid /usr/local/sbin/lab-service >/dev/null 2>&1 < /dev/null &
-# 11.6 : mineur, relancé en boucle par un processus parent au nom tiré au sort
+# 11.6 : mineur, relancé en boucle par un parent (au nom tiré au sort), par une chaîne de deux processus,
+# ou par une boucle anonyme (variante)
 cat > /usr/local/bin/mineur <<'EOF'
 #!/bin/bash
 while true; do sleep 5 & wait $!; done
 EOF
 chmod 755 /usr/local/bin/mineur
 pkill -KILL -x 'veille-[0-9]{4}' || true
+pkill -KILL -x 'relais-[0-9]{4}' || true
+pkill -KILL -f '^bash -c while true; do /usr/local/bin/mineur' || true
 pkill -KILL -x mineur || true
-rm -f /usr/local/bin/veille-*
-sup=veille-$((RANDOM % 9000 + 1000))
-printf '#!/bin/bash\nwhile true; do /usr/local/bin/mineur; sleep 2; done\n' > /usr/local/bin/$sup
-chmod 755 /usr/local/bin/$sup
-su -s /bin/bash intrus -c "setsid /usr/local/bin/$sup >/dev/null 2>&1 < /dev/null &"
+rm -f /usr/local/bin/veille-* /usr/local/bin/relais-*
+sup=veille-$((RANDOM % 9000 + 1000)); rel=relais-$((RANDOM % 9000 + 1000))
+case $v6 in
+  0) printf '#!/bin/bash\nwhile true; do /usr/local/bin/mineur; sleep 2; done\n' > /usr/local/bin/$sup ;;
+  1) printf '#!/bin/bash\nwhile true; do /usr/local/bin/mineur; sleep 2; done\n' > /usr/local/bin/$rel
+     printf '#!/bin/bash\nwhile true; do /usr/local/bin/%s; sleep 2; done\n' $rel > /usr/local/bin/$sup ;;
+esac
+chmod 755 /usr/local/bin/veille-* /usr/local/bin/relais-* 2>/dev/null || true
+if [ "$v6" = 2 ]; then
+  su -s /bin/bash intrus -c "setsid bash -c 'while true; do /usr/local/bin/mineur; sleep 2; done' >/dev/null 2>&1 < /dev/null &"
+else
+  su -s /bin/bash intrus -c "setsid /usr/local/bin/$sup >/dev/null 2>&1 < /dev/null &"
+fi
 # 11.7 : un export à mettre en pause (attente sans processus enfant)
 cat > /usr/local/bin/export-nuit <<'EOF'
 #!/bin/bash
@@ -1547,8 +1646,10 @@ chown root:root /usr/local/sbin/relance-boutique; chmod 755 /usr/local/sbin/rela
 if [ -e /etc/sudoers.d/thomas ] && ! visudo -cqf /etc/sudoers.d/thomas; then rm -f /etc/sudoers.d/thomas; fi
 sleep 1
 emit PID "$(pgrep -x rogue-worker | head -n1)"
+emit ROGUE_USER "$ru"
 emit SVC_PID "$(pgrep -x lab-service | head -n1)"
-emit SUP "$sup"
+# 11.6 : les processus qui relancent mineur (parent, grand-parent ou boucle anonyme)
+emit SUP_PIDS "$({ pgrep -x "$sup"; pgrep -x "$rel"; pgrep -f '^bash -c while true; do /usr/local/bin/mineur'; } | sort -u | paste -sd' ')"
 emit EXPORT_PID "$(pgrep -x export-nuit | head -n1)"
 ''',
         "exercises": [
@@ -1572,7 +1673,7 @@ emit EXPORT_PID "$(pgrep -x export-nuit | head -n1)"
                  ('[ -n "$LAB_PID" ]', "Le processus de l'exercice n'a pas démarré : rechargez la page."),
                  (r'''[ "$(grep -c '[^[:space:]]' $H/rogue.txt)" -eq 1 ] && [ "$(wc -w < $H/rogue.txt)" -eq 2 ]''', "~/rogue.txt doit contenir une seule ligne de deux mots : le PID, puis l'utilisateur (ex. 1234 bob)."),
                  (r'''read -r p u < <(grep '[^[:space:]]' $H/rogue.txt); [ "$p" = "$LAB_PID" ]''', "Le PID indiqué n'est pas celui de rogue-worker (s'il a redémarré entre-temps, vérifiez son PID actuel)."),
-                 (r'''read -r p u < <(grep '[^[:space:]]' $H/rogue.txt); [ "$u" = intrus ]''', "L'utilisateur indiqué n'est pas celui qui a lancé rogue-worker."),
+                 (r'''read -r p u < <(grep '[^[:space:]]' $H/rogue.txt); [ -n "$LAB_ROGUE_USER" ] && [ "$u" = "$LAB_ROGUE_USER" ]''', "L'utilisateur indiqué n'est pas celui qui a lancé rogue-worker."),
              ]},
             {"id": "11.3", "points": 4, "title": "Arrêter le processus",
              "ticket": {"from": "lea", "body": "Pas de doute, ce <code>rogue-worker</code> n'a rien à faire là. Arrête-le, mais proprement : on lui laisse une chance de se terminer correctement, pas de <code>kill -9</code>."},
@@ -1594,9 +1695,9 @@ emit EXPORT_PID "$(pgrep -x export-nuit | head -n1)"
              ]},
             {"id": "11.5", "points": 4, "title": "Recharger un service",
              "ticket": {"from": "thomas", "body": "J'ai modifié la configuration de <code>lab-service</code>. Il faut qu'il la relise, mais surtout pas de redémarrage : il sert des clients en ce moment même."},
-             "desc": "Le service <code>lab-service</code> (lancé par root) recharge sa configuration quand il reçoit le signal <code>HUP</code>. Faites-le recharger <strong>sans l'arrêter</strong>. Son journal est <code>/var/log/lab-service.log</code>.",
-             "hints": ["Le tableau des signaux donne le nom et le numéro du signal ; <code>kill</code> accepte l'un ou l'autre en option.",
-                       "Le processus appartient à root ; <code>pgrep</code> donne son PID."],
+             "desc": "Le service <code>lab-service</code> (lancé par root) relit sa configuration à chaud quand il reçoit un signal précis : sa documentation (<code>lab-service --aide</code>) dit lequel. Faites-le recharger <strong>sans l'arrêter</strong>. Son journal est <code>/var/log/lab-service.log</code>.",
+             "hints": ["Tous les services ne suivent pas la convention du cours : lisez d'abord la documentation du service. Un signal qu'il n'intercepte pas l'arrêterait.",
+                       "<code>kill</code> accepte le nom du signal en option (<code>kill -l</code> les liste tous) ; le processus appartient à root, et <code>pgrep</code> donne son PID."],
              "checks": [
                  ('[ -n "$LAB_SVC_PID" ] && kill -0 "$LAB_SVC_PID"', "lab-service ne tourne plus : il fallait le recharger, pas l'arrêter (rechargez la page pour le relancer)."),
                  ('grep -q "rechargée" /var/log/lab-service.log', "Le journal n'indique aucun rechargement."),
@@ -1605,10 +1706,10 @@ emit EXPORT_PID "$(pgrep -x export-nuit | head -n1)"
              "ticket": {"from": "lea", "body": "Un processus <code>mineur</code> lancé par intrus mange nos ressources. J'ai beau le tuer, il revient quelques secondes plus tard avec un autre PID ! Débarrasse-nous-en pour de bon."},
              "desc": "Plus aucun processus <code>mineur</code>, ni rien qui le relance ; et cela doit durer.",
              "hints": ["Si un processus revient avec un nouveau PID, c'est que quelqu'un le relance : regardez son processus parent (la colonne PPID de <code>ps</code>, ou l'arbre de <code>pstree -p</code>).",
-                       "<code>ps -o pid,ppid,user,cmd -C mineur</code>, puis <code>ps -p</code> sur le PPID. Arrêtez le parent d'abord, puis l'enfant, avec sudo : ils appartiennent à intrus."],
+                       "<code>ps -o pid,ppid,user,cmd -C mineur</code>, puis <code>ps -o pid,ppid,user,args -p</code> sur le PPID, et ainsi de suite en remontant (le parent peut lui-même être relancé par un autre processus, ou ne pas avoir de nom parlant). Arrêtez tous ceux qui relancent, puis mineur, avec sudo : ils appartiennent à intrus."],
              "checks": [
-                 ('[ -n "$LAB_SUP" ]', "Les processus de l'exercice n'ont pas démarré : rechargez la page."),
-                 ('! pgrep -x mineur >/dev/null && ! pgrep -x "$LAB_SUP" >/dev/null', "mineur tourne encore, ou ce qui le relance est toujours là."),
+                 ('[ -n "$LAB_SUP_PIDS" ]', "Les processus de l'exercice n'ont pas démarré : rechargez la page."),
+                 ('pgrep -x mineur >/dev/null && exit 1; for p in $LAB_SUP_PIDS; do kill -0 "$p" 2>/dev/null && exit 1; done; exit 0', "mineur tourne encore, ou ce qui le relance est toujours là."),
                  ('sleep 3; ! pgrep -x mineur >/dev/null', "mineur est revenu quelques secondes plus tard : quelque chose le relance encore."),
              ]},
             {"id": "11.7", "points": 4, "title": "Mettre en pause",
@@ -1640,9 +1741,26 @@ emit EXPORT_PID "$(pgrep -x export-nuit | head -n1)"
         "description": "Mettre en œuvre utilisateurs, groupes et permissions sur un cas concret, et enquêter sur des droits trop ouverts.",
         "lesson": """<h3>Cas pratique</h3><p>Vous installez Linux pour une famille : <strong>papa</strong>, <strong>maman</strong>, <strong>fils</strong>, <strong>fille</strong>, et un compte <strong>invite</strong>.</p><ul><li>Chacun a un compte avec un dossier <code>Travail</code> et <code>Bazar</code> dans son dossier personnel, qui lui appartiennent.</li><li>Un dossier <code>/home/famille</code> partagé par les 4 membres.</li><li>Un dossier <code>/home/parents-only</code> réservé aux parents.</li><li>L'invité n'a accès à rien de tout ça, ni aux dossiers personnels.</li></ul><div class="tip">Ce sont les <strong>accès réels</strong> qui sont vérifiés (en se connectant en tant que chaque utilisateur), pas seulement les chiffres de <code>chmod</code>.</div><h3>Rappels utiles</h3><ul><li><code>sudo -u carla mkdir /home/carla/Photos</code> crée un dossier au nom de carla ; <code>sudo -u carla ls /srv</code> teste ce que carla peut voir.</li><li>Les droits d'un <strong>nouveau</strong> dossier personnel ne sont pas fixés par <code>useradd</code> lui-même, mais par un réglage de <code>/etc/login.defs</code> : ils dépendent donc de la distribution… et de ce qu'en a fait l'administrateur précédent.</li><li>Pour atteindre un dossier, il faut le droit <code>x</code> sur chaque dossier du chemin ; <code>r</code> ne sert qu'à lister. Un dossier en <code>710</code> se traverse pour les membres de son groupe, sans qu'ils puissent voir ce qu'il contient.</li><li><code>find</code> sait tester les droits avec <code>-perm</code> (voir <code>man find</code>).</li></ul><div class="tip"><strong>Recette</strong> (les boucles seront expliquées au jour 17) : pour répéter une commande sur plusieurs comptes, <code>for u in carla david; do sudo useradd -m -s /bin/bash $u; done</code>.</div>""",
         "setup": r'''
-# Marc avait « ouvert » les dossiers personnels des nouveaux comptes (une seule fois : on ne défait pas une correction)
+# Marc avait « ouvert » les dossiers personnels des nouveaux comptes, d'une façon tirée au sort
+# (une seule fois : on ne défait pas une correction)
 if [ ! -e $REF/homemode-12 ]; then
-  sed -i 's/^HOME_MODE.*/HOME_MODE\t0755/' /etc/login.defs
+  v=${LAB_VARIANTE_12_5:-$((RANDOM % 3))}
+  case $v in
+    0) sed -i 's/^HOME_MODE.*/HOME_MODE\t0755/' /etc/login.defs ;;
+    # sans HOME_MODE, useradd applique la UMASK (022) : dossiers en 755
+    1) sed -i 's/^HOME_MODE.*/#HOME_MODE\t0750   # désactivé par Marc (trop restrictif pour le support)/' /etc/login.defs ;;
+    # une « surcouche » de useradd, placée avant le vrai dans le PATH de root
+    2) cat > /usr/local/sbin/useradd <<'EOF'
+#!/bin/bash
+# Surcouche de useradd (Marc) : dossiers personnels ouverts, « plus pratique pour le support »
+/usr/sbin/useradd "$@" || exit
+for a; do :; done
+h=$(getent passwd "$a" | cut -d: -f6)
+case $h in /home/?*) [ -d "$h" ] && chmod 755 "$h" ;; esac
+exit 0
+EOF
+       chmod 755 /usr/local/sbin/useradd ;;
+  esac
   touch $REF/homemode-12
 fi
 # 12.7 : la copie de l'ancien PC de la famille, avec des droits disparates
@@ -1699,12 +1817,12 @@ find $V -type f -perm -o=r | sort > $REF/ancien-pc-ouverts
              "ticket": {"from": "sophie", "body": "Dernière chose : un compte invité pour la baby-sitter. Il ne doit avoir accès à aucun de nos dossiers, ni communs, ni personnels. Et si je crée d'autres comptes plus tard, je ne veux pas avoir à y repenser à chaque fois."},
              "desc": "Créez <code>invite</code>. Il ne doit pouvoir lister ni <code>/home/famille</code>, ni <code>/home/parents-only</code>, ni le dossier personnel d'aucun membre de la famille. Les comptes créés à l'avenir ne doivent plus avoir un dossier personnel accessible à tous.",
              "hints": ["Testez en vous mettant à la place d'invite : <code>sudo -u invite ls /home/papa</code>. Puis regardez les droits des dossiers personnels avec <code>ls -l /home</code> : ceux de la famille sont-ils comme ceux d'alice ou de bob ?",
-                       "Les droits des nouveaux dossiers personnels viennent du réglage <code>HOME_MODE</code> de <code>/etc/login.defs</code>, que Marc a modifié. Corrigez-le, puis fermez les dossiers déjà créés."],
+                       "Les droits des nouveaux dossiers personnels viennent du réglage <code>HOME_MODE</code> de <code>/etc/login.defs</code> (ou, s'il est absent, de sa <code>UMASK</code>)… à condition que <code>sudo useradd</code> lance bien le vrai useradd (<code>sudo sh -c 'command -v useradd'</code>). Marc a touché à l'un de ces maillons : corrigez-le, puis fermez les dossiers déjà créés."],
              "checks": [
                  ('id invite', "L'utilisateur invite n'existe pas."),
                  ('! run_as invite "ls /home/famille" && ! run_as invite "ls /home/parents-only"', "invite peut lister un dossier familial."),
                  ('for u in papa maman fils fille; do run_as invite "ls /home/$u" && exit 1; done; exit 0', "invite peut lister le dossier personnel d'un membre de la famille."),
-                 (r'''m=$(awk '$1 == "HOME_MODE" { print $2 }' /etc/login.defs); [ -n "$m" ] || m=$(printf '%o' $(( 0777 & ~8#$(awk '$1 == "UMASK" { print $2 }' /etc/login.defs) ))); (( (8#$m & 7) == 0 ))''', "Les prochains comptes créés auraient encore un dossier personnel ouvert aux autres utilisateurs : trouvez le réglage qui fixe les droits des nouveaux dossiers personnels."),
+                 (r'''u=lab-verif-$RANDOM; useradd -m -s /bin/bash "$u" >/dev/null 2>&1; m=$(stat -c %a "/home/$u" 2>/dev/null); userdel -r "$u" >/dev/null 2>&1; [ -n "$m" ] && (( (8#$m & 7) == 0 ))''', "Un compte créé maintenant avec useradd -m aurait encore un dossier personnel ouvert aux autres utilisateurs : trouvez ce qui fixe les droits des nouveaux dossiers personnels."),
              ]},
             {"id": "12.6", "points": 5, "title": "Le Bazar du frère et de la sœur",
              "ticket": {"from": "sophie", "body": "Nouvelle demande des enfants : le fils veut pouvoir fouiller dans le <code>Bazar</code> de sa sœur (elle est d'accord, c'est leur coin à jeux). Mais seulement le Bazar : le reste du dossier de la fille reste privé, et les parents comme l'invitée n'ont pas à y mettre le nez."},
@@ -1749,7 +1867,7 @@ mkdeb() {
   dpkg-deb --build --root-owner-group $d $PK/${1}_${2}_all.deb >/dev/null
   rm -rf $d
 }
-dpkg -P cs-outils cs-rapport cs-base cs-ancien cs-supervision >/dev/null 2>&1 || true
+dpkg -P cs-outils cs-rapport cs-base cs-commun cs-ancien cs-supervision >/dev/null 2>&1 || true
 # 13.5 : un paquet à inspecter avant de l'installer
 bin=cs-$(shuf -n1 -e inventaire etiquettes synchro releves)
 mkdir -p $B/cs-outils/usr/bin $B/cs-outils/etc
@@ -1757,10 +1875,18 @@ printf '#!/bin/sh\necho "Outil %s du prestataire"\n' "$bin" > $B/cs-outils/usr/b
 echo "serveur=cs.example" > $B/cs-outils/etc/cs-outils.conf
 mkdeb cs-outils 1.$((RANDOM % 8 + 2)) ""
 emit BIN "/usr/bin/$bin"
-# 13.6 : une dépendance, en deux versions
-for v in 1.0 1.3; do mkdir -p $B/cs-base/usr/share/cs-base; echo "base $v" > $B/cs-base/usr/share/cs-base/VERSION; mkdeb cs-base $v ""; done
+# 13.6 : une dépendance livrée en plusieurs versions (dépendance et versions tirées au sort)
+v=${LAB_VARIANTE_13_6:-$((RANDOM % 3))}
+case $v in
+  0) dep=cs-base; min=1.2; livr="cs-base:1.0 cs-base:1.3" ;;
+  1) dep=cs-base; min=2.0; livr="cs-base:1.3 cs-base:2.1" ;;
+  2) dep=cs-commun; min=1.1; livr="cs-commun:1.0 cs-commun:1.4 cs-base:1.3" ;;
+esac
+for l in $livr; do p=${l%%:*}; ver=${l#*:}; mkdir -p $B/$p/usr/share/$p; echo "$p $ver" > $B/$p/usr/share/$p/VERSION; mkdeb $p $ver ""; done
 mkdir -p $B/cs-rapport/usr/bin; printf '#!/bin/sh\necho "Rapport du prestataire"\n' > $B/cs-rapport/usr/bin/cs-rapport; chmod 755 $B/cs-rapport/usr/bin/cs-rapport
-mkdeb cs-rapport 2.0 "cs-base (>= 1.2)"
+mkdeb cs-rapport 2.0 "$dep (>= $min)"
+emit DEP "$dep"
+emit DEPMIN "$min"
 # 13.7 : un vieux paquet installé, avec sa configuration
 mkdir -p $B/cs-ancien/usr/bin $B/cs-ancien/etc
 printf '#!/bin/sh\necho "Ancien outil"\n' > $B/cs-ancien/usr/bin/cs-ancien; chmod 755 $B/cs-ancien/usr/bin/cs-ancien
@@ -1842,7 +1968,7 @@ emit PKGBIN "${x#*:}"
              "hints": ["Lisez le message d'erreur de dpkg : il nomme ce qui manque, et la version exigée. <code>dpkg -I</code> affiche aussi les dépendances d'un <code>.deb</code>.",
                        "Installez la bonne version de la dépendance, puis terminez la configuration de cs-rapport (en le réinstallant, ou avec <code>sudo dpkg --configure -a</code>)."],
              "checks": [
-                 ('dpkg-query -W -f="\\${Status}" cs-base 2>/dev/null | grep -q "install ok installed" && dpkg --compare-versions "$(dpkg-query -W -f="\\${Version}" cs-base)" ge 1.2', "cs-base n'est pas installé dans une version qui satisfait la dépendance de cs-rapport."),
+                 ('[ -n "$LAB_DEP" ] && dpkg-query -W -f="\\${Status}" "$LAB_DEP" 2>/dev/null | grep -q "install ok installed" && dpkg --compare-versions "$(dpkg-query -W -f="\\${Version}" "$LAB_DEP")" ge "$LAB_DEPMIN"', "La dépendance de cs-rapport n'est pas installée dans une version qui la satisfait : relisez ce qu'exige cs-rapport (dpkg -I)."),
                  ('dpkg-query -W -f="\\${Status}" cs-rapport 2>/dev/null | grep -q "install ok installed"', "cs-rapport n'est pas complètement installé : relisez le message de dpkg et son état dans dpkg -l."),
              ]},
             {"id": "13.7", "points": 4, "title": "Désinstaller complètement",
@@ -1880,6 +2006,12 @@ emit PKGBIN "${x#*:}"
         "description": "Points de montage, /etc/fstab, occupation disque et ses pièges (fichiers cachés, creux, petits fichiers).",
         "lesson": r"""<h3>Disques et partitions</h3><ul><li>Chaque disque est un fichier de <code>/dev</code> : <code>/dev/sda</code> (SATA ou SCSI), <code>/dev/nvme0n1</code> (SSD NVMe), <code>/dev/vda</code> (disque de machine virtuelle). Les partitions ajoutent un numéro : <code>/dev/sda1</code>, <code>/dev/nvme0n1p2</code>.</li><li><code>lsblk</code> affiche l'arborescence des disques et partitions ; <code>blkid</code> affiche le <strong>type</strong> et l'identifiant unique (<strong>UUID</strong>) de chaque système de fichiers, y compris dans un fichier image.</li></ul><h3>Monter</h3><p>Un système de fichiers n'est accessible qu'une fois <strong>monté</strong> sur un dossier, le point de montage :</p><pre>sudo mount /dev/sdc1 /mnt/archives<br>sudo umount /mnt/archives<br>findmnt          # arbre de tout ce qui est monté, avec les options<br>df -h            # occupation de chaque système de fichiers</pre><p>Chaque montage a des <strong>options</strong> : <code>rw</code> ou <code>ro</code> (lecture seule), <code>noexec</code>, <code>nosuid</code>… <code>df</code>, <code>findmnt</code> et <code>mount</code> savent aussi afficher le <strong>type</strong> de chaque système de fichiers (ext4, xfs, vfat, tmpfs…) : cherchez l'option dans leur manuel.</p><h3>/etc/fstab</h3><p>Les montages automatiques au démarrage, un par ligne, en 6 champs :</p><pre># source                                    point      type  options           dump  pass<br>UUID=3f1c9a2e-8b7d-4c1e-9f0a-5d6e7b8c9d01   /srv/web   xfs   defaults,noatime  0     2<br>LABEL=ARCHIVES                              /archives  ext4  defaults          0     2</pre><ul><li><strong>source</strong> : préférez <code>UUID=</code> ou <code>LABEL=</code> (lus par <code>blkid</code>) à <code>/dev/sdb1</code> : le nom <code>sdX</code> dépend de l'ordre de détection des disques et peut changer d'un démarrage à l'autre.</li><li><strong>dump</strong> : presque toujours 0 ; <strong>pass</strong> : ordre de vérification au démarrage (1 pour la racine, 2 pour les autres, 0 pour jamais).</li><li>Un disque <strong>amovible</strong> absent au démarrage bloque le serveur en mode de secours… sauf si une option indique que son absence n'est pas grave : cherchez-la dans <code>man 5 fstab</code>.</li></ul><div class="tip">Avant de redémarrer, testez : <code>sudo findmnt --verify</code> analyse fstab, <code>sudo mount -a</code> monte tout ce qui ne l'est pas encore. Une erreur dans fstab peut empêcher le serveur de démarrer.</div><h3>Qui occupe la place ?</h3><pre>du -sh /home/*                # taille de chaque dossier personnel<br>du -h -d 1 /var | sort -h     # un seul niveau de profondeur, trié<br>du -x …                       # sans descendre dans les autres systèmes de fichiers</pre><ul><li><code>du</code> compte les <strong>blocs réellement occupés</strong> ; <code>ls -l</code> affiche la <strong>taille apparente</strong>. Un fichier <em>creux</em> (<em>sparse</em>, typique des images de machines virtuelles) peut annoncer 50 Go et n'occuper presque rien : comparez avec <code>du --apparent-size</code>.</li><li>Le joker <code>*</code> ignore les noms qui commencent par un point : <code>du -sh dossier/*</code> ne voit pas les dossiers cachés.</li><li>Les unités de <code>du -m</code> et <code>du -h</code> sont des mébioctets (Mio, 1 048 576 octets), arrondis au supérieur.</li><li><code>df -i</code> compte les <strong>inodes</strong> : chaque fichier en consomme un, même vide. Un disque peut être « plein » de petits fichiers alors qu'il lui reste des octets libres.</li></ul><div class="tip">Dans ce lab (un conteneur), on ne peut pas monter de vrai disque, et <code>lsblk</code> montre les disques de la machine hôte : on s'entraîne sur les outils d'analyse et sur la syntaxe de fstab.</div>""",
         "setup": r'''
+# 14.1 : le point de montage à inventorier (variante tirée au sort)
+v=${LAB_VARIANTE_14_1:-$((RANDOM % 4))}
+pm=(/ /dev/shm /proc /dev/pts)
+printf 'Inventaire du serveur - point de montage à relever : %s\n' "${pm[v]}" > $H/inventaire-montage.txt
+chown etudiant:etudiant $H/inventaire-montage.txt
+emit POINT "${pm[v]}"
 D=/srv/data
 rm -rf $D; mkdir -p $D
 names=(photos videos musique documents backup projets)
@@ -1935,11 +2067,11 @@ emit MANYFILES "${apps[0]}"
 ''',
         "exercises": [
             {"id": "14.1", "points": 3, "title": "Type de système de fichiers",
-             "ticket": {"from": "lea", "body": "Pour l'inventaire du serveur, j'ai besoin du type de système de fichiers monté sur la racine. Pas de devinette : je veux la valeur lue sur la machine."},
-             "desc": "Écrivez le <strong>type</strong> du système de fichiers monté sur <code>/</code> dans <code>~/fs-racine.txt</code>.",
-             "hints": ["Plusieurs commandes de la partie « Monter » du cours savent afficher le type d'un système de fichiers : cherchez l'option dans leur manuel.", "<code>df -T /</code> ou <code>findmnt -n -o FSTYPE /</code>"],
+             "ticket": {"from": "lea", "body": "Pour l'inventaire du serveur, j'ai besoin du type de système de fichiers monté sur le point de montage que j'ai noté dans <code>~/inventaire-montage.txt</code>. Pas de devinette : je veux la valeur lue sur la machine."},
+             "desc": "Écrivez le <strong>type</strong> du système de fichiers monté sur le point de montage indiqué dans <code>~/inventaire-montage.txt</code> dans <code>~/fs-type.txt</code>.",
+             "hints": ["Plusieurs commandes de la partie « Monter » du cours savent afficher le type d'un système de fichiers : cherchez l'option dans leur manuel.", "<code>df -T</code> suivi du point de montage, ou <code>findmnt -n -o FSTYPE</code> suivi du point de montage."],
              "checks": [
-                 ('[ "$(ans $H/fs-racine.txt)" = "$(df -T / | awk \'NR==2{print $2}\')" ]', "Ce n'est pas le type du système de fichiers monté sur /."),
+                 ('[ -n "$LAB_POINT" ] && [ "$(ans $H/fs-type.txt)" = "$(df -T "$LAB_POINT" | awk \'NR==2{print $2}\')" ]', "Ce n'est pas le type du système de fichiers monté sur le point de montage indiqué (ou ~/fs-type.txt est absent)."),
              ]},
             {"id": "14.2", "points": 4, "title": "Qui prend toute la place ?",
              "ticket": {"from": "sophie", "body": "L'espace de stockage <code>/srv/data</code> se remplit à vue d'œil. Quel sous-dossier prend le plus de place ? Je veux savoir à qui aller parler."},
@@ -2011,8 +2143,22 @@ echo "Déploiement vers $CIBLE"
 EOF
 chmod 755 $H/deploy/lancer.sh; own $H/deploy
 sha256sum $H/deploy/lancer.sh > $REF/lancer.sha
-c=$(sed -nE 's/^(export +)?CIBLE=//p' $H/.bashrc | tail -n1)
-if [ -z "$c" ]; then c=$(printf '%s\n' preprod recette staging | shuf -n1); printf '\n# Cible des déploiements (Thomas)\nCIBLE=%s\n' "$c" >> $H/.bashrc; fi
+# la cible ne parvient pas aux scripts, pour une raison tirée au sort (la réinitialisation remet la panne en place)
+sed -i '/CIBLE/d; /env-scripts\.sh/d; /^# Cible des déploiements (Thomas)$/d; /^# Nettoyage de l.environnement (Marc)$/d; /^# Environnement des scripts (Marc)$/d' $H/.bashrc
+rm -rf $H/.config/marc
+c=$(printf '%s\n' preprod recette staging | shuf -n1)
+v=${LAB_VARIANTE_15_4:-$((RANDOM % 3))}
+case $v in
+  # définie sans export
+  0) printf '\n# Cible des déploiements (Thomas)\nCIBLE=%s\n' "$c" >> $H/.bashrc ;;
+  # exportée… puis « désexportée » plus loin
+  1) printf '\n# Cible des déploiements (Thomas)\nexport CIBLE=%s\n\n# Nettoyage de l'"'"'environnement (Marc)\nexport -n CIBLE\n' "$c" >> $H/.bashrc ;;
+  # exportée, mais BASH_ENV fait lire aux scripts un fichier qui la supprime
+  2) mkdir -p $H/.config/marc
+     printf '# Variables à ne pas transmettre aux scripts (Marc)\nunset CIBLE\n' > $H/.config/marc/env-scripts.sh
+     printf '\n# Cible des déploiements (Thomas)\nexport CIBLE=%s\n\n# Environnement des scripts (Marc)\nexport BASH_ENV=$HOME/.config/marc/env-scripts.sh\n' "$c" >> $H/.bashrc
+     chown -R etudiant:etudiant $H/.config ;;
+esac
 emit CIBLE "$c"
 # 15.5 : un faux sudo dans le PATH de julien
 mkuser julien
@@ -2060,7 +2206,7 @@ grep -rhs secure_path /etc/sudoers /etc/sudoers.d | sha256sum | cut -c1-64 > $RE
             {"id": "15.4", "points": 4, "title": "Le script ne voit pas la variable",
              "ticket": {"from": "thomas", "body": "J'ai mis la cible des déploiements dans ton <code>.bashrc</code> : <code>echo $CIBLE</code> l'affiche bien dans ton terminal. Mais <code>~/deploy/lancer.sh</code> dit que la variable n'est pas définie ! Le script est le même sur tous les serveurs, on n'y touche pas."},
              "desc": "Dans un nouveau terminal, <code>~/deploy/lancer.sh</code> doit afficher <code>Déploiement vers …</code> avec la cible définie dans votre <code>~/.bashrc</code>, sans modifier le script.",
-             "hints": ["Un script est un programme à part : il ne reçoit pas toutes les variables de votre shell.", "Comparez <code>echo $CIBLE</code> et <code>bash -c 'echo $CIBLE'</code>, puis regardez comment la variable est définie dans ~/.bashrc."],
+             "hints": ["Un script est un programme à part : il ne reçoit que les variables <strong>exportées</strong>… et bash peut en plus lui faire lire un fichier à son démarrage (cherchez <code>BASH_ENV</code> dans <code>man bash</code>).", "Comparez <code>echo $CIBLE</code> et <code>bash -c 'echo $CIBLE'</code>, puis relisez tout ~/.bashrc (<code>grep -n -e CIBLE -e BASH_ENV ~/.bashrc</code>) : comment la variable est-elle définie, et que lui arrive-t-il ensuite ?"],
              "checks": [
                  ('sha256sum -c --quiet $REF/lancer.sha', "Le script lancer.sh a été modifié : c'est la configuration de votre shell qu'il faut corriger."),
                  ('[ "$(etu_env \'$HOME/deploy/lancer.sh\')" = "Déploiement vers $LAB_CIBLE" ]', "Dans un nouveau terminal, lancer.sh n'affiche pas la cible définie dans votre .bashrc."),
@@ -2100,21 +2246,25 @@ mkdir -p /srv/livraison
 tar -czf /srv/livraison/paquet.tar.gz -C $tmp paquet
 rm -rf $tmp; chmod 644 /srv/livraison/paquet.tar.gz
 emit CODE "$code"
-# 16.6 : sauvegarde de la comptabilité (une centaine de fichiers)
-tmp=$(mktemp -d); C=$tmp/compta
+# 16.6 : sauvegarde de la comptabilité (une centaine de fichiers), rangée selon une arborescence tirée au sort
+v=${LAB_VARIANTE_16_6:-$((RANDOM % 4))}
+racs=(compta comptabilite compta export-compta); refs=(referentiels tarifs bases referentiels)
+tmp=$(mktemp -d); C=$tmp/${racs[v]}
 for y in 2024 2025 2026; do
-  mkdir -p $C/$y/factures $C/$y/releves $C/$y/referentiels
+  # variante 2 : l'année est rangée sous le dossier des référentiels, et non l'inverse
+  if [ $v = 2 ]; then R=$C/${refs[v]}/$y; else R=$C/$y/${refs[v]}; fi
+  mkdir -p $C/$y/factures $C/$y/releves $R
   for i in $(seq -w 1 20); do head -c $((RANDOM % 2000 + 500)) /dev/urandom | base64 > $C/$y/factures/facture-$y-0$i.pdf; done
   for m in $(seq -w 1 12); do echo "relevé $y-$m : $RANDOM" > $C/$y/releves/releve-$y-$m.csv; done
-  echo "remises $y" > $C/$y/referentiels/remises-$y.csv
-  printf 'article;prix\n' > $C/$y/referentiels/tarifs-$y.csv
-  for i in $(seq 1 30); do echo "ART-$RANDOM;$((RANDOM % 300)).$((RANDOM % 100))" >> $C/$y/referentiels/tarifs-$y.csv; done
+  echo "remises $y" > $R/remises-$y.csv
+  printf 'article;prix\n' > $R/tarifs-$y.csv
+  for i in $(seq 1 30); do echo "ART-$RANDOM;$((RANDOM % 300)).$((RANDOM % 100))" >> $R/tarifs-$y.csv; done
 done
-cp $C/2026/referentiels/tarifs-2026.csv $C/2026/referentiels/tarifs-2026-brouillon.csv
-echo "ART-$RANDOM;0.00" >> $C/2026/referentiels/tarifs-2026-brouillon.csv
+cp $R/tarifs-2026.csv $R/tarifs-2026-brouillon.csv
+echo "ART-$RANDOM;0.00" >> $R/tarifs-2026-brouillon.csv
 mkdir -p /srv/sauvegardes
-tar -czf /srv/sauvegardes/compta-2026-09-28.tar.gz -C $tmp compta
-emit TARIFS_SHA "$(sha256sum < $C/2026/referentiels/tarifs-2026.csv | cut -c1-64)"
+tar -czf /srv/sauvegardes/compta-2026-09-28.tar.gz -C $tmp ${racs[v]}
+emit TARIFS_SHA "$(sha256sum < $R/tarifs-2026.csv | cut -c1-64)"
 rm -rf $tmp; chmod 644 /srv/sauvegardes/compta-2026-09-28.tar.gz
 # 16.7 : six lots livrés avec leurs empreintes, deux ont été abîmés en route
 L=/srv/livraison2
@@ -2341,25 +2491,61 @@ cat > $H/verif-deploy.sh <<'EOF'
 echo "$(date +%T) projet=$PROJET $(bonjour)" >> /home/etudiant/verif-deploy.log
 EOF
 chmod 755 $H/verif-deploy.sh; own $H/verif-deploy.sh
+# 18.5 : la commande de Julien est tirée au sort (toutes contiennent des %)
+v=${LAB_VARIANTE_18_5:-$((RANDOM % 4))}
+case $v in
+  0) t='date +%H:%M' ;;
+  1) t="date '+%H:%M'" ;;
+  2) t='date +%R' ;;
+  3) t='printf "%s\n" "$(date +%H:%M)"' ;;
+esac
 cur=$(crontab -u etudiant -l 2>/dev/null | grep -vE 'heure\.log|verif-deploy' || true)
-printf '%s\n' "$cur" '* * * * * date +%H:%M >> /home/etudiant/heure.log' '* * * * * /home/etudiant/verif-deploy.sh' | sed '/^$/d' | crontab -u etudiant -
+printf '%s\n' "$cur" "* * * * * $t >> /home/etudiant/heure.log" '* * * * * /home/etudiant/verif-deploy.sh' | sed '/^$/d' | crontab -u etudiant -
 rm -f $H/heure.log $H/verif-deploy.log
-# 18.7 : une tâche root qui échoue en silence
+# 18.7 : une tâche root qui échoue en silence (la cause de l'échec est tirée au sort)
 cat > /usr/local/sbin/export-compta <<'EOF'
 #!/bin/bash
 # Export de la comptabilité
-D=/srv/compta/exports
-if [ ! -d "$D" ]; then
-    echo "export-compta: ERREUR : dossier $D introuvable" >&2
+CONF=/etc/export-compta.conf
+if [ ! -r "$CONF" ]; then
+    echo "export-compta: ERREUR : configuration $CONF introuvable (modèle fourni : /usr/share/doc/export-compta/export-compta.conf.exemple)" >&2
     exit 1
 fi
-date '+%F %T' > "$D/dernier-export.txt"
+. "$CONF"
+if [ -e "$DEST" ] && [ ! -d "$DEST" ]; then
+    echo "export-compta: ERREUR : $DEST existe, mais ce n'est pas un dossier" >&2
+    exit 1
+fi
+if [ ! -d "$DEST" ]; then
+    echo "export-compta: ERREUR : dossier $DEST introuvable" >&2
+    exit 1
+fi
+HD=/usr/local/lib/export-compta/horodatage
+if [ ! -x "$HD" ]; then
+    echo "export-compta: ERREUR : $HD n'est pas exécutable" >&2
+    exit 1
+fi
+"$HD" > "$DEST/dernier-export.txt"
 echo "$(date '+%F %T') export OK"
 EOF
 chmod 755 /usr/local/sbin/export-compta
+mkdir -p /usr/local/lib/export-compta /usr/share/doc/export-compta
+printf '#!/bin/bash\ndate "+%%F %%T"\n' > /usr/local/lib/export-compta/horodatage
+chmod 755 /usr/local/lib/export-compta/horodatage
+printf '# Configuration de export-compta\nDEST=/srv/compta/exports\n' > /usr/share/doc/export-compta/export-compta.conf.exemple
+cp /usr/share/doc/export-compta/export-compta.conf.exemple /etc/export-compta.conf
+chmod 644 /usr/share/doc/export-compta/export-compta.conf.exemple /etc/export-compta.conf
+rm -rf /srv/compta/exports; mkdir -p /srv/compta
+v=${LAB_VARIANTE_18_7:-$((RANDOM % 4))}
+case $v in
+  0) ;;                                                                  # dossier d'export absent
+  1) echo "export du 12/09 (copie ratée)" > /srv/compta/exports ;;        # un fichier à la place du dossier
+  2) mkdir -p /srv/compta/exports; rm -f /etc/export-compta.conf ;;      # configuration absente
+  3) mkdir -p /srv/compta/exports; chmod 644 /usr/local/lib/export-compta/horodatage ;;  # outil non exécutable
+esac
 printf '# Export de la comptabilité (toutes les minutes pour le lab)\n* * * * * root /usr/local/sbin/export-compta\n' > /etc/cron.d/export-compta
 chmod 644 /etc/cron.d/export-compta
-rm -rf /srv/compta/exports; rm -f /var/log/export-compta.log
+rm -f /var/log/export-compta.log
 # 18.8 : une tâche plus longue que son intervalle
 cat > /usr/local/sbin/sync-catalogue <<'EOF'
 #!/bin/bash
@@ -2433,7 +2619,7 @@ chmod 644 /etc/cron.d/sync-catalogue
              "hints": ["Sans serveur de messagerie, cron jette la sortie des tâches (voyez <code>grep CRON /var/log/syslog</code>). Il faut rediriger deux flux : la sortie standard et la sortie d'erreur.", "<code>… &gt;&gt; /var/log/export-compta.log 2&gt;&amp;1</code> à la fin de la ligne ; attendez une minute, puis lisez le journal."],
              "checks": [
                  ('l=$(cron_line /etc/cron.d/export-compta); [[ $l == *export-compta*">>"*/var/log/export-compta.log* && $l == *"2>&1"* ]] && [ "$(echo "$l" | awk \'{print $6}\')" = root ]', "La tâche (toujours en root) n'ajoute pas sa sortie et ses erreurs à /var/log/export-compta.log."),
-                 ('grep -q "introuvable" /var/log/export-compta.log 2>/dev/null', "Le journal ne contient pas encore l'erreur de la tâche : laissez cron l'exécuter au moins une fois avant de corriger quoi que ce soit."),
+                 ('grep -q "ERREUR" /var/log/export-compta.log 2>/dev/null', "Le journal ne contient pas encore l'erreur de la tâche : laissez cron l'exécuter au moins une fois avant de corriger quoi que ce soit."),
                  ('cron_run root /etc/cron.d/export-compta export-compta; tail -n1 /var/log/export-compta.log | grep -q "export OK"', "Exécutée exactement comme le fait cron, la tâche ne réussit pas encore : lisez l'erreur capturée et corrigez sa cause."),
              ]},
             {"id": "18.8", "points": 5, "title": "Tâches qui s'empilent", "manual": True,
@@ -2633,8 +2819,14 @@ if first_run 20; then
   rm -rf /var/log/caisse; mkdir -p /var/log/caisse
   rm -f /etc/logrotate.d/caisse
   demo=1
-  # 20.9
+  # 20.9 : la facility du module de paiement est tirée au sort
   rm -f /var/log/paiement.log
+  v=${LAB_VARIANTE_20_9:-$((RANDOM % 4))}
+  fac=(local0 local3 local5 local6); fac=${fac[v]}
+  mkdir -p /etc/paiement
+  printf '# Module de paiement : journalisation\nSYSLOG_TAG=paiement\nSYSLOG_FACILITY=%s\n' "$fac" > /etc/paiement/module.conf
+  chmod 644 /etc/paiement/module.conf
+  kemit 20 FACILITE "$fac"
   done_once 20
 fi
 reemit 20
@@ -2722,11 +2914,12 @@ emit CAISSE_PID "$(pgrep -x journal-caisse | head -n1)"
                  ('kill -0 "$LAB_CAISSE_PID"', "Le service de caisse a été arrêté pendant la rotation : il doit continuer à tourner (rechargez la page pour le relancer)."),
              ]},
             {"id": "20.9", "points": 4, "title": "Un journal dédié", "manual": True,
-             "ticket": {"from": "thomas", "body": "Le module de paiement écrit ses messages dans syslog avec la facility <code>local0</code>. Noyés au milieu du reste, on ne les retrouve jamais. Il me faudrait un fichier rien que pour eux."},
-             "desc": "Faites en sorte que tous les messages de la facility <code>local0</code> arrivent dans <code>/var/log/paiement.log</code>.",
-             "hints": ["rsyslog lit des règles « facility.niveau destination » dans /etc/rsyslog.d/*.conf ; après une modification, il faut le redémarrer (voir le cours pour ce conteneur).", "<code>local0.* /var/log/paiement.log</code> dans un fichier .conf de /etc/rsyslog.d, puis testez avec <code>logger -p local0.info essai</code>."],
+             "ticket": {"from": "thomas", "body": "Le module de paiement écrit ses messages dans syslog, avec la facility indiquée dans sa configuration, <code>/etc/paiement/module.conf</code>. Noyés au milieu du reste, on ne les retrouve jamais. Il me faudrait un fichier rien que pour eux."},
+             "desc": "Faites en sorte que tous les messages de la facility du module de paiement (voir <code>/etc/paiement/module.conf</code>) arrivent dans <code>/var/log/paiement.log</code>, et seulement eux.",
+             "hints": ["rsyslog lit des règles « facility.niveau destination » dans /etc/rsyslog.d/*.conf ; après une modification, il faut le redémarrer (voir le cours pour ce conteneur).", "Une ligne <code>FACILITY.* /var/log/paiement.log</code> (avec la facility lue dans la configuration du module) dans un fichier .conf de /etc/rsyslog.d, puis testez avec <code>logger -p FACILITY.info essai</code>."],
              "checks": [
-                 ('m="verif-$RANDOM$RANDOM"; logger -p local0.notice -t paiement "$m"; sleep 1.5; grep -q "$m" /var/log/paiement.log 2>/dev/null', "Un message envoyé avec la facility local0 n'arrive pas dans /var/log/paiement.log (rsyslog a-t-il été redémarré ?)."),
+                 ('[ -n "$LAB_FACILITE" ] && m="verif-$RANDOM$RANDOM" && logger -p "$LAB_FACILITE.notice" -t paiement "$m" && sleep 1.5 && grep -q "$m" /var/log/paiement.log 2>/dev/null', "Un message envoyé avec la facility du module de paiement n'arrive pas dans /var/log/paiement.log (la facility est-elle la bonne ? rsyslog a-t-il été redémarré ?)."),
+                 ('for f in local0 local3 local5 local6 user; do [ "$f" = "$LAB_FACILITE" ] && continue; m="autre-$RANDOM$RANDOM"; logger -p "$f.notice" -t autre "$m"; sleep 0.3; grep -q "$m" /var/log/paiement.log 2>/dev/null && exit 1; done; exit 0', "Des messages d'autres facilities arrivent aussi dans /var/log/paiement.log : seuls ceux du module de paiement sont attendus."),
              ]},
         ],
     },
@@ -2742,14 +2935,39 @@ fr=0
 if first_run 21; then
   fr=1
   rm -f $REF/env-21
-  # 21.5 : un serveur DNS injoignable en tête de liste
-  dns=$(awk '/^nameserver/ && $2 != "192.0.2.53" {print $2; exit}' /etc/resolv.conf)
+  # 21.5 : un serveur DNS injoignable (adresse tirée au sort) en tête de liste
+  v=${LAB_VARIANTE_21_5:-$((RANDOM % 4))}
+  morts=(192.0.2.53 198.51.100.53 203.0.113.53 192.0.2.254); mort=${morts[v]}
+  c=$(grep -vE '^nameserver (192\.0\.2|198\.51\.100|203\.0\.113)\.|^# Serveur DNS de secours \(Marc\)' /etc/resolv.conf || true)
+  dns=$(printf '%s\n' "$c" | awk '/^nameserver/ {print $2; exit}')
   kemit 21 DNS "$dns"
-  if ! grep -q '^nameserver 192.0.2.53' /etc/resolv.conf; then
-    c=$(cat /etc/resolv.conf); { echo "# Serveur DNS de secours (Marc)"; echo "nameserver 192.0.2.53"; printf '%s\n' "$c"; } > /etc/resolv.conf
-  fi
-  # 21.7 : configuration de mini-web
-  printf '# Configuration de mini-web\nBIND=127.0.0.1\nPORT=8088\n' > /etc/mini-web.conf
+  kemit 21 DNS_MORT "$mort"
+  { echo "# Serveur DNS de secours (Marc)"; echo "nameserver $mort"; printf '%s\n' "$c"; } > /etc/resolv.conf
+  # 21.4 : pourquoi serveur-local ne désigne-t-il pas la bonne machine ? (variante et ancienne adresse tirées au sort)
+  v=${LAB_VARIANTE_21_4:-$((RANDOM % 4))}
+  vieille="10.$((RANDOM % 200 + 20)).$((RANDOM % 250 + 1)).$((RANDOM % 250 + 2))"
+  case $v in
+    0) printf '%s     serveur-local   # ancien serveur de test\n192.168.1.100   serveur-local\n' "$vieille" ;;
+    1) printf '%s     test-ancien serveur-local\n192.168.1.100   serveur-local\n' "$vieille" ;;
+    2) printf '%s     serveur-local   # ancien serveur de test\n#192.168.1.100  serveur-local   # ajouté par Thomas\n' "$vieille" ;;
+    3) printf '%s     serveur-local   # ancien serveur de test\n192.168.1.100   serveur-locale\n' "$vieille" ;;
+  esac > $REF/s21-local
+  # 21.6 : le programme qui squatte le port de la caisse, et son propriétaire (tirés au sort)
+  v=${LAB_VARIANTE_21_6:-$((RANDOM % 4))}
+  sq=(vieux-proxy:intrus relais-test:julien ancien-cache:webdev proxy-marc:prestataire)
+  printf 'SQ_PROG=%s\nSQ_USER=%s\n' "${sq[v]%%:*}" "${sq[v]#*:}" > $REF/s21-squat
+  # 21.7 : ce qui limite mini-web à la boucle locale (tiré au sort)
+  v=${LAB_VARIANTE_21_7:-$((RANDOM % 3))}
+  rm -rf /etc/mini-web.d /etc/default/mini-web
+  case $v in
+    0) printf '# Configuration de mini-web\nBIND=127.0.0.1\nPORT=8088\n' > /etc/mini-web.conf ;;
+    1) printf '# Configuration de mini-web\nBIND=0.0.0.0\nPORT=8088\n' > /etc/mini-web.conf
+       mkdir -p /etc/mini-web.d
+       printf '# Surcharge locale (Marc, pour ses tests)\nBIND=127.0.0.1\n' > /etc/mini-web.d/90-local.conf ;;
+    2) printf '# Configuration de mini-web\nBIND=0.0.0.0\nPORT=8088\n' > /etc/mini-web.conf
+       mkdir -p /etc/default
+       printf '# Options de démarrage de mini-web (Marc)\nMINIWEB_BIND=127.0.0.1\n' > /etc/default/mini-web ;;
+  esac
   # 21.8 : cinq noms de bases de données, une seule répond sur 5432
   ips=($(printf '127.0.0.%s\n' 2 3 4 6 7 | shuf))
   : > $REF/s21-hosts
@@ -2761,9 +2979,9 @@ if first_run 21; then
 fi
 reemit 21
 # /etc/hosts est régénéré par Docker au redémarrage : on remet les entrées de l'exercice
-if [ $fr = 1 ] || ! grep -q serveur-local /etc/hosts; then
-  h=$(grep -v serveur-local /etc/hosts || true); printf '%s\n' "$h" > /etc/hosts
-  printf '10.20.30.40     serveur-local   # ancien serveur de test\n192.168.1.100   serveur-local\n' >> /etc/hosts
+if [ $fr = 1 ] || ! grep -q serveur-loca /etc/hosts; then
+  h=$(grep -v serveur-loca /etc/hosts || true); printf '%s\n' "$h" > /etc/hosts
+  cat $REF/s21-local >> /etc/hosts
 fi
 if [ $fr = 1 ] || ! grep -q 'bdd-1' /etc/hosts; then
   h=$(grep -v ' bdd-[0-9]' /etc/hosts || true); printf '%s\n' "$h" > /etc/hosts; cat $REF/s21-hosts >> /etc/hosts
@@ -2775,7 +2993,10 @@ putbin /usr/bin/nc.openbsd /usr/local/bin/veilleur
 pkill -x veilleur || true
 setsid nohup /usr/local/bin/veilleur -lk $port >/dev/null 2>&1 < /dev/null &
 # 21.6 : un programme occupe le port de l'appli de caisse
-putbin /usr/bin/nc.openbsd /usr/local/bin/vieux-proxy
+. $REF/s21-squat
+mkuser "$SQ_USER"
+for x in vieux-proxy relais-test ancien-cache proxy-marc; do pkill -x $x || true; rm -f /usr/local/bin/$x; done
+putbin /usr/bin/nc.openbsd /usr/local/bin/$SQ_PROG
 cat > /usr/local/bin/appli-caisse <<'EOF'
 #!/bin/bash
 # Application de caisse : doit écouter sur 127.0.0.1:8081
@@ -2786,13 +3007,17 @@ fi
 echo "appli-caisse : le port 8081 est libre, l'application peut démarrer."
 EOF
 chmod 755 /usr/local/bin/appli-caisse
-pkill -x vieux-proxy || true
-su -s /bin/bash intrus -c 'setsid /usr/local/bin/vieux-proxy -lk 127.0.0.1 8081 >/dev/null 2>&1 < /dev/null &'
+su -s /bin/bash "$SQ_USER" -c "setsid /usr/local/bin/$SQ_PROG -lk 127.0.0.1 8081 >/dev/null 2>&1 < /dev/null &"
 # 21.7 : mini-web, un petit service HTTP et son script de contrôle
 cat > /usr/local/sbin/mini-web <<'EOF'
 #!/bin/bash
-# mini-web : répond « mini-web OK » en HTTP ; configuration dans /etc/mini-web.conf
+# mini-web : répond « mini-web OK » en HTTP
+# Configuration : /etc/mini-web.conf, puis les surcharges de /etc/mini-web.d/*.conf,
+# puis les options de démarrage de /etc/default/mini-web (MINIWEB_BIND remplace BIND)
 . /etc/mini-web.conf
+for f in /etc/mini-web.d/*.conf; do [ -r "$f" ] && . "$f"; done
+[ -r /etc/default/mini-web ] && . /etc/default/mini-web
+BIND=${MINIWEB_BIND:-$BIND}
 echo $$ > /run/mini-web.pid
 while true; do
     printf 'HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\n\r\nmini-web OK\n' | nc -N -l "$BIND" "$PORT" >/dev/null 2>&1 || sleep 1
@@ -2832,6 +3057,8 @@ setsid sh -c "sleep 1000000 | /usr/local/bin/maj-auto 127.0.0.5 4444 >/dev/null 
 sleep 1
 emit PORT "$port"
 emit MAJ_PID "$(pgrep -x maj-auto | head -n1)"
+emit SQ_PROG "$SQ_PROG"
+emit SQ_USER "$SQ_USER"
 ''',
         "exercises": [
             {"id": "21.1", "points": 4, "title": "Mon adresse IP",
@@ -2858,32 +3085,32 @@ emit MAJ_PID "$(pgrep -x maj-auto | head -n1)"
                  ('[ "$(ans $H/port-mystere.txt)" = "$LAB_PORT" ]', "Ce n'est pas le bon port."),
              ]},
             {"id": "21.4", "points": 4, "title": "Résolution locale",
-             "ticket": {"from": "thomas", "body": "Pour mes tests, <code>serveur-local</code> doit désigner <code>192.168.1.100</code> sur cette machine. J'ai ajouté la ligne dans <code>/etc/hosts</code>, mais mes programmes continuent de se connecter à une autre adresse !"},
+             "ticket": {"from": "thomas", "body": "Pour mes tests, <code>serveur-local</code> doit désigner <code>192.168.1.100</code> sur cette machine. J'ai ajouté une ligne dans <code>/etc/hosts</code>, mais mes programmes continuent de se connecter à une autre adresse !"},
              "desc": "Faites en sorte que <code>serveur-local</code> soit résolu en <code>192.168.1.100</code> sur cette machine, et <strong>uniquement</strong> en cette adresse.",
-             "hints": ["Testez ce que le système obtient : <code>getent hosts serveur-local</code>. Puis relisez /etc/hosts en entier : que se passe-t-il quand un nom y apparaît deux fois ?", "Supprimez la ligne périmée avec un éditeur (<code>sudo nano /etc/hosts</code>) : dans ce conteneur, <code>sed -i</code> échoue sur ce fichier."],
+             "hints": ["Testez ce que le système obtient : <code>getent hosts serveur-local</code>. Puis relisez /etc/hosts en entier, caractère par caractère : quelles lignes mentionnent ce nom (même comme deuxième nom d'une adresse), et la ligne de Thomas est-elle vraiment prise en compte ?", "Corrigez avec un éditeur (<code>sudo nano /etc/hosts</code>) : dans ce conteneur, <code>sed -i</code> échoue sur ce fichier. Il doit rester une seule correspondance pour ce nom, la bonne."],
              "checks": [
                  ('[ "$(timeout 5 getent ahostsv4 serveur-local | awk \'{print $1}\' | sort -u)" = 192.168.1.100 ]', "serveur-local n'est pas résolu uniquement en 192.168.1.100."),
              ]},
             {"id": "21.5", "points": 4, "title": "Le DNS qui ne répond pas",
-             "ticket": {"from": "lea", "body": "Depuis que Marc a « amélioré » la configuration DNS, chaque résolution d'un nom absent de <code>/etc/hosts</code> met plusieurs secondes. Trouve le serveur DNS qui fonctionne vraiment, et débarrasse-nous de celui qui ne répond pas."},
-             "desc": "Écrivez dans <code>~/dns.txt</code> l'adresse du serveur DNS qui fonctionne, puis retirez de la configuration celui qui ne peut pas répondre, en gardant l'autre.",
-             "hints": ["Les serveurs DNS sont interrogés dans l'ordre où ils sont déclarés, et chaque requête attend le premier avant de passer au suivant.", "Regardez <code>/etc/resolv.conf</code> : 192.0.2.0/24 est une plage réservée à la documentation, jamais routée. Retirez cette ligne avec un éditeur (<code>sudo nano</code>)."],
+             "ticket": {"from": "lea", "body": "Depuis que Marc a « amélioré » la configuration DNS, chaque résolution d'un nom absent de <code>/etc/hosts</code> met plusieurs secondes. Trouve le serveur DNS qui ne répond pas, et débarrasse-nous-en, sans toucher à celui qui fonctionne."},
+             "desc": "Écrivez dans <code>~/dns-injoignable.txt</code> l'adresse du serveur DNS qui ne peut pas répondre, puis retirez-le de la configuration, en gardant celui qui fonctionne.",
+             "hints": ["Les serveurs DNS sont interrogés dans l'ordre où ils sont déclarés, et chaque requête attend le premier avant de passer au suivant.", "Regardez <code>/etc/resolv.conf</code> : les plages 192.0.2.0/24, 198.51.100.0/24 et 203.0.113.0/24 sont réservées à la documentation, jamais routées. Retirez la ligne fautive avec un éditeur (<code>sudo nano</code>)."],
              "checks": [
-                 ('[ "$(ans $H/dns.txt)" = "$LAB_DNS" ]', "Ce n'est pas l'adresse du serveur DNS qui fonctionne."),
-                 ('! grep -qE "^\\s*nameserver\\s+192\\.0\\.2\\.53" /etc/resolv.conf && grep -qE "^\\s*nameserver\\s+$LAB_DNS\\s*$" /etc/resolv.conf', "La configuration DNS contient encore le serveur injoignable, ou ne contient plus le bon serveur."),
+                 ('[ -n "$LAB_DNS_MORT" ] && [ "$(ans $H/dns-injoignable.txt)" = "$LAB_DNS_MORT" ]', "Ce n'est pas l'adresse du serveur DNS qui ne peut pas répondre."),
+                 ('! grep -qE "^\\s*nameserver\\s+${LAB_DNS_MORT//./\\.}\\s*$" /etc/resolv.conf && grep -qE "^\\s*nameserver\\s+$LAB_DNS\\s*$" /etc/resolv.conf', "La configuration DNS contient encore le serveur injoignable, ou ne contient plus le bon serveur."),
              ]},
             {"id": "21.6", "points": 4, "title": "Qui squatte le port ?",
              "ticket": {"from": "thomas", "body": "L'appli de caisse refuse de démarrer : <code>appli-caisse</code> dit « Address already in use » sur le port 8081. Quelqu'un occupe notre port ! Qui ?"},
              "desc": "Écrivez dans <code>~/squatteur.txt</code> le nom du programme qui occupe le port 8081 et l'utilisateur qui l'a lancé (ex. <code>programme utilisateur</code>), puis arrêtez-le pour que <code>appli-caisse</code> puisse démarrer.",
              "hints": ["Dans ce conteneur, <code>ss -p</code> ne montre que les processus de root (voir le cours) ; mais ss sait aussi afficher l'utilisateur propriétaire de chaque socket.", "<code>ss -tlne 'sport = :8081'</code> donne l'uid ; <code>getent passwd UID</code>, puis <code>ps -u utilisateur -o pid,args</code> pour trouver le programme, et <code>sudo kill PID</code>."],
              "checks": [
-                 ('grep -qw vieux-proxy $H/squatteur.txt && grep -qw intrus $H/squatteur.txt', "~/squatteur.txt ne contient pas le nom du programme qui occupe le port 8081 et l'utilisateur qui l'a lancé."),
+                 ('[ -n "$LAB_SQ_PROG" ] && grep -qw -- "$LAB_SQ_PROG" $H/squatteur.txt && grep -qw -- "$LAB_SQ_USER" $H/squatteur.txt', "~/squatteur.txt ne contient pas le nom du programme qui occupe le port 8081 et l'utilisateur qui l'a lancé."),
                  ('! ss -Htln "sport = :8081" | grep -q .', "Le port 8081 est toujours occupé."),
              ]},
             {"id": "21.7", "points": 5, "title": "Joignable seulement de l'intérieur",
              "ticket": {"from": "thomas", "body": "Mon service <code>mini-web</code> répond bien quand je fais <code>curl http://127.0.0.1:8088</code> sur le serveur. Mais en utilisant l'adresse IP du serveur, comme le fera le répartiteur de charge : « connection refused ». Pourtant il tourne !"},
-             "desc": "Faites en sorte que <code>mini-web</code> réponde aussi sur l'adresse IP de <code>eth0</code>, port 8088 (testez avec <code>curl http://ADRESSE:8088</code>). Sa configuration est dans <code>/etc/mini-web.conf</code> ; il se pilote avec <code>sudo mini-web-ctl start|stop|restart|status</code>.",
-             "hints": ["Comparez l'adresse sur laquelle le service écoute (<code>ss -tln</code>) avec celle que vous interrogez.", "<code>0.0.0.0</code> signifie « toutes les interfaces » (on peut aussi indiquer l'adresse de eth0) : modifiez BIND, puis <code>sudo mini-web-ctl restart</code>."],
+             "desc": "Faites en sorte que <code>mini-web</code> réponde aussi sur l'adresse IP de <code>eth0</code>, port 8088 (testez avec <code>curl http://ADRESSE:8088</code>). Sa configuration principale est <code>/etc/mini-web.conf</code>, mais l'en-tête du script <code>/usr/local/sbin/mini-web</code> indique tous les fichiers qu'il lit ; il se pilote avec <code>sudo mini-web-ctl start|stop|restart|status</code>.",
+             "hints": ["Comparez l'adresse sur laquelle le service écoute (<code>ss -tln</code>) avec celle que vous interrogez, puis cherchez d'où vient cette adresse : le script mini-web charge plusieurs fichiers dans un ordre précis, et le dernier qui fixe une valeur l'emporte.", "<code>0.0.0.0</code> signifie « toutes les interfaces » (on peut aussi indiquer l'adresse de eth0) : corrigez la valeur là où elle est réellement fixée, puis <code>sudo mini-web-ctl restart</code>."],
              "checks": [
                  ('ip=$(ip -4 -o addr show eth0 | awk \'{print $4}\' | cut -d/ -f1); curl -s --max-time 3 "http://$ip:8088/" | grep -q "mini-web OK"', "mini-web ne répond pas sur l'adresse IP de eth0, port 8088."),
              ]},
@@ -2931,8 +3158,15 @@ EOF
   ssh-keygen -q -t ed25519 -N '' -C cle-sauvegarde -f $H/cles/sauvegarde_key
   install -d -m 700 -o sauvegarde -g sauvegarde /home/sauvegarde/.ssh
   install -m 600 -o sauvegarde -g sauvegarde $H/cles/sauvegarde_key.pub /home/sauvegarde/.ssh/authorized_keys
-  own $H/cles; chmod 644 $H/cles/sauvegarde_key
-  sha256sum $H/cles/sauvegarde_key /home/sauvegarde/.ssh/authorized_keys > $REF/s22-sauvegarde.sha
+  own $H/cles; chmod 600 $H/cles/sauvegarde_key
+  sha256sum /home/sauvegarde/.ssh/authorized_keys > $REF/s22-sauvegarde.sha
+  # ce qui empêche ssh d'utiliser la clé est tiré au sort
+  v=${LAB_VARIANTE_22_7:-$((RANDOM % 3))}
+  case $v in
+    0) chmod 644 $H/cles/sauvegarde_key ;;                         # lisible par tous
+    1) chown root:root $H/cles/sauvegarde_key ;;                   # illisible pour vous
+    2) sed -i 's/$/\r/' $H/cles/sauvegarde_key ;;                   # fins de ligne Windows
+  esac
   # 22.8 : intrus a une clé autorisée
   mkuser intrus
   rm -f $REF/intrus_key $REF/intrus_key.pub
@@ -3000,10 +3234,10 @@ prod_sshd
             {"id": "22.7", "points": 3, "title": "Clé trop bavarde",
              "ticket": {"from": "julien", "body": "On m'a donné la clé <code>~/cles/sauvegarde_key</code> pour me connecter au compte <code>sauvegarde</code>, mais ssh refuse de s'en servir et me demande un mot de passe que je n'ai pas. La clé est pourtant la bonne, c'est promis !"},
              "desc": "Faites en sorte que <code>ssh -i ~/cles/sauvegarde_key sauvegarde@localhost</code> fonctionne, avec cette clé, sans toucher au compte <code>sauvegarde</code>.",
-             "hints": ["Lisez le message d'erreur en entier, depuis le début : ssh explique pourquoi il ignore la clé.", "« UNPROTECTED PRIVATE KEY FILE » : une clé privée ne doit être lisible que par son propriétaire."],
+             "hints": ["Lisez le message d'erreur en entier, depuis le début : ssh explique pourquoi il ignore la clé (<code>ssh -v</code> en dit encore plus).", "Selon le message : « UNPROTECTED PRIVATE KEY FILE » (droits trop ouverts), « Permission denied » en chargeant la clé (elle ne vous est pas lisible : à qui appartient-elle ?), ou une erreur de format (<code>cat -A</code> et <code>file</code> révèlent des fins de ligne Windows)."],
              "checks": [
-                 ('sha256sum -c --quiet $REF/s22-sauvegarde.sha', "La clé fournie ou le compte sauvegarde ont été modifiés : c'est la clé fournie qui doit fonctionner, telle quelle."),
-                 ('p=$(perm $H/cles/sauvegarde_key); [ "$p" = 600 ] || [ "$p" = 400 ]', "La clé privée est encore lisible par d'autres que vous."),
+                 ('sha256sum -c --quiet $REF/s22-sauvegarde.sha', "Le compte sauvegarde a été modifié : c'est la clé fournie qui doit fonctionner, sans toucher au compte."),
+                 ('p=$(perm $H/cles/sauvegarde_key); [ "$(owner $H/cles/sauvegarde_key)" = etudiant ] && { [ "$p" = 600 ] || [ "$p" = 400 ]; }', "La clé privée doit vous appartenir et n'être lisible que par vous."),
                  ('run_as etudiant "ssh -i $H/cles/sauvegarde_key -o IdentitiesOnly=yes $SSHO sauvegarde@localhost true"', "La connexion avec ~/cles/sauvegarde_key échoue toujours."),
              ]},
             {"id": "22.8", "points": 4, "title": "Qui a le droit d'entrer",
@@ -3025,11 +3259,38 @@ prod_sshd
         "description": "Auditez la machine… et corrigez ce que vous trouvez : SUID, droits, comptes, umask, cron, clés SSH.",
         "lesson": r"""<h3>Fichiers SUID</h3><p>Un exécutable <strong>SUID</strong> s'exécute avec les droits de son propriétaire, souvent root. Indispensable pour <code>passwd</code> ; catastrophique sur un programme capable de lire ou d'écrire des fichiers, ou de lancer d'autres commandes (<code>cat</code>, <code>find</code>, un éditeur, un shell…).</p><pre>find /usr -perm -2000 -type f 2&gt;/dev/null   # ici, les fichiers SETGID (bit 2000)<br>chmod u-s fichier                           # retirer le bit SUID<br>dpkg -S /chemin/du/fichier                  # quel paquet l'a installé ?</pre><p>Un binaire SUID qui n'appartient à <strong>aucun paquet</strong> mérite une enquête. Attention : sous Ubuntu, <code>/bin</code>, <code>/sbin</code> et <code>/lib</code> sont des liens vers leurs équivalents de <code>/usr</code>, et dpkg connaît certains fichiers sous leur ancien chemin (<code>/bin/mount</code> plutôt que <code>/usr/bin/mount</code>) : avant de conclure, essayez les deux.</p><h3>Fichiers modifiables par tous</h3><pre>find /srv -type f -perm -o+w</pre><h3>Le bit sticky</h3><p>Dans un dossier modifiable par tous, n'importe qui peut supprimer ou renommer les fichiers des autres… sauf si le dossier porte le <strong>bit sticky</strong> : un <code>t</code> à la fin des droits, comme pour <code>/tmp</code> (<code>drwxrwxrwt</code>). Il se pose avec <code>chmod +t</code>, ou en octal avec un 1 en tête (<code>1xxx</code>).</p><h3>umask</h3><p>La <strong>umask</strong> retire des droits aux fichiers et aux dossiers au moment de leur création : avec <code>umask 022</code>, un fichier est créé en <code>644</code> (666 moins 022) et un dossier en <code>755</code> ; avec <code>027</code>, les autres n'ont plus aucun droit. <code>umask</code> seul affiche la valeur en cours. Elle est fixée à l'ouverture de session (PAM et <code>/etc/login.defs</code>, puis <code>/etc/profile</code>, <code>/etc/profile.d/*.sh</code>, <code>~/.profile</code>…) et un script peut la changer pour lui-même. Sous Ubuntu, un utilisateur dont le groupe principal porte son nom reçoit <code>002</code> : son groupe ne contient que lui.</p><h3>Comptes</h3><pre>awk -F: '$3 &gt;= 1000 {print $1}' /etc/passwd   # comptes « humains » (UID ≥ 1000)<br>sudo awk -F: '$2 == ""' /etc/shadow         # mots de passe vides<br>passwd -S user                              # état du mot de passe (L = verrouillé, P = actif)</pre><p>Un compte d'UID 0, quel que soit son nom, <strong>est</strong> root.</p><table class="lesson-table"><tr><th>Commande</th><th>Effet réel</th></tr><tr><td><code>passwd -l user</code></td><td>verrouille le <strong>mot de passe</strong> seulement : la connexion par clé SSH reste possible</td></tr><tr><td><code>usermod -s /usr/sbin/nologin user</code></td><td>interdit le shell, mais pas, par exemple, un tunnel SSH</td></tr><tr><td><code>chage -E 0 user</code> (ou <code>usermod -e 1</code>)</td><td>fait <strong>expirer le compte</strong> : plus aucune connexion, quelle que soit la méthode</td></tr><tr><td><code>chage -E -1 user</code></td><td>annule l'expiration</td></tr></table><h3>Politique de mot de passe</h3><pre>chage -l user          # voir<br>chage -M 60 user       # changement obligatoire au moins tous les 60 jours<br>chage -d 0 user        # changement forcé à la prochaine connexion</pre><h3>Tâches planifiées et clés SSH</h3><ul><li>Une tâche lancée en root ne doit exécuter que des fichiers que <strong>seul root</strong> peut modifier : vérifiez le fichier et chacun de ses dossiers (<code>namei -l</code>), car on peut remplacer un fichier dans un dossier où l'on a le droit d'écrire.</li><li>Chaque compte, root compris, peut avoir un <code>~/.ssh/authorized_keys</code> : une clé oubliée est une porte d'entrée permanente. C'est la clé elle-même (la longue suite de caractères) qui compte, pas le commentaire en fin de ligne, que chacun écrit comme il veut.</li></ul><h3>Surveillance</h3><pre>last / lastb           # connexions réussies / échouées (si les journaux wtmp et btmp existent)<br>sudo ss -tulnp         # ports ouverts</pre><div class="tip">Sur un vrai serveur, on ajoute un pare-feu (<code>ufw</code>, <code>nftables</code>) — impossible à configurer dans ce conteneur.</div>""",
         "setup": r'''
-putbin /bin/cat /usr/local/bin/lecteur-root && chmod 4755 /usr/local/bin/lecteur-root
-putbin /usr/bin/find /usr/sbin/pam-diag && chmod 4755 /usr/sbin/pam-diag
-echo "db_password=Sup3rS3cret" > /etc/app-secret.conf && chmod 666 /etc/app-secret.conf
-getent passwd toor >/dev/null || useradd -o -u 0 -g 0 -M -d /root -s /bin/bash toor
-echo 'toor:toor' | chpasswd
+# 23.1 et 23.2 : deux binaires SUID installés hors paquet, noms et emplacements tirés au sort
+suids="/usr/local/bin/lecteur-root /usr/sbin/pam-diag /usr/local/sbin/sauve-conf /usr/local/bin/lire-journaux /usr/lib/cimes/diag-reseau /usr/sbin/suivi-log /opt/support/bin/aide-support /usr/local/sbin/pam-verif"
+rm -f $suids
+v=${LAB_VARIANTE_23_1:-$((RANDOM % 4))}
+case $v in
+  0) lect=/usr/local/bin/lecteur-root; autre=/usr/sbin/pam-diag; src=/usr/bin/find ;;
+  1) lect=/usr/local/bin/lire-journaux; autre=/usr/local/sbin/sauve-conf; src=/bin/cp ;;
+  2) lect=/usr/lib/cimes/diag-reseau; autre=/usr/sbin/suivi-log; src=/usr/bin/tail ;;
+  3) lect=/opt/support/bin/aide-support; autre=/usr/local/sbin/pam-verif; src=/usr/bin/find ;;
+esac
+mkdir -p "$(dirname $lect)" "$(dirname $autre)"
+putbin /bin/cat $lect && chmod 4755 $lect
+putbin $src $autre && chmod 4755 $autre
+emit SUSPECTS "$lect $autre"
+emit LECTEUR "$lect"
+# 23.3 : un secret modifiable par tous, quelque part dans /etc (emplacement tiré au sort)
+secrets="/etc/app-secret.conf /etc/boutique/bdd.ini /etc/cimes/paiement.env /etc/opt/crm/connexion.conf"
+rm -f $secrets
+v=${LAB_VARIANTE_23_3:-$((RANDOM % 4))}
+sf=$(echo $secrets | cut -d' ' -f$((v + 1)))
+mdp="$(rword | tr -d -)$((RANDOM % 90 + 10))!"
+mkdir -p "$(dirname $sf)"
+printf '# Accès à la base de données\ndb_user=boutique\ndb_password=%s\n' "$mdp" > $sf && chmod 666 $sf
+emit SECRET_FILE "$sf"
+emit SECRET_MDP "$mdp"
+# 23.4 : un second compte d'UID 0, au nom tiré au sort
+for u in toor sysmaint rescue admin0; do sed -i "/^$u:/d" /etc/passwd /etc/shadow; done
+v=${LAB_VARIANTE_23_4:-$((RANDOM % 4))}
+fr=(toor sysmaint rescue admin0); fr=${fr[v]}
+useradd -o -u 0 -g 0 -M -d /root -s /bin/bash $fr
+echo "$fr:$fr" | chpasswd
+emit FAUX_ROOT "$fr"
 # 23.5 : securise a aussi une clé SSH
 mkuser securise
 echo 'securise:Motdepasse1!' | chpasswd
@@ -3044,24 +3305,43 @@ mkuser alice; mkuser bob
 rm -rf /srv/depot; mkdir -p /srv/depot; chmod 777 /srv/depot
 su -s /bin/bash alice -c 'echo "note d alice" > /srv/depot/note-alice.txt'
 su -s /bin/bash bob -c 'echo "devis de bob" > /srv/depot/devis-bob.txt'
-# 23.7 : des réglages « de confort » un peu trop généreux
-cat > /etc/profile.d/zz-confort.sh <<'EOF'
+# 23.7 : des réglages « de confort » un peu trop généreux, rangés à un endroit tiré au sort
+rm -f /etc/profile.d/zz-confort.sh
+for f in /etc/profile /etc/bash.bashrc; do sed -i '/^# Réglages de confort pour tous les utilisateurs (Marc)$/,/^# Fin des réglages de confort$/d' $f; done
+v=${LAB_VARIANTE_23_7:-$((RANDOM % 3))}
+cf=(/etc/profile.d/zz-confort.sh /etc/bash.bashrc /etc/profile); cf=${cf[v]}
+cat >> $cf <<'EOF'
 # Réglages de confort pour tous les utilisateurs (Marc)
 export HISTTIMEFORMAT="%F %T "
 umask 000
 alias ..='cd ..'
+# Fin des réglages de confort
 EOF
-chmod 644 /etc/profile.d/zz-confort.sh
+chmod 644 $cf
 # 23.8 : des tâches root qui exécutent des fichiers modifiables par d'autres
 groupadd -f equipe
 mkdir -p /opt/scripts; chown root:root /opt/scripts; chmod 755 /opt/scripts
 printf '#!/bin/bash\n# Purge du cache applicatif\nfind /var/cache/catalogue -name "*.tmp" -mtime +7 -delete\n' > /opt/scripts/purge-cache.sh
-chmod 777 /opt/scripts/purge-cache.sh
-mkdir -p /srv/outils; chown root:equipe /srv/outils; chmod 2775 /srv/outils
+chown root:root /opt/scripts/purge-cache.sh; chmod 755 /opt/scripts/purge-cache.sh
+mkdir -p /srv/outils; chown root:root /srv/outils; chmod 755 /srv/outils
 printf '#!/bin/bash\n# Rotation des exports\nfind /srv/compta -name "*.csv" -mtime +30 -delete\n' > /srv/outils/rotation-exports.sh
 chown root:root /srv/outils/rotation-exports.sh; chmod 755 /srv/outils/rotation-exports.sh
 printf '#!/bin/bash\n# Statistiques de ventes\necho "$(date +%%F) statistiques calculées" >> /var/log/stats-ventes.log\n' > /usr/local/sbin/stats-ventes
-chmod 755 /usr/local/sbin/stats-ventes
+chown root:root /usr/local/sbin/stats-ventes; chmod 755 /usr/local/sbin/stats-ventes
+# Ce qui rend chaque script détournable est tiré au sort : fichier modifiable par tous (F), dossier modifiable
+# par le groupe equipe (D), fichier appartenant à un autre compte que root (O), ou rien (sain)
+mkuser intrus
+v=${LAB_VARIANTE_23_8:-$((RANDOM % 4))}
+case $v in 0) risques="F D -" ;; 1) risques="- F O" ;; 2) risques="D O -" ;; 3) risques="O - F" ;; esac
+set -- $risques
+for spec in "/opt/scripts/purge-cache.sh $1" "/srv/outils/rotation-exports.sh $2" "/usr/local/sbin/stats-ventes $3"; do
+  p=${spec% *}
+  case ${spec##* } in
+    F) chmod 777 $p ;;
+    D) chown root:equipe $(dirname $p); chmod 2775 $(dirname $p) ;;
+    O) chown intrus:intrus $p ;;
+  esac
+done
 printf '30 3 * * * root /opt/scripts/purge-cache.sh\n' > /etc/cron.d/purge-cache
 printf '0 4 * * * root /srv/outils/rotation-exports.sh\n' > /etc/cron.d/rotation-exports
 printf '0 5 * * * root /usr/local/sbin/stats-ventes\n' > /etc/cron.d/stats-ventes
@@ -3077,16 +3357,29 @@ for f in /etc/cron.d/*; do
   done < <(grep -vE '^[[:space:]]*(#|$)' "$f" | grep -vE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=' || true)
 done
 sort -u -o $REF/s23-cron-risque $REF/s23-cron-risque
-# 23.9 : la même clé de Marc, cachée sous trois comptes
-mkuser deploy; mkuser sauvegarde
+# 23.9 : la même clé de Marc, cachée sous trois comptes (les deux comptes autres que root sont tirés au sort)
+for u in deploy sauvegarde alice bob julien; do mkuser $u; done
+# on retire d'abord les clés de Marc d'une mise en place précédente
+if [ -s $REF/s23-marc-blobs ]; then
+  for u in root deploy sauvegarde alice bob julien; do
+    k=$(getent passwd $u | cut -d: -f6)/.ssh/authorized_keys
+    if [ -f $k ]; then grep -vF -f $REF/s23-marc-blobs $k > $k.tmp || true; cat $k.tmp > $k; rm -f $k.tmp; fi
+  done
+fi
 rm -f $REF/marc_key $REF/marc_key.pub
 ssh-keygen -q -t ed25519 -N '' -C marc@portable -f $REF/marc_key
 b=$(awk '{print $2}' $REF/marc_key.pub)
-for spec in "root:marc@portable" "deploy:cle-deploiement" "sauvegarde:sauvegarde-auto"; do
+v=${LAB_VARIANTE_23_9:-$((RANDOM % 4))}
+case $v in
+  0) caches="deploy:cle-deploiement sauvegarde:sauvegarde-auto" ;;
+  1) caches="alice:alice@poste-compta julien:outil-synchro" ;;
+  2) caches="bob:bob@poste-12 deploy:ci-runner" ;;
+  3) caches="sauvegarde:backup-nas alice:support-distant" ;;
+esac
+for spec in root:marc@portable $caches; do
   u=${spec%%:*}; c=${spec#*:}; hd=$(getent passwd $u | cut -d: -f6)
   install -d -m 700 -o $u -g $(id -gn $u) $hd/.ssh
   k=$hd/.ssh/authorized_keys; touch $k
-  if [ -s $REF/s23-marc-blobs ]; then grep -vF -f $REF/s23-marc-blobs $k > $k.tmp || true; cat $k.tmp > $k; rm -f $k.tmp; fi
   echo "ssh-ed25519 $b $c" >> $k; chown $u: $k; chmod 600 $k
 done
 echo "$b" > $REF/s23-marc-blobs
@@ -3098,35 +3391,35 @@ echo "$b" > $REF/s23-marc-blobs
              "hints": ["find sait sélectionner les fichiers selon leurs droits ; le bit SUID vaut 4000. Les erreurs « Permission denied » peuvent être jetées.", "<code>sudo find / -perm -4000 -type f 2&gt;/dev/null</code>, puis <code>dpkg -S</code> sur chaque chemin (une boucle <code>for</code>). « no path found » ? Réessayez avec l'ancien chemin (<code>/bin/…</code> au lieu de <code>/usr/bin/…</code>) avant de conclure à un intrus."],
              "checks": [
                  ('test -s $H/suid-files.txt', "~/suid-files.txt est absent ou vide."),
-                 ('find / -xdev -perm -4000 -type f 2>/dev/null | grep -vxE "/usr/local/bin/lecteur-root|/usr/sbin/pam-diag" | while read -r f; do grep -qxF "$f" $H/suid-files.txt || exit 1; done', "La liste est incomplète : il manque des fichiers SUID du système."),
-                 ('f=$H/suid-suspects.txt; test -s $f && [ -z "$(grep -vxE "\\s*(/usr/local/bin/lecteur-root|/usr/sbin/pam-diag)?\\s*" $f)" ] && { test ! -u /usr/local/bin/lecteur-root || grep -qx /usr/local/bin/lecteur-root $f; } && { test ! -u /usr/sbin/pam-diag || grep -qx /usr/sbin/pam-diag $f; }', "~/suid-suspects.txt ne contient pas exactement les fichiers SUID qu'aucun paquet n'a installés."),
+                 ('s=" $LAB_SUSPECTS "; find / -xdev -perm -4000 -type f 2>/dev/null | while read -r f; do [[ $s == *" $f "* ]] && continue; grep -qxF "$f" $H/suid-files.txt || exit 1; done', "La liste est incomplète : il manque des fichiers SUID du système."),
+                 ('f=$H/suid-suspects.txt; s=" $LAB_SUSPECTS "; test -s $f && [ -n "$LAB_SUSPECTS" ] && while read -r l; do l=$(echo $l); [ -z "$l" ] || [[ $s == *" $l "* ]] || exit 1; done < $f && for x in $LAB_SUSPECTS; do test ! -u $x || grep -qxF $x $f || exit 1; done', "~/suid-suspects.txt ne contient pas exactement les fichiers SUID qu'aucun paquet n'a installés."),
              ]},
             {"id": "23.2", "points": 4, "title": "Neutraliser les SUID suspects",
-             "ticket": {"from": "lea", "body": "Les SUID qui ne viennent d'aucun paquet me font peur. Essaie <code>lecteur-root /etc/shadow</code> en simple utilisateur… Si ça marche, c'est une faille béante. Neutralise-les tous, mais sans les supprimer : l'auditeur veut les examiner."},
-             "desc": "Retirez le bit SUID de tous les fichiers SUID qu'aucun paquet n'a installés, sans les supprimer, puis vérifiez que <code>lecteur-root</code> ne permet plus de lire <code>/etc/shadow</code>.",
-             "hints": ["Le bit SUID se retire avec chmod, en notation symbolique ; faites-le pour chaque fichier suspect de votre inventaire.", "<code>sudo chmod u-s fichier</code>, puis testez à nouveau en simple utilisateur."],
+             "ticket": {"from": "lea", "body": "Les SUID qui ne viennent d'aucun paquet me font peur. Essaie de lire <code>/etc/shadow</code> en simple utilisateur avec chacun d'eux (l'un se comporte comme <code>cat</code>)… Si ça marche, c'est une faille béante. Neutralise-les tous, mais sans les supprimer : l'auditeur veut les examiner."},
+             "desc": "Retirez le bit SUID de tous les fichiers SUID qu'aucun paquet n'a installés, sans les supprimer, puis vérifiez qu'aucun ne permet plus de lire <code>/etc/shadow</code>.",
+             "hints": ["Le bit SUID se retire avec chmod, en notation symbolique ; faites-le pour chaque fichier suspect de votre inventaire (<code>~/suid-suspects.txt</code>).", "<code>sudo chmod u-s fichier</code>, puis testez à nouveau en simple utilisateur."],
              "checks": [
-                 ('test -f /usr/local/bin/lecteur-root && test -f /usr/sbin/pam-diag', "Un des fichiers suspects a été supprimé : l'auditeur veut les examiner, il fallait seulement retirer leur bit SUID."),
-                 ('test ! -u /usr/local/bin/lecteur-root && test ! -u /usr/sbin/pam-diag', "Un fichier SUID installé par aucun paquet est toujours actif."),
-                 ('! run_as etudiant "/usr/local/bin/lecteur-root /etc/shadow"', "lecteur-root permet encore de lire /etc/shadow."),
+                 ('[ -n "$LAB_SUSPECTS" ] && for x in $LAB_SUSPECTS; do test -f $x || exit 1; done', "Un des fichiers suspects a été supprimé : l'auditeur veut les examiner, il fallait seulement retirer leur bit SUID."),
+                 ('for x in $LAB_SUSPECTS; do test ! -u $x || exit 1; done', "Un fichier SUID installé par aucun paquet est toujours actif."),
+                 ('! run_as etudiant "$LAB_LECTEUR /etc/shadow"', "Un des fichiers suspects permet encore de lire /etc/shadow."),
              ]},
             {"id": "23.3", "points": 4, "title": "Secret exposé",
              "ticket": {"from": "lea", "body": "L'auditeur a trouvé dans <code>/etc</code> un fichier qui contient un mot de passe et que n'importe qui peut modifier. Trouve-le avant qu'il ne l'écrive dans son rapport, et verrouille-le. Et comme n'importe qui a pu le lire, ce mot de passe est grillé : change-le."},
              "desc": "Un fichier de <code>/etc</code> contenant un mot de passe est modifiable par tout le monde. Trouvez-le, faites en sorte que seul root puisse le lire et le modifier, et remplacez le mot de passe exposé par une nouvelle valeur (la ligne <code>db_password=</code> doit rester).",
              "hints": ["find sait chercher des fichiers selon leurs droits : ici, ceux que les « autres » peuvent modifier.", "<code>find /etc -type f -perm -o+w</code> ; seul root : <code>rw-------</code> ; puis modifiez la valeur avec <code>sudo nano</code>."],
              "checks": [
-                 ('test -f /etc/app-secret.conf', "Le fichier a été supprimé : il fallait corriger ses droits."),
+                 ('[ -n "$LAB_SECRET_FILE" ] && test -f "$LAB_SECRET_FILE"', "Le fichier a été supprimé : il fallait corriger ses droits."),
                  ('[ -z "$(find /etc -xdev -type f -perm -o+w 2>/dev/null)" ]', "Il reste des fichiers modifiables par tous dans /etc."),
-                 ('[ "$(perm /etc/app-secret.conf)" = 600 ] && [ "$(owner /etc/app-secret.conf)" = root ]', "Le fichier secret doit appartenir à root avec les droits 600."),
-                 ('grep -qE "^db_password=.+" /etc/app-secret.conf && ! grep -q "Sup3rS3cret" /etc/app-secret.conf', "Le mot de passe exposé n'a pas été remplacé (la ligne db_password= doit rester, avec une nouvelle valeur)."),
+                 ('[ "$(perm "$LAB_SECRET_FILE")" = 600 ] && [ "$(owner "$LAB_SECRET_FILE")" = root ]', "Le fichier secret doit appartenir à root avec les droits 600."),
+                 ('grep -qE "^db_password=.+" "$LAB_SECRET_FILE" && ! grep -qF -- "$LAB_SECRET_MDP" "$LAB_SECRET_FILE"', "Le mot de passe exposé n'a pas été remplacé (la ligne db_password= doit rester, avec une nouvelle valeur)."),
              ]},
             {"id": "23.4", "points": 5, "title": "Le faux root",
              "ticket": {"from": "sophie", "body": "Alerte de l'auditeur : il y aurait plusieurs comptes avec l'UID 0, donc plusieurs root ! Liste-les, et neutralise celui qui ne devrait pas exister."},
              "desc": "Listez dans <code>~/uid-zero.txt</code> les comptes d'UID 0 (un nom par ligne). L'un d'eux n'est pas <code>root</code> : neutralisez-le (mot de passe inutilisable <strong>et</strong> shell <code>/usr/sbin/nologin</code>), changez son UID, ou supprimez-le.",
              "hints": ["awk sait filtrer les lignes de /etc/passwd selon la valeur d'un champ : l'UID est le 3e.", "<code>userdel</code> peut refuser (des processus tournent avec l'UID 0) : verrouillez plutôt son mot de passe et retirez-lui son shell (<code>usermod -s</code>)."],
              "checks": [
-                 ('f=$H/uid-zero.txt; grep -qx root $f && [ -z "$(grep -vxE "\\s*(root|toor)?\\s*" $f)" ] && { grep -qx toor $f || ! awk -F: \'$3 == 0\' /etc/passwd | grep -q "^toor:"; }', "~/uid-zero.txt doit lister exactement les comptes d'UID 0 (un nom par ligne)."),
-                 ('! getent passwd toor >/dev/null || [ "$(id -u toor)" != 0 ] || { { [ "$(passwd -S toor | awk \'{print $2}\')" = L ] || [ "$(getent shadow toor | cut -d: -f8)" = 0 ]; } && getent passwd toor | cut -d: -f7 | grep -qE "(nologin|false)$"; }', "Le compte toor est encore utilisable (mot de passe actif ou shell de connexion)."),
+                 ('f=$H/uid-zero.txt; x=$LAB_FAUX_ROOT; [ -n "$x" ] && grep -qx root $f && [ -z "$(grep -vxE "\\s*(root|$x)?\\s*" $f)" ] && { grep -qx "$x" $f || ! awk -F: \'$3 == 0\' /etc/passwd | grep -q "^$x:"; }', "~/uid-zero.txt doit lister exactement les comptes d'UID 0 (un nom par ligne)."),
+                 ('x=$LAB_FAUX_ROOT; ! getent passwd "$x" >/dev/null || [ "$(id -u "$x")" != 0 ] || { { [ "$(passwd -S "$x" | awk \'{print $2}\')" = L ] || [ "$(getent shadow "$x" | cut -d: -f8)" = 0 ]; } && getent passwd "$x" | cut -d: -f7 | grep -qE "(nologin|false)$"; }', "Le compte d'UID 0 qui n'est pas root est encore utilisable (mot de passe actif ou shell de connexion)."),
              ]},
             {"id": "23.5", "points": 5, "title": "Vraiment verrouillé",
              "ticket": {"from": "sophie", "body": "Le propriétaire du compte <code>securise</code> part six mois en congé. D'ici son retour, plus personne ne doit pouvoir se connecter avec ce compte, par aucun moyen, mais on ne supprime rien. À son retour, la politique de l'entreprise s'appliquera : changement de mot de passe au moins tous les 90 jours."},
@@ -3152,7 +3445,7 @@ echo "$b" > $REF/s23-marc-blobs
              "hints": ["Créez un fichier en simple utilisateur et regardez ses droits : un réglage du shell décide des droits retirés à la création. Qui le fixe à l'ouverture de session ?", "<code>umask</code>, puis <code>grep -r umask /etc/profile /etc/profile.d /etc/bash.bashrc</code>."],
              "checks": [
                  ('for u in alice bob; do for c in umask "bash -ic umask"; do m=$(su - $u -c "$c" 2>/dev/null </dev/null | tail -n1); [[ $m =~ ^[0-7]+$ ]] && (( (8#$m & 2) == 2 )) || exit 1; done; done', "Dans une session, la umask d'alice ou de bob laisse encore les autres modifier les nouveaux fichiers."),
-                 ('[ -n "$(su - alice -c \'echo $HISTTIMEFORMAT\' 2>/dev/null </dev/null)" ]', "Les autres réglages du fichier (comme HISTTIMEFORMAT) ont disparu : ne corrigez que la ligne fautive."),
+                 ('[ -n "$(su - alice -c "bash -ic \'echo \\$HISTTIMEFORMAT\'" 2>/dev/null </dev/null | tail -n1)" ]', "Les autres réglages de Marc (comme HISTTIMEFORMAT) ont disparu : ne corrigez que la ligne fautive."),
              ]},
             {"id": "23.8", "points": 5, "title": "Tâches cron détournables",
              "ticket": {"from": "lea", "body": "Les tâches planifiées de root sont une cible de choix : si quelqu'un peut modifier ce qu'elles exécutent, il devient root à la prochaine exécution. Passe en revue toutes les tâches de <code>/etc/cron.d</code> lancées en root."},
@@ -3182,30 +3475,65 @@ echo "$b" > $REF/s23-marc-blobs
 if first_run 24; then
   rm -f $REF/env-24
   mkdir -p $H/depannage
-  printf '#!/bin/bsh\r\necho "Déploiement en cours..."\r\necho "DEPLOY OK"\r\n' > $H/depannage/deploy.sh
-  chmod 644 $H/depannage/deploy.sh
+  # 24.1 : ce que Windows a fait au script est tiré au sort
+  v=${LAB_VARIANTE_24_1:-$((RANDOM % 3))}
+  case $v in
+    # fins de ligne CRLF, shebang erroné, pas exécutable
+    0) printf '#!/bin/bsh\r\necho "Déploiement en cours..."\r\necho "DEPLOY OK"\r\n' > $H/depannage/deploy.sh
+       chmod 644 $H/depannage/deploy.sh ;;
+    # enregistré en UTF-16 (« Unicode » du Bloc-notes), fins de ligne CRLF, pas exécutable
+    1) printf '#!/bin/bash\r\necho "Déploiement en cours..."\r\necho "DEPLOY OK"\r\n' | iconv -f UTF-8 -t UTF-16 > $H/depannage/deploy.sh
+       chmod 644 $H/depannage/deploy.sh ;;
+    # marque d'ordre des octets (BOM) UTF-8 devant le shebang, fins de ligne CRLF
+    2) printf '\xef\xbb\xbf#!/bin/bash\r\necho "Déploiement en cours..."\r\necho "DEPLOY OK"\r\n' > $H/depannage/deploy.sh
+       chmod 755 $H/depannage/deploy.sh ;;
+  esac
   rm -rf /var/log/app-debug; mkdir -p /var/log/app-debug
   for n in access audit worker; do head -c 200K /dev/urandom | base64 > /var/log/app-debug/$n.log; done
   big=/var/log/app-debug/trace-$RANDOM.log
   head -c 60M /dev/zero > $big
   kemit 24 BIGLOG "$big"
   kemit 24 BIGINO "$(stat -c %i $big)"
+  # 24.3 : ce qui fait refuser la clé de l'équipe ops est tiré au sort
   mkuser ops
+  usermod -s /bin/bash ops; chage -E -1 ops
   mkdir -p /home/ops/.ssh
   rm -f $H/depannage/cle_ops $H/depannage/cle_ops.pub
   ssh-keygen -q -t ed25519 -N '' -C cle-ops -f $H/depannage/cle_ops
   cp $H/depannage/cle_ops.pub /home/ops/.ssh/authorized_keys
-  chmod 777 /home/ops /home/ops/.ssh; chmod 666 /home/ops/.ssh/authorized_keys
-  chown root:root /home/ops/.ssh/authorized_keys
+  chown -R ops:ops /home/ops/.ssh; chmod 755 /home/ops; chmod 700 /home/ops/.ssh; chmod 600 /home/ops/.ssh/authorized_keys
+  v=${LAB_VARIANTE_24_3:-$((RANDOM % 4))}
+  case $v in
+    # droits trop ouverts (StrictModes)
+    0) chmod 777 /home/ops /home/ops/.ssh; chmod 666 /home/ops/.ssh/authorized_keys
+       chown root:root /home/ops/.ssh/authorized_keys ;;
+    # clé restreinte à un réseau d'où l'on ne vient pas
+    1) sed -i 's/^/from="10.0.0.0\/8" /' /home/ops/.ssh/authorized_keys ;;
+    # compte expiré
+    2) chage -E 1 ops ;;
+    # shell qui refuse toute session
+    3) usermod -s /usr/sbin/nologin ops ;;
+  esac
   own $H/depannage
-  cat > /usr/local/bin/rapport-cron.sh <<'EOF'
-#!/bin/bash
-echo "$(date '+%F %T') rapport généré" >> /var/log/rapport-cron.log
-EOF
-  chmod 644 /usr/local/bin/rapport-cron.sh
-  rm -f /etc/cron.d/rapport
-  printf '* * * * * rapport-cron.sh\n' > /etc/cron.d/rapport.cron
-  rm -f /var/log/rapport-cron.log
+  # 24.4 : la tâche cron de Marc, avec des erreurs tirées au sort (dans le fichier cron et dans le script)
+  rm -f /etc/cron.d/rapport /etc/cron.d/rapport.cron /etc/cron.d/rapport-quotidien /var/log/rapport-cron.log
+  v=${LAB_VARIANTE_24_4:-$((RANDOM % 3))}
+  case $v in
+    # nom avec un point, pas d'utilisateur, chemin relatif ; script non exécutable
+    0) printf '#!/bin/bash\necho "$(date '"'"'+%%F %%T'"'"') rapport généré" >> /var/log/rapport-cron.log\n' > /usr/local/bin/rapport-cron.sh
+       chmod 644 /usr/local/bin/rapport-cron.sh
+       printf '* * * * * rapport-cron.sh\n' > /etc/cron.d/rapport.cron ;;
+    # fichier modifiable par le groupe et sans retour à la ligne final ; script aux fins de ligne Windows
+    1) printf '#!/bin/bash\r\necho "$(date '"'"'+%%F %%T'"'"') rapport généré" >> /var/log/rapport-cron.log\r\n' > /usr/local/bin/rapport-cron.sh
+       chmod 755 /usr/local/bin/rapport-cron.sh
+       printf '# Rapport de Marc\n* * * * * root /usr/local/bin/rapport-cron.sh' > /etc/cron.d/rapport
+       chmod 664 /etc/cron.d/rapport ;;
+    # fichier qui n'appartient pas à root, mauvais dossier du script ; shebang erroné
+    2) printf '#!/bin/bsh\necho "$(date '"'"'+%%F %%T'"'"') rapport généré" >> /var/log/rapport-cron.log\n' > /usr/local/bin/rapport-cron.sh
+       chmod 755 /usr/local/bin/rapport-cron.sh
+       printf '# Rapport de Marc\n* * * * * root /usr/local/sbin/rapport-cron.sh\n' > /etc/cron.d/rapport-quotidien
+       chown etudiant:etudiant /etc/cron.d/rapport-quotidien; chmod 644 /etc/cron.d/rapport-quotidien ;;
+  esac
   mkuser monsvc
   cat > /usr/local/bin/mon-service <<'EOF'
 #!/bin/bash
@@ -3222,21 +3550,48 @@ echo "$(date '+%F %T') démarrage sur le port $PORT" >> "$LOG_DIR/mon-service.lo
 exec nc -lk "$PORT"
 EOF
   chmod 755 /usr/local/bin/mon-service
-  printf 'PORT=huit-mille-quatre-vingt\nLOG_DIR=/var/log/mon-service\n' > /etc/mon-service.conf
-  chmod 644 /etc/mon-service.conf
-  rm -rf /var/log/mon-service
-  # 24.6 : un dossier intraversable
+  # 24.5 : les erreurs de configuration sont tirées au sort
+  rm -rf /var/log/mon-service /var/log/mon-servce
+  v=${LAB_VARIANTE_24_5:-$((RANDOM % 3))}
+  case $v in
+    # port écrit en toutes lettres, dossier des journaux absent
+    0) printf 'PORT=huit-mille-quatre-vingt\nLOG_DIR=/var/log/mon-service\n' > /etc/mon-service.conf
+       chmod 644 /etc/mon-service.conf ;;
+    # fichier aux fins de ligne Windows, port réservé
+    1) printf 'PORT=80\r\nLOG_DIR=/var/log/mon-service\r\n' > /etc/mon-service.conf
+       chmod 644 /etc/mon-service.conf
+       mkdir -p /var/log/mon-service; chown monsvc:monsvc /var/log/mon-service; chmod 755 /var/log/mon-service ;;
+    # configuration illisible pour monsvc, faute de frappe dans le dossier des journaux
+    2) printf 'PORT=8080\nLOG_DIR=/var/log/mon-servce\n' > /etc/mon-service.conf
+       chmod 600 /etc/mon-service.conf ;;
+  esac
+  chown root:root /etc/mon-service.conf
+  # 24.6 : un dossier intraversable (lequel est tiré au sort)
   mkuser webapp
   rm -rf /srv/app; mkdir -p /srv/app/public /srv/app/secrets
   echo "<h1>Catalogue Cimes &amp; Sentiers</h1>" > /srv/app/public/index.html
   echo "db_password=$(rword)" > /srv/app/secrets/db.conf
-  chown -R root:root /srv/app; chmod 700 /srv/app; chmod 755 /srv/app/public; chmod 644 /srv/app/public/index.html
+  chown -R root:root /srv/app; chmod 644 /srv/app/public/index.html
   chmod 700 /srv/app/secrets; chmod 600 /srv/app/secrets/db.conf
-  # 24.7 : l'hébergeur a « préparé » sshd
+  v=${LAB_VARIANTE_24_6:-$((RANDOM % 3))}
+  case $v in
+    0) chmod 700 /srv/app; chmod 755 /srv/app/public ;;   # /srv/app ne se traverse pas
+    1) chmod 711 /srv/app; chmod 700 /srv/app/public ;;   # public est fermé aux autres
+    2) chmod 711 /srv/app; chmod 744 /srv/app/public ;;   # public se liste, mais ne se traverse pas
+  esac
+  # 24.7 : l'hébergeur a « préparé » sshd, d'une façon tirée au sort
   if ! id deploy >/dev/null 2>&1; then mkuser deploy; echo 'deploy:deploy123' | chpasswd; fi
-  sed -i -E 's/^#?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
+  sed -i -E 's/^#?PasswordAuthentication .*/PasswordAuthentication no/; s/^#?KbdInteractiveAuthentication .*/KbdInteractiveAuthentication no/' /etc/ssh/sshd_config
   grep -q '^PasswordAuthentication no' /etc/ssh/sshd_config || echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config
-  printf '# Préparé par l'"'"'hébergeur pour la migration\nPasswordAuthentication yes\n' > /etc/ssh/sshd_config.d/50-cloud-init.conf
+  sed -i '/^# Accès de secours de l.hébergeur$/,$d' /etc/ssh/sshd_config
+  rm -f /etc/ssh/sshd_config.d/50-cloud-init.conf /etc/ssh/sshd_config.d/05-migration.conf
+  v=${LAB_VARIANTE_24_7:-$((RANDOM % 4))}
+  case $v in
+    0) printf '# Préparé par l'"'"'hébergeur pour la migration\nPasswordAuthentication yes\n' > /etc/ssh/sshd_config.d/50-cloud-init.conf ;;
+    1) printf '# Migration des comptes (hébergeur)\nPasswordAuthentication yes\n' > /etc/ssh/sshd_config.d/05-migration.conf ;;
+    2) printf '\n# Accès de secours de l'"'"'hébergeur\nMatch Address 127.0.0.1,::1\n    PasswordAuthentication yes\n' >> /etc/ssh/sshd_config ;;
+    3) printf '# Préparé par l'"'"'hébergeur pour la migration\nKbdInteractiveAuthentication yes\n' > /etc/ssh/sshd_config.d/50-cloud-init.conf ;;
+  esac
   if [ -f /run/sshd.pid ]; then kill -HUP "$(cat /run/sshd.pid)" 2>/dev/null || true; fi
   # 24.8 : un script qui casse sur les espaces
   cat > /usr/local/bin/archiver-factures <<'EOF'
@@ -3278,7 +3633,7 @@ emit WRITER "$(pgrep -x trace-boutique | head -n1)"
             {"id": "24.1", "points": 4, "title": "Le script qui ne démarre pas", "manual": True,
              "ticket": {"from": "thomas", "body": "J'ai écrit <code>deploy.sh</code> sur mon PC Windows et il refuse de démarrer sur le serveur. J'ai tout vérifié, je ne comprends pas… Tu peux jeter un œil ?"},
              "desc": "Un collègue a écrit <code>~/depannage/deploy.sh</code> sous Windows. Il doit afficher <code>DEPLOY OK</code> quand on lance <code>~/depannage/deploy.sh</code>. Réparez-le (il y a plusieurs problèmes).",
-             "hints": ["Lancez-le et lisez l'erreur. Puis regardez-le avec <code>cat -A</code> : que sont ces <code>^M</code> ?", "Il y a plusieurs problèmes : corrigez-en un, relancez, lisez le nouveau message, et recommencez (droits, première ligne, fins de ligne)."],
+             "hints": ["Lancez-le et lisez l'erreur. Puis examinez-le : <code>file</code> indique son encodage et ses fins de ligne, <code>cat -A</code> montre les caractères invisibles (<code>^M</code>, octets en tête de fichier…).", "Il y a plusieurs problèmes : corrigez-en un, relancez, lisez le nouveau message, et recommencez (droits, première ligne, fins de ligne, encodage : <code>iconv</code> convertit un fichier d'un encodage à un autre)."],
              "checks": [
                  ('test -x $H/depannage/deploy.sh', "Le script n'est pas exécutable."),
                  ('head -n1 $H/depannage/deploy.sh | grep -qxE "#! ?/(usr/)?bin/(env )?(ba)?sh"', "Le shebang ne désigne pas un interpréteur valide."),
@@ -3297,8 +3652,8 @@ emit WRITER "$(pgrep -x trace-boutique | head -n1)"
              ]},
             {"id": "24.3", "points": 5, "title": "SSH refusé",
              "ticket": {"from": "lea", "body": "L'équipe ops n'arrive plus à se connecter avec sa clé. La clé publique est pourtant bien dans <code>authorized_keys</code>… sshd est très pointilleux : cherche ce qui le gêne, et répare sans baisser la garde."},
-             "desc": "La commande <code>ssh -i ~/depannage/cle_ops ops@localhost</code> devrait fonctionner : la clé publique est bien dans <code>/home/ops/.ssh/authorized_keys</code>… mais sshd la refuse. Trouvez pourquoi et réparez, sans désactiver les vérifications de sshd.",
-             "hints": ["sshd explique ses refus dans <code>/var/log/auth.log</code> (avec sudo) ; il est très strict sur les droits.", "<code>namei -l /home/ops/.ssh/authorized_keys</code> : aucun élément du chemin ne doit être modifiable par le groupe ou par les autres."],
+             "desc": "La commande <code>ssh -i ~/depannage/cle_ops ops@localhost</code> devrait fonctionner : la clé publique est bien dans <code>/home/ops/.ssh/authorized_keys</code>… mais la connexion échoue. Trouvez pourquoi et réparez, sans désactiver les vérifications de sshd ni retirer la clé.",
+             "hints": ["Lisez ce que répond ssh, puis ce que sshd explique dans <code>/var/log/auth.log</code> (avec sudo) : droits trop ouverts, clé refusée pour l'adresse d'origine, compte expiré ou shell qui refuse la session… chaque cause laisse un message différent.", "Selon le message : <code>namei -l /home/ops/.ssh/authorized_keys</code> (aucun élément modifiable par le groupe ou les autres), les options placées devant la clé dans authorized_keys, <code>sudo chage -l ops</code>, ou le shell de ops dans <code>/etc/passwd</code>."],
              "checks": [
                  ('grep -qf $H/depannage/cle_ops.pub /home/ops/.ssh/authorized_keys', "La clé publique n'est plus dans authorized_keys."),
                  ('sshd -T 2>/dev/null | grep -qx "strictmodes yes"', "La vérification des droits par sshd (StrictModes) a été désactivée : réactivez-la et corrigez plutôt les droits."),
@@ -3307,8 +3662,8 @@ emit WRITER "$(pgrep -x trace-boutique | head -n1)"
              ]},
             {"id": "24.4", "points": 5, "title": "La tâche cron fantôme",
              "ticket": {"from": "diallo", "body": "Le rapport qui devait arriver chaque minute dans <code>/var/log/rapport-cron.log</code> n'est jamais apparu. Marc avait configuré ça juste avant de partir… Tu peux regarder ?"},
-             "desc": "La tâche <code>/etc/cron.d/rapport.cron</code> devrait écrire chaque minute dans <code>/var/log/rapport-cron.log</code> en exécutant <code>/usr/local/bin/rapport-cron.sh</code> en root, mais le fichier n'apparaît jamais. Réparez (plusieurs erreurs), puis attendez que <strong>cron</strong> l'alimente.",
-             "hints": ["Comparez le fichier et sa ligne aux pièges classiques de l'étape cron ; <code>grep CRON /var/log/syslog</code> montre ce que cron exécute réellement.", "Nom de fichier sans point, 6<sup>e</sup> champ pour l'utilisateur, chemin absolu du script… et le script lui-même est-il exécutable ?"],
+             "desc": "La tâche que Marc a déposée dans <code>/etc/cron.d</code> (son fichier mentionne <code>rapport-cron</code>) devrait écrire chaque minute dans <code>/var/log/rapport-cron.log</code> en exécutant <code>/usr/local/bin/rapport-cron.sh</code> en root, mais le fichier n'apparaît jamais. Réparez (plusieurs erreurs, dans la tâche et dans le script), puis attendez que <strong>cron</strong> l'alimente.",
+             "hints": ["Comparez le fichier et sa ligne aux pièges classiques de l'étape cron ; <code>grep CRON /var/log/syslog</code> montre ce que cron exécute réellement… et les fichiers qu'il refuse, avec la raison.", "Nom de fichier sans point, propriétaire et droits, retour à la ligne final, 6<sup>e</sup> champ pour l'utilisateur, chemin absolu du script. Puis lancez le script vous-même (<code>sudo /usr/local/bin/rapport-cron.sh</code>) : est-il exécutable, et son interpréteur existe-t-il ?"],
              "checks": [
                  ('for f in /etc/cron.d/*; do case ${f##*/} in *.*) continue ;; esac; grep -vE "^\\s*#" "$f" | grep -q "/usr/local/bin/rapport-cron.sh" && exit 0; done; exit 1', "Aucune tâche prise en compte par cron dans /etc/cron.d ne lance /usr/local/bin/rapport-cron.sh (cron ignore certains noms de fichiers)."),
                  ('grep -qE "CRON\\[[0-9]+\\]: \\(root\\) CMD \\(.*rapport-cron" /var/log/syslog', "cron n'a pas encore lancé la tâche en root (grep CRON /var/log/syslog) : attendez une minute après votre correction."),
@@ -3317,7 +3672,7 @@ emit WRITER "$(pgrep -x trace-boutique | head -n1)"
             {"id": "24.5", "points": 4, "title": "Le service qui refuse de démarrer",
              "ticket": {"from": "thomas", "body": "<code>mon-service</code> refuse de démarrer depuis la mise à jour. Son mode <code>--check</code> affiche des messages, mais je n'y comprends rien. Le port attendu est 8080."},
              "desc": "Le service <code>mon-service</code> tourne sous l'utilisateur <code>monsvc</code>. La commande <code>sudo -u monsvc mon-service --check</code> échoue : lisez les messages et corrigez jusqu'à obtenir <code>Configuration OK</code> sur le port 8080. Les journaux du service doivent rester dans <code>/var/log/mon-service</code>.",
-             "hints": ["Lisez chaque message : il désigne précisément la ligne de /etc/mon-service.conf ou le dossier en cause. Corrigez, relancez, recommencez.", "PORT doit être un nombre ; le dossier des journaux doit exister et appartenir à monsvc (pas de chmod 777)."],
+             "hints": ["Lisez chaque message : il désigne précisément la ligne de /etc/mon-service.conf ou le dossier en cause. Corrigez, relancez, recommencez. Un message qui semble absurde cache parfois des caractères invisibles : <code>sudo cat -A /etc/mon-service.conf</code>.", "La configuration doit être lisible par monsvc ; PORT doit être un nombre entre 1024 et 65535 ; le dossier des journaux doit être /var/log/mon-service, exister et appartenir à monsvc (pas de chmod 777)."],
              "checks": [
                  ('run_as monsvc "timeout 5 /usr/local/bin/mon-service --check" 2>/dev/null | grep -q "Configuration OK (port 8080)"', "« sudo -u monsvc mon-service --check » n'affiche pas une configuration valide sur le port 8080."),
                  ('L=$(bash -c ". /etc/mon-service.conf; echo \\"\\$LOG_DIR\\""); [ "${L%/}" = /var/log/mon-service ]', "Les journaux du service doivent rester dans /var/log/mon-service."),
@@ -3326,7 +3681,7 @@ emit WRITER "$(pgrep -x trace-boutique | head -n1)"
             {"id": "24.6", "points": 4, "title": "Permission refusée quelque part",
              "ticket": {"from": "thomas", "body": "L'application web tourne sous le compte <code>webapp</code> et affiche « Permission denied » en lisant <code>/srv/app/public/index.html</code>. Pourtant ce fichier est lisible par tout le monde, j'ai vérifié ! Attention : le reste de <code>/srv/app</code> contient des secrets."},
              "desc": "Faites en sorte que <code>webapp</code> puisse lire <code>/srv/app/public/index.html</code>, sans pouvoir lister le contenu de <code>/srv/app</code> ni accéder à <code>/srv/app/secrets</code>.",
-             "hints": ["Pour atteindre un fichier, il faut pouvoir traverser chacun des dossiers du chemin : lequel bloque webapp ?", "<code>namei -l /srv/app/public/index.html</code> ; sur un dossier, <code>x</code> sans <code>r</code> permet de le traverser sans pouvoir le lister."],
+             "hints": ["Pour atteindre un fichier, il faut pouvoir traverser chacun des dossiers du chemin : lequel bloque webapp ? Ce n'est pas forcément le premier.", "<code>namei -l /srv/app/public/index.html</code> ; sur un dossier, <code>x</code> sans <code>r</code> permet de le traverser sans pouvoir le lister, et <code>r</code> sans <code>x</code> ne permet pas d'y entrer."],
              "checks": [
                  ('run_as webapp "cat /srv/app/public/index.html" >/dev/null 2>&1', "webapp ne peut toujours pas lire /srv/app/public/index.html."),
                  ('! run_as webapp "ls /srv/app" >/dev/null 2>&1', "webapp peut lister le contenu de /srv/app."),
@@ -3335,11 +3690,12 @@ emit WRITER "$(pgrep -x trace-boutique | head -n1)"
              ]},
             {"id": "24.7", "points": 5, "title": "Le durcissement sans effet",
              "ticket": {"from": "sophie", "body": "L'auditeur est revenu : il arrive encore à se connecter au compte <code>deploy</code> avec un mot de passe ! Pourtant <code>/etc/ssh/sshd_config</code> dit bien <code>PasswordAuthentication no</code>, j'ai vérifié. Il paraît que l'hébergeur a « préparé » le serveur…"},
-             "desc": "Faites en sorte que sshd refuse réellement l'authentification par mot de passe (vérifiez sa configuration <strong>effective</strong>), puis rechargez-le. Votre connexion par clé doit continuer à fonctionner.",
-             "hints": ["Demandez à sshd la configuration qu'il applique réellement, pas celle d'un seul fichier.", "<code>sudo sshd -T | grep -i password</code>, puis regardez la ligne Include en tête de sshd_config : ces fichiers sont lus d'abord, et la première valeur lue l'emporte."],
+             "desc": "Faites en sorte que sshd refuse réellement toute authentification par mot de passe, quelle que soit la méthode (vérifiez sa configuration <strong>effective</strong>, y compris pour une connexion venant de la machine elle-même), puis rechargez-le. Votre connexion par clé doit continuer à fonctionner.",
+             "hints": ["Demandez à sshd la configuration qu'il applique réellement, pas celle d'un seul fichier : <code>sudo sshd -T</code>, et <code>sudo sshd -T -C user=deploy,host=localhost,addr=127.0.0.1</code> pour une connexion précise (les blocs <code>Match</code> en dépendent).", "Regardez la ligne Include en tête de sshd_config (ces fichiers sont lus d'abord, et la première valeur lue l'emporte), les blocs <code>Match</code> en fin de fichier, et aussi <code>KbdInteractiveAuthentication</code> : avec PAM, cette méthode demande elle aussi le mot de passe."],
              "checks": [
                  ('sshd -t', "La configuration de sshd contient une erreur (sudo sshd -t l'affiche)."),
-                 ('sshd -T 2>/dev/null | grep -qx "passwordauthentication no"', "La configuration effective de sshd autorise encore les mots de passe."),
+                 ('sshd -T 2>/dev/null | grep -qx "passwordauthentication no" && sshd -T -C user=deploy,host=localhost,addr=127.0.0.1 2>/dev/null | grep -qx "passwordauthentication no"', "La configuration effective de sshd autorise encore les mots de passe (au moins pour certaines connexions)."),
+                 ('sshd -T -C user=deploy,host=localhost,addr=127.0.0.1 2>/dev/null | grep -qx "kbdinteractiveauthentication no"', "La configuration effective de sshd accepte encore le mot de passe par une autre méthode d'authentification."),
                  ('! sshpass -p deploy123 ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 deploy@localhost true', "Le serveur accepte encore une connexion par mot de passe : avez-vous rechargé sshd ?"),
                  ('run_as etudiant "ssh $SSHO deploy@localhost true"', "Votre connexion par clé au compte deploy ne fonctionne plus."),
              ]},

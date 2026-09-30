@@ -1,0 +1,55 @@
+{
+  "J2_5": {
+    "sujet": "recherche du catalogue : longueur minimale du terme",
+    "valeurs": [
+      {"CAT_MIN": "2", "CAT_MIN_PLUS": "3", "CAT_MIN_MOINS": "1"},
+      {"CAT_MIN": "3", "CAT_MIN_PLUS": "4", "CAT_MIN_MOINS": "2"},
+      {"CAT_MIN": "4", "CAT_MIN_PLUS": "5", "CAT_MIN_MOINS": "3"}
+    ]
+  },
+  "J3_1": {
+    "sujet": "grille de livraison : tranches de poids, tarifs, suppléments, seuils de livraison offerte",
+    "valeurs": [
+      {"LIV_L1": "1", "LIV_L2": "5", "LIV_B1": "4.9", "LIV_B2": "8.9", "LIV_B3": "14.9", "LIV_B1_TXT": "4,90", "LIV_B2_TXT": "8,90", "LIV_B3_TXT": "14,90", "LIV_SP": "3", "LIV_SL": "8", "LIV_SFR": "60", "LIV_SAU": "100", "LIV_WIP_FR": "4.9", "LIV_WIP_BE": "11.9", "LIV_WIP_IT": "22.9", "LIV_WIP_ES_FAUX": "16.9"},
+      {"LIV_L1": "2", "LIV_L2": "6", "LIV_B1": "5.5", "LIV_B2": "9.5", "LIV_B3": "15.5", "LIV_B1_TXT": "5,50", "LIV_B2_TXT": "9,50", "LIV_B3_TXT": "15,50", "LIV_SP": "4", "LIV_SL": "9", "LIV_SFR": "70", "LIV_SAU": "120", "LIV_WIP_FR": "5.5", "LIV_WIP_BE": "13.5", "LIV_WIP_IT": "24.5", "LIV_WIP_ES_FAUX": "18.5"},
+      {"LIV_L1": "1", "LIV_L2": "4", "LIV_B1": "4.5", "LIV_B2": "7.9", "LIV_B3": "13.9", "LIV_B1_TXT": "4,50", "LIV_B2_TXT": "7,90", "LIV_B3_TXT": "13,90", "LIV_SP": "2", "LIV_SL": "7", "LIV_SFR": "50", "LIV_SAU": "90", "LIV_WIP_FR": "4.5", "LIV_WIP_BE": "9.9", "LIV_WIP_IT": "20.9", "LIV_WIP_ES_FAUX": "14.9"},
+      {"LIV_L1": "2", "LIV_L2": "5", "LIV_B1": "5.9", "LIV_B2": "9.9", "LIV_B3": "16.9", "LIV_B1_TXT": "5,90", "LIV_B2_TXT": "9,90", "LIV_B3_TXT": "16,90", "LIV_SP": "5", "LIV_SL": "10", "LIV_SFR": "80", "LIV_SAU": "150", "LIV_WIP_FR": "5.9", "LIV_WIP_BE": "14.9", "LIV_WIP_IT": "26.9", "LIV_WIP_ES_FAUX": "19.9"}
+    ]
+  },
+  "J4_1": {
+    "sujet": "codes promo : catalogue des codes et longueurs autorisées",
+    "valeurs": [
+      {"CODES_QUANT": "{4,10}", "CODES_QUANT_COURT": "{3,10}", "CODES_QUANT_LONG": "{4,11}", "CODES_MIN": "4", "CODES_MAX": "10", "CODES_MIN_MOINS": "3", "CODES_MAX_PLUS": "11", "CODE_TROP_COURT": "ABC", "CODE_LIM_MIN": "ABCD", "CODE_LIM_MAX": "ABCDEFGHIJ", "CODE_TROP_LONG": "ABCDEFGHIJK", "CODE_D_TIRET": "noel-25", "CODE_A_MIN": "rando10", "CODE_B_MIXTE": "Ete2026", "CODE_A": "RANDO10", "REMISE_A": "10", "EXPIRE_A": "2026-12-31", "RESTANTS_A": "50", "CODE_B": "ETE2026", "REMISE_B": "15", "EXPIRE_B": "2026-08-31", "RESTANTS_B": "10", "CODE_C": "VIP30", "REMISE_C": "30", "EXPIRE_C": "2027-06-30", "RESTANTS_C": "0", "CODE_D": "NOEL25", "REMISE_D": "25", "EXPIRE_D": "2025-12-31", "RESTANTS_D": "0"},
+      {"CODES_QUANT": "{4,12}", "CODES_QUANT_COURT": "{3,12}", "CODES_QUANT_LONG": "{4,13}", "CODES_MIN": "4", "CODES_MAX": "12", "CODES_MIN_MOINS": "3", "CODES_MAX_PLUS": "13", "CODE_TROP_COURT": "ABC", "CODE_LIM_MIN": "ABCD", "CODE_LIM_MAX": "ABCDEFGHIJKL", "CODE_TROP_LONG": "ABCDEFGHIJKLM", "CODE_D_TIRET": "paques-26", "CODE_A_MIN": "sentier5", "CODE_B_MIXTE": "Automne26", "CODE_A": "SENTIER5", "REMISE_A": "5", "EXPIRE_A": "2026-11-30", "RESTANTS_A": "40", "CODE_B": "AUTOMNE26", "REMISE_B": "20", "EXPIRE_B": "2026-10-15", "RESTANTS_B": "8", "CODE_C": "PRO40", "REMISE_C": "40", "EXPIRE_C": "2027-03-31", "RESTANTS_C": "0", "CODE_D": "PAQUES26", "REMISE_D": "20", "EXPIRE_D": "2026-04-05", "RESTANTS_D": "0"},
+      {"CODES_QUANT": "{3,8}", "CODES_QUANT_COURT": "{2,8}", "CODES_QUANT_LONG": "{3,9}", "CODES_MIN": "3", "CODES_MAX": "8", "CODES_MIN_MOINS": "2", "CODES_MAX_PLUS": "9", "CODE_TROP_COURT": "AB", "CODE_LIM_MIN": "ABC", "CODE_LIM_MAX": "ABCDEFGH", "CODE_TROP_LONG": "ABCDEFGHI", "CODE_D_TIRET": "hiver-24", "CODE_A_MIN": "cimes15", "CODE_B_MIXTE": "Juillet", "CODE_A": "CIMES15", "REMISE_A": "15", "EXPIRE_A": "2027-01-31", "RESTANTS_A": "30", "CODE_B": "JUILLET", "REMISE_B": "12", "EXPIRE_B": "2026-07-31", "RESTANTS_B": "5", "CODE_C": "STAFF50", "REMISE_C": "50", "EXPIRE_C": "2027-12-31", "RESTANTS_C": "0", "CODE_D": "HIVER24", "REMISE_D": "24", "EXPIRE_D": "2026-02-28", "RESTANTS_D": "0"},
+      {"CODES_QUANT": "{4,9}", "CODES_QUANT_COURT": "{3,9}", "CODES_QUANT_LONG": "{4,10}", "CODES_MIN": "4", "CODES_MAX": "9", "CODES_MIN_MOINS": "3", "CODES_MAX_PLUS": "10", "CODE_TROP_COURT": "ABC", "CODE_LIM_MIN": "ABCD", "CODE_LIM_MAX": "ABCDEFGHI", "CODE_TROP_LONG": "ABCDEFGHIJ", "CODE_D_TIRET": "soldes-26", "CODE_A_MIN": "trek20", "CODE_B_MIXTE": "Rentree", "CODE_A": "TREK20", "REMISE_A": "20", "EXPIRE_A": "2026-12-15", "RESTANTS_A": "25", "CODE_B": "RENTREE", "REMISE_B": "10", "EXPIRE_B": "2026-09-15", "RESTANTS_B": "12", "CODE_C": "AMI35", "REMISE_C": "35", "EXPIRE_C": "2027-05-31", "RESTANTS_C": "0", "CODE_D": "SOLDES26", "REMISE_D": "30", "EXPIRE_D": "2026-01-31", "RESTANTS_D": "0"}
+    ]
+  },
+  "J7_1": {
+    "sujet": "délai de relance des paniers abandonnés",
+    "valeurs": [
+      {"RELANCE_H": "24"},
+      {"RELANCE_H": "48"},
+      {"RELANCE_H": "36"},
+      {"RELANCE_H": "72"}
+    ]
+  },
+  "J7_2": {
+    "sujet": "délais d'attente entre deux tentatives de débit",
+    "valeurs": [
+      {"ATT_P1": "1000", "ATT_P2": "2000", "ATT_P1_TXT": "1 s", "ATT_P2_TXT": "2 s"},
+      {"ATT_P1": "2000", "ATT_P2": "3000", "ATT_P1_TXT": "2 s", "ATT_P2_TXT": "3 s"},
+      {"ATT_P1": "500", "ATT_P2": "1500", "ATT_P1_TXT": "0,5 s", "ATT_P2_TXT": "1,5 s"},
+      {"ATT_P1": "1500", "ATT_P2": "2500", "ATT_P1_TXT": "1,5 s", "ATT_P2_TXT": "2,5 s"}
+    ]
+  },
+  "J8_2": {
+    "sujet": "programme de fidélité : plafond, bonus d'anniversaire, multiplicateur gold",
+    "valeurs": [
+      {"FID_PLAFOND": "1000", "FID_BONUS": "100", "FID_BONUS_FAUX": "50", "FID_GOLD": "2", "FID_GOLD_FAUX": "3"},
+      {"FID_PLAFOND": "800", "FID_BONUS": "150", "FID_BONUS_FAUX": "100", "FID_GOLD": "3", "FID_GOLD_FAUX": "4"},
+      {"FID_PLAFOND": "1500", "FID_BONUS": "50", "FID_BONUS_FAUX": "100", "FID_GOLD": "2", "FID_GOLD_FAUX": "3"},
+      {"FID_PLAFOND": "1200", "FID_BONUS": "200", "FID_BONUS_FAUX": "100", "FID_GOLD": "3", "FID_GOLD_FAUX": "4"}
+    ]
+  }
+}

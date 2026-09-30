@@ -1,6 +1,6 @@
 const CODES = require('./data/codes');
 
-const FORMAT = /^[A-Z0-9]{4,10}$/;
+const FORMAT = /^[A-Z0-9]{{CODES_QUANT}}$/;
 
 /**
  * Vérifie un code promo.

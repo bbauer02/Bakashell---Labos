@@ -8,14 +8,14 @@ describe('Saisies qui ne sont pas des chaînes', () => {
     ['null', null],
     ['undefined', undefined],
     ['un nombre', 1234],
-    ['un objet', { code: 'RANDO10' }],
-    ['un tableau', ['RANDO10']],
+    ['un objet', { code: '{{CODE_A}}' }],
+    ['un tableau', ['{{CODE_A}}']],
   ])('%s est refusé pour FORMAT', (_cas, saisie) => {
     expect(validerCode(saisie, LE_1ER_JUIN_2026)).toEqual({ valide: false, raison: 'FORMAT' });
   });
 
   test('une chaîne valide reste acceptée', () => {
-    expect(validerCode(' rando10 ', LE_1ER_JUIN_2026)).toEqual({ valide: true, remise: 10 });
+    expect(validerCode(' {{CODE_A_MIN}} ', LE_1ER_JUIN_2026)).toEqual({ valide: true, remise: {{REMISE_A}} });
   });
 
   test("un code inconnu reste INCONNU", () => {

@@ -276,32 +276,38 @@ STEPS = {
         "lesson": INTRO + """<h3>Le problème</h3><p>Configurer un serveur à la main, c'est taper des commandes en SSH. Pour trois serveurs, on recommence trois fois ; pour trente, on se trompe forcément. Et six mois plus tard, personne ne sait plus ce qui a été fait.</p><h3>La réponse d'Ansible</h3><ul><li>On <strong>décrit</strong> l'état voulu dans des fichiers texte (YAML), versionnés comme du code : c'est l'<em>Infrastructure as Code</em>.</li><li>Ansible se connecte aux serveurs en <strong>SSH</strong> et fait ce qu'il faut pour atteindre cet état.</li><li><strong>Sans agent</strong> : rien à installer sur les serveurs, à part SSH et Python (déjà présents sur presque tous les Linux).</li><li>Mode <strong>push</strong> : c'est le poste de contrôle qui décide quand agir.</li></ul>""" + SCHEMA_SSH + """<h3>1. L'accès SSH par clé</h3><p>Ansible ouvre des dizaines de connexions SSH : impossible de taper un mot de passe à chaque fois. On utilise une <strong>paire de clés</strong> : la clé privée reste sur le poste de contrôle, la clé publique est ajoutée au fichier <code>~/.ssh/authorized_keys</code> du compte distant, sur chaque serveur. Exemple pour un serveur <code>vitrine1</code> et un compte <code>exploitant</code> :</p><pre>ssh-keygen -t ed25519                 # crée ~/.ssh/id_ed25519 (privée) et id_ed25519.pub (publique)<br>ssh-copy-id exploitant@vitrine1       # installe la clé publique (demande le mot de passe une dernière fois)<br>ssh exploitant@vitrine1 hostname      # plus de mot de passe</pre><div class="tip">À la première connexion, SSH affiche l'<strong>empreinte</strong> du serveur et demande de la confirmer ; elle est ensuite mémorisée dans <code>~/.ssh/known_hosts</code>. Ansible, lui, ne sait pas répondre à cette question : face à un serveur inconnu, la connexion échoue (<em>Host key verification failed</em>). Faites donc une première connexion à la main, en comparant l'empreinte affichée à celle que vous a communiquée l'hébergeur. <code>ssh-keyscan vitrine1 &gt;&gt; ~/.ssh/known_hosts</code> enregistre l'empreinte sans rien demander… donc <strong>sans la vérifier</strong> : acceptable sur un réseau de confiance, dangereux ailleurs.</div><h3>2. L'inventaire : quels serveurs ?</h3><p>Un fichier texte (format INI ou YAML) qui liste les serveurs et les range en <strong>groupes</strong>. Exemple d'une autre entreprise :</p><pre>[front]<br>vitrine1<br>vitrine2<br><br>[cache]<br>memo1<br><br>[prod:children]    # « children » : un groupe dont les membres sont d'autres groupes<br>front<br>cache</pre><p>Deux groupes existent toujours : <code>all</code> (tous les serveurs) et <code>ungrouped</code> (ceux qui ne sont dans aucun groupe). Un serveur peut appartenir à plusieurs groupes : par fonction, par ville, par environnement…</p><pre>ansible-inventory -i serveurs.ini --graph   # l'arbre des groupes<br>ansible-inventory -i serveurs.ini --list    # la même chose en JSON</pre><h3>3. Viser des serveurs : les motifs</h3><p>Partout où Ansible attend une cible (<code>ansible &lt;cible&gt;</code>, <code>hosts:</code> dans un playbook, <code>--limit</code>), on peut combiner des groupes :</p><pre>front              # un groupe<br>front:cache        # union : dans front OU dans cache<br>prod:&amp;front       # intersection : dans prod ET dans front<br>prod:!cache        # exclusion : dans prod SAUF ceux de cache<br>front[0]           # le premier serveur du groupe, dans l'ordre de l'inventaire<br>vitrine*           # joker sur les noms</pre><pre>ansible 'prod:!cache' -i serveurs.ini --list-hosts   # affiche les serveurs visés, sans rien exécuter</pre><div class="tip">Entourez les motifs de guillemets simples : sinon, c'est le shell qui interprète <code>!</code> et <code>&amp;</code>, avant même qu'Ansible ne les voie.</div><h3>4. ansible.cfg : les réglages du projet</h3><p>Ansible lit le fichier <code>ansible.cfg</code> du <strong>dossier courant</strong> (à défaut <code>~/.ansible.cfg</code>, puis <code>/etc/ansible/ansible.cfg</code>) : plus besoin de répéter les options à chaque commande. Exemple :</p><pre>[defaults]<br>inventory = serveurs.ini      # l'inventaire utilisé sans -i<br>remote_user = exploitant      # le compte utilisé sur les serveurs</pre><pre>ansible --version                     # version d'Ansible, et fichier de configuration réellement lu<br>ansible-config dump --only-changed    # les réglages qui diffèrent des valeurs par défaut</pre><h3>5. Premier contact</h3><pre>ansible prod -m ping    # le module ping vérifie SSH + Python : rien à voir avec le ping réseau</pre><pre>vitrine1 | SUCCESS =&gt; { "changed": false, "ping": "pong" }</pre><p>Ce poste utilise <strong>ansible-core 2.18</strong> : la documentation d'une autre version peut différer sur quelques détails.</p>""",
         "setup": r'''
 for s in web1 web2 db1; do neuf $s; done
-# Inventaire du futur datacenter (A1.4) : serveurs, groupes et demandes tirés au hasard ; les réponses attendues
-# sont calculées par Ansible lui-même
-python3 - "$I/exercices" <<'PY'
+# Inventaire du futur datacenter (A1.4) : les deux villes (variante), les serveurs, les groupes et les demandes
+# sont tirés au hasard ; les réponses attendues sont calculées par Ansible lui-même
+v=${LAB_VARIANTE_A1_4:-$((RANDOM % 4))}
+python3 - "$I/exercices" "$v" <<'PY'
 import os, random, subprocess, sys
-d = sys.argv[1]
+d, v = sys.argv[1], int(sys.argv[2])
 os.makedirs(d, exist_ok=True)
-DEMANDES = [("Les serveurs web de Lyon.", "web:&lyon"),
+VILLES = [("paris", "lyon"), ("lille", "nantes"), ("bordeaux", "rennes"), ("marseille", "toulouse")][v]
+A, B = random.sample(VILLES, 2)
+DEMANDES = [(f"Les serveurs web de {B.capitalize()}.", f"web:&{B}"),
             ("Toute la production, sauf les bases de données.", "production:!bdd"),
-            ("Les serveurs de recette situés à Paris.", "recette:&paris"),
+            (f"Les serveurs de recette situés à {A.capitalize()}.", f"recette:&{A}"),
             ("Le premier serveur du groupe web, dans l'ordre de l'inventaire (un seul serveur).", "web[0]"),
-            ("Tous les serveurs, sauf ceux de Lyon.", "all:!lyon"),
-            ("Les serveurs de cache et les bases de données.", "cache:bdd")]
+            ("Le dernier serveur du groupe bdd, dans l'ordre de l'inventaire (un seul serveur).", "bdd[-1]"),
+            (f"Tous les serveurs, sauf ceux de {B.capitalize()}.", f"all:!{B}"),
+            ("Les serveurs de cache et les bases de données.", "cache:bdd"),
+            (f"Les serveurs de {A.capitalize()} qui ne sont pas en production.", f"{A}:!production")]
 def cible(motif):
     r = subprocess.run(["ansible", "-i", "parc.ini", motif, "--list-hosts"], cwd=d, capture_output=True, text=True)
     return ",".join(sorted(l.strip() for l in r.stdout.splitlines()[1:] if l.strip()))
 while True:
     hotes = {}
-    for ville, p in (("paris", "par"), ("lyon", "lyo")):
+    for ville in VILLES:
+        p = ville[:3]
         for i in range(1, random.randint(2, 4) + 1): hotes[f"{p}-web{i:02d}"] = ("web", ville)
-        for i in range(1, random.randint(1, 2) + 1): hotes[f"{p}-db{i:02d}"] = ("bdd", ville)
+        for i in range(1, random.randint(1, 3) + 1): hotes[f"{p}-db{i:02d}"] = ("bdd", ville)
         hotes[f"{p}-cache01"] = ("cache", ville)
     noms = list(hotes)
     random.shuffle(noms)
     recette = set(random.sample([n for n in noms if "cache" not in n], 3))
     txt = ""
-    for g in ("web", "bdd", "cache", "paris", "lyon"):
+    for g in ("web", "bdd", "cache") + VILLES:
         txt += f"[{g}]\n" + "".join(n + "\n" for n in noms if g in hotes[n]) + "\n"
     txt += "[recette]\n" + "".join(n + "\n" for n in noms if n in recette) + "\n"
     txt += "[production]\n" + "".join(n + "\n" for n in noms if n not in recette)
@@ -352,7 +358,7 @@ own $I
             {"id": "A1.4", "points": 4, "title": "Viser juste", "manual": True,
              "ticket": {"from": "lea", "body": "Demain, on aura des dizaines de serveurs : il faudra savoir viser sans se tromper, et sans recopier des listes de noms. J'ai mis l'inventaire du futur datacenter dans <code>~/infra/exercices/parc.ini</code>, et quatre demandes dans <code>~/infra/exercices/demandes.txt</code>. Pour chacune, trouve le <strong>motif</strong> qui vise exactement les bons serveurs."},
              "desc": "<code>~/infra/reponses/motifs.txt</code> : une ligne par demande, dans l'ordre ; chaque ligne est un motif de groupes (aucun nom de serveur) qui, avec <code>-i exercices/parc.ini</code>, vise exactement les serveurs demandés.",
-             "hints": ["Avant d'écrire une réponse, regardez ce qu'un motif sélectionne : une option d'<code>ansible</code> affiche les serveurs visés sans rien exécuter ni se connecter. Le cours présente l'union, l'intersection, l'exclusion et l'index.", "<code>ansible -i exercices/parc.ini '&lt;motif&gt;' --list-hosts</code> ; <code>groupe1:&amp;groupe2</code> (et), <code>groupe1:!groupe2</code> (sauf), <code>groupe1:groupe2</code> (ou), <code>groupe[0]</code> (le premier), toujours entre guillemets simples."],
+             "hints": ["Avant d'écrire une réponse, regardez ce qu'un motif sélectionne : une option d'<code>ansible</code> affiche les serveurs visés sans rien exécuter ni se connecter. Le cours présente l'union, l'intersection, l'exclusion et l'index.", "<code>ansible -i exercices/parc.ini '&lt;motif&gt;' --list-hosts</code> ; <code>groupe1:&amp;groupe2</code> (et), <code>groupe1:!groupe2</code> (sauf), <code>groupe1:groupe2</code> (ou), <code>groupe[0]</code> (le premier), <code>groupe[-1]</code> (le dernier), toujours entre guillemets simples."],
              "checks": [
                  ('[ -s $I/reponses/motifs.txt ]', "~/infra/reponses/motifs.txt n'existe pas ou est vide."),
                  (r'''for i in 1 2 3 4; do m=$(sed -n "${i}p" $I/reponses/motifs.txt | tr -d '\r' | sed 's/^ *//; s/ *$//')
@@ -371,10 +377,19 @@ done''', "Un motif ne vise pas exactement les serveurs demandés (ou cite des no
         "description": "Ce qu'Ansible exécute vraiment, les facts, les empreintes, et les premières actions sur les serveurs. Compétences : -vvv, modules et collections, setup, facts locaux, become, user, copy, find, file.",
         "lesson": """<h3>Une commande ad hoc</h3><pre>ansible &lt;cible&gt; -m &lt;module&gt; -a "&lt;arguments&gt;"<br>ansible front -m command -a "uptime"</pre><p>Un <strong>module</strong> est un petit programme Python qui sait faire une chose : installer un paquet (<code>apt</code>), gérer un compte (<code>user</code>), copier un fichier (<code>copy</code>), chercher des fichiers (<code>find</code>)…</p><h3>Modules, collections et FQCN</h3><p>Ce poste de contrôle dispose d'<strong>ansible-core</strong>, qui fournit environ 70 modules rangés dans la collection <code>ansible.builtin</code>. Des milliers d'autres existent, distribués en <strong>collections</strong> (<code>ansible.posix</code>, <code>community.general</code>…) qu'on installe avec <code>ansible-galaxy collection install</code> : impossible ici, faute d'accès à Internet. Dans ce parcours, tout se fait avec <code>ansible.builtin</code>.</p><pre>ansible-doc -l                       # les modules disponibles ICI<br>ansible-doc -l | grep -i user        # chercher un module<br>ansible-doc ansible.builtin.user     # sa documentation : paramètres et exemples (q pour quitter)</pre><p>Le nom complet <code>ansible.builtin.user</code> est le <strong>FQCN</strong> (<em>fully qualified collection name</em>) : dans un playbook, on l'écrit en entier pour éviter toute ambiguïté ; en ad hoc, <code>-m user</code> suffit.</p><h3>Que se passe-t-il vraiment ?</h3>""" + SCHEMA_MODULE + """<p>Pour le voir, ajoutez <code>-v</code>, <code>-vv</code> ou <code>-vvv</code> (de plus en plus bavard) : connexion SSH, dossier temporaire créé sur le serveur, fichier envoyé (ligne <code>PUT</code>), commande exécutée (ligne <code>EXEC</code>), JSON renvoyé. Attention : Ansible crée aussi un dossier temporaire sur le poste de contrôle (<code>ansible-local-…</code>) ; ne confondez pas les deux.</p><h3>État désiré et idempotence</h3>""" + SCHEMA_IDEMPOTENCE + """<pre>ansible front -b -m user -a "name=livreur"    # 1re fois : CHANGED (le compte est créé)<br>ansible front -b -m user -a "name=livreur"    # 2e fois  : SUCCESS (il existe déjà)</pre><h3>command ou shell ?</h3><ul><li><code>command</code> lance un programme <strong>sans shell</strong> : un tube <code>|</code>, une redirection <code>&gt;</code>, un joker <code>*</code> ou une <code>$VARIABLE</code> sont passés tels quels au programme, qui n'y comprend rien ;</li><li><code>shell</code> passe par <code>/bin/sh</code> : tubes et redirections fonctionnent ;</li><li>les deux exécutent la commande à l'aveugle : Ansible ne peut pas savoir si elle a modifié quelque chose, et répond toujours <code>changed</code>. Préférez un module dédié quand il existe ; sinon, <code>creates=&lt;fichier&gt;</code> (ne rien faire si ce fichier existe déjà) ou <code>changed_when</code> (jour 9) rendent la tâche honnête.</li></ul><h3>Devenir root : become</h3><p>Le compte distant n'est pas root. Pour administrer, Ansible passe par <code>sudo</code> : option <code>-b</code> (<em>become</em>) en ligne de commande, <code>become: true</code> dans un playbook. Sur ces serveurs, chaque commande lancée avec sudo est notée dans <code>/var/log/sudo.log</code> : celles d'Ansible y sont reconnaissables à la marque <code>BECOME-SUCCESS</code>.</p><h3>Les facts</h3><p>Avant de travailler, Ansible peut <strong>interroger</strong> chaque serveur : système, version, mémoire, adresses IP… Ce sont les <em>facts</em>, utilisables ensuite comme des variables.</p><pre>ansible memo1 -m setup                                  # tous les facts (long !)<br>ansible memo1 -m setup -a "filter=ansible_kernel*"<br>ansible all -m setup -a "filter=ansible_memtotal_mb"</pre><p>Un serveur peut aussi <strong>déclarer ses propres facts</strong> : chaque fichier <code>/etc/ansible/facts.d/&lt;nom&gt;.fact</code> (au format INI ou JSON) apparaît sous <code>ansible_local.&lt;nom&gt;</code>. Par exemple, un fichier <code>site.fact</code> contenant une section <code>[salle]</code> et une ligne <code>baie=B12</code> donne <code>ansible_local.site.salle.baie</code>.</p><h3>Quand un serveur change d'empreinte</h3><p>Un serveur réinstallé génère de nouvelles clés d'hôte. SSH refuse alors de s'y connecter (<em>REMOTE HOST IDENTIFICATION HAS CHANGED</em>) : c'est exactement ce qu'il verrait si quelqu'un se faisait passer pour lui. Avant de faire confiance à la nouvelle empreinte, comparez-la à une source sûre (l'hébergeur, la console du serveur) :</p><pre>ssh-keyscan -t ed25519 vitrine1 | ssh-keygen -lf -    # l'empreinte que présente le serveur<br>ssh-keygen -R vitrine1                                 # oublie l'ancienne empreinte</pre><div class="tip">Ne désactivez jamais la vérification des empreintes (<code>host_key_checking = False</code>, <code>StrictHostKeyChecking no</code>) pour « faire passer » une connexion : vous accepteriez n'importe quel serveur, y compris celui d'un attaquant.</div><h3>Quelques modules utiles</h3><pre>ansible front -b -m user -a "name=livreur uid=1500 groups=adm shell=/bin/sh"<br>ansible front -b -m copy -a "dest=/etc/issue.net content='Accès réservé\\n'"<br>ansible front -b -m apt -a "name=tree update_cache=yes"<br>ansible all -b -m find -a "paths=/var/log patterns='*.gz' recurse=yes"<br>ansible memo1 -b -m file -a "path=/tmp/vieux.log state=absent"<br>ansible all -m command -a "df -h /"</pre>""",
         "setup": r'''
-for s in web1 web2; do serveur $s; done
+for s in web1 web2 db1; do serveur $s; done
 emit DEBUT "$(date +%s)"
-# A2.1 : le module de Julien
-mod=$(shuf -n1 -e stat getent find file)
+# A2.4 : un serveur (variante) réinstallé par l'hébergeur, sans que le poste de contrôle le sache. Réinstallé en
+# premier : les données des autres exercices sont déposées sur le serveur neuf
+v=${LAB_VARIANTE_A2_4:-$((RANDOM % 3))}
+r=$(echo db1 web1 web2 | cut -d' ' -f$((v + 1)))
+reinstalle $r
+emit REINSTALLE "$r"
+emit REINSTALLE_IP "10.10.0.${IP[$r]}"
+# A2.1 : le module de Julien (variante), sur un serveur qui n'a pas été réinstallé
+v=${LAB_VARIANTE_A2_1:-$((RANDOM % 4))}
+mod=$(echo stat getent find file | cut -d' ' -f$((v + 1)))
+hote=$(shuf -n1 -e $(echo web1 web2 db1 | tr ' ' '\n' | grep -vx $r))
 case $mod in
   stat) a="path=/etc/hostname";; getent) a="database=passwd key=admin";;
   find) a="paths=/etc/ssh patterns=*.pub";; file) a="path=/tmp state=directory";;
@@ -385,9 +400,9 @@ Objet : et avec mon module à moi ?
 
 Léa dit qu'Ansible n'installe rien sur les serveurs. Moi, je lance souvent :
 
-    ansible web1 -m $mod -a "$a"
+    ansible $hote -m $mod -a "$a"
 
-Du coup, il envoie quoi, exactement, sur web1 ? Dans quel dossier du serveur ?
+Du coup, il envoie quoi, exactement, sur $hote ? Dans quel dossier du serveur ?
 Et c'est quel programme, là-bas, qui l'exécute ?
 EOF
 emit MODULE "$mod"
@@ -412,21 +427,22 @@ Et Sophie veut que /etc/motd des serveurs web contienne exactement cette ligne :
 Serveur géré par Ansible - ne pas modifier à la main
 EOF
 emit UID "$uid"
-# A2.4 : db1 réinstallé par l'hébergeur, sans que le poste de contrôle le sache
-reinstalle db1
-fp=$(sur db1 "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub" | awk '{print $2}')
+# A2.4 : le message de Léa, avec l'empreinte officielle du serveur réinstallé
+fp=$(sur $r "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub" | awk '{print $2}')
 cat > $H/message-lea.txt <<EOF
 De : Léa Nguyen
-Objet : db1 réinstallé
+Objet : $r réinstallé
 
-L'hébergeur a réinstallé db1 ce week-end (disque changé). Le compte admin a de nouveau le mot de passe cimes.
-Empreinte officielle de la nouvelle clé ED25519 de db1, lue sur la console de l'hébergeur :
+L'hébergeur a réinstallé $r ce week-end (disque changé). Le compte admin a de nouveau le mot de passe cimes.
+Empreinte officielle de la nouvelle clé ED25519 de $r, lue sur la console de l'hébergeur :
     $fp
 EOF
-# A2.5 : l'export oublié, et des fichiers qui lui ressemblent
+# A2.5 : l'export oublié (dossier : variante), et des fichiers qui lui ressemblent
 hex=$(tr -dc 'a-f0-9' </dev/urandom | head -c 6)
+# (un export laissé par une préparation précédente de l'étape serait un second export)
+for s in web1 web2 db1; do sur $s "find /srv /home /var/backups -name 'clients-*.csv' -delete 2>/dev/null; true"; done
 srv=$(shuf -n1 -e web1 web2 db1)
-case $((RANDOM % 3)) in 0) dir=/srv/exports/$((2021 + RANDOM % 4));; 1) dir=/home/admin/archives/crm;; *) dir=/var/backups/crm;; esac
+case ${LAB_VARIANTE_A2_5:-$((RANDOM % 3))} in 0) dir=/srv/exports/$((2021 + RANDOM % 4));; 1) dir=/home/admin/archives/crm;; *) dir=/var/backups/crm;; esac
 sur $srv "mkdir -p $dir && chmod 700 $dir && printf 'nom;prenom;email;telephone\nMartin;Claire;claire.martin@example.org;0600000000\n' > $dir/clients-$hex.csv && chmod 600 $dir/clients-$hex.csv"
 emit CIBLE "$srv:$dir/clients-$hex.csv"
 leurres=""
@@ -439,13 +455,13 @@ for f in message-julien message-thomas message-lea; do own $H/$f.txt; chmod 600 
 ''',
         "exercises": [
             {"id": "A2.1", "points": 3, "title": "Sous le capot",
-             "ticket": {"from": "julien", "body": "Léa dit qu'Ansible n'installe rien sur les serveurs. Mais alors, comment il fait pour exécuter du code dessus ?! Je t'ai mis ma commande préférée dans <code>~/message-julien.txt</code> : tu peux regarder ce qu'elle fait <strong>vraiment</strong> sur web1 ?"},
-             "desc": "<code>~/infra/reponses/module.txt</code>, trois lignes, pour la commande de Julien : 1) le nom du fichier Python envoyé sur web1 (sans le chemin) ; 2) le dossier du <strong>serveur</strong> où il est déposé ; 3) le chemin complet de l'interpréteur qui l'exécute sur le serveur.",
+             "ticket": {"from": "julien", "body": "Léa dit qu'Ansible n'installe rien sur les serveurs. Mais alors, comment il fait pour exécuter du code dessus ?! Je t'ai mis ma commande préférée dans <code>~/message-julien.txt</code> : tu peux regarder ce qu'elle fait <strong>vraiment</strong> sur le serveur qu'elle vise ?"},
+             "desc": "<code>~/infra/reponses/module.txt</code>, trois lignes, pour la commande de Julien : 1) le nom du fichier Python envoyé sur le serveur visé (sans le chemin) ; 2) le dossier du <strong>serveur</strong> où il est déposé ; 3) le chemin complet de l'interpréteur qui l'exécute sur le serveur.",
              "hints": ["Relancez la commande de Julien en mode très bavard, puis retrouvez dans la sortie les étapes du schéma du cours : l'envoi du fichier, puis son exécution. Attention, deux dossiers temporaires apparaissent : un sur le poste de contrôle, un sur le serveur.", "Avec <code>-vvv</code> : la ligne <code>PUT … TO &lt;dossier&gt;/AnsiballZ_….py</code> donne le fichier et son dossier sur le serveur (dans <code>/home/admin</code>) ; la ligne <code>EXEC … /bin/sh -c '&lt;interpréteur&gt; &lt;dossier&gt;/AnsiballZ_….py'</code> donne l'interpréteur."],
              "checks": [
-                 ('[ "$(sed -n 1p $I/reponses/module.txt 2>/dev/null | tr -d "[:space:]")" = "AnsiballZ_$LAB_MODULE.py" ]', "Ligne 1 de reponses/module.txt : ce n'est pas le nom du fichier envoyé sur web1 par la commande de Julien (lignes PUT de -vvv)."),
-                 ('l=$(sed -n 2p $I/reponses/module.txt); echo "$l" | grep -q "\\.ansible/tmp" && ! echo "$l" | grep -qE "etudiant|ansible-local"', "Ligne 2 : ce n'est pas le dossier temporaire du serveur web1 (celui du compte admin, pas celui du poste de contrôle)."),
-                 ('sed -n 3p $I/reponses/module.txt | tr -d "[:space:]" | grep -qxE "/usr/bin/python3(\\.[0-9]+)?"', "Ligne 3 : ce n'est pas le chemin complet de l'interpréteur qui exécute le module sur web1 (ligne EXEC de -vvv)."),
+                 ('[ "$(sed -n 1p $I/reponses/module.txt 2>/dev/null | tr -d "[:space:]")" = "AnsiballZ_$LAB_MODULE.py" ]', "Ligne 1 de reponses/module.txt : ce n'est pas le nom du fichier envoyé sur le serveur par la commande de Julien (lignes PUT de -vvv)."),
+                 ('l=$(sed -n 2p $I/reponses/module.txt); echo "$l" | grep -q "\\.ansible/tmp" && ! echo "$l" | grep -qE "etudiant|ansible-local"', "Ligne 2 : ce n'est pas le dossier temporaire du serveur visé (celui du compte admin, pas celui du poste de contrôle)."),
+                 ('sed -n 3p $I/reponses/module.txt | tr -d "[:space:]" | grep -qxE "/usr/bin/python3(\\.[0-9]+)?"', "Ligne 3 : ce n'est pas le chemin complet de l'interpréteur qui exécute le module sur le serveur (ligne EXEC de -vvv)."),
              ]},
             {"id": "A2.2", "points": 3, "title": "Inventaire matériel",
              "ticket": {"from": "diallo", "body": "Pour renouveler le contrat de support, l'hébergeur me demande, pour chaque serveur web, la version exacte de Debian et le numéro de série du contrat. Paraît-il que les serveurs le déclarent eux-mêmes ? Il me faut un fichier <code>~/infra/reponses/materiel.csv</code>, une ligne par serveur : <code>serveur;version;numéro</code>."},
@@ -467,12 +483,12 @@ for f in message-julien message-thomas message-lea; do own $H/$f.txt; chmod 600 
                  ('for s in web1 web2; do m=$(a_la_main $s $LAB_DEBUT); [ -z "$m" ] || { echo "MSG:$s : $(head -1 <<<"$m")"; exit 1; }; done', "Une commande a été tapée à la main avec sudo sur un serveur web (voir /var/log/sudo.log) : Thomas voulait des commandes Ansible. Refaites le travail avec Ansible (au besoin, « Réinitialiser les fichiers de cette étape »)."),
              ]},
             {"id": "A2.4", "points": 4, "title": "Le serveur réinstallé",
-             "ticket": {"from": "lea", "body": "L'hébergeur a réinstallé <code>db1</code> ce week-end, et depuis SSH hurle au piratage. Je t'ai mis l'empreinte officielle de sa nouvelle clé dans <code>~/message-lea.txt</code>. <strong>Vérifie-la avant de faire confiance</strong>, puis rétablis l'accès comme au premier jour. Et je ne veux voir nulle part la vérification des empreintes désactivée."},
-             "desc": "La connexion non interactive vers <code>admin@db1</code> fonctionne ; <code>~/.ssh/known_hosts</code> ne contient plus aucune ancienne empreinte de db1 ; ni Ansible ni SSH n'ont la vérification des empreintes désactivée.",
-             "hints": ["Comparez l'empreinte que présente db1 aujourd'hui à celle du message de Léa. Si elles concordent, il reste deux choses à défaire ou refaire : ce que votre poste sait de l'ancien db1, et ce que le nouveau db1 ne sait pas encore de vous.", "<code>ssh-keyscan -t ed25519 db1 | ssh-keygen -lf -</code> pour comparer ; <code>ssh-keygen -R db1</code> retire les anciennes empreintes ; puis nouvelle connexion (ou <code>ssh-copy-id</code>) : le serveur est neuf, votre clé publique n'y est plus."],
+             "ticket": {"from": "lea", "body": "L'hébergeur a réinstallé un de nos serveurs ce week-end, et depuis SSH hurle au piratage (Ansible aussi : il ne le joint plus). Je t'ai mis son nom et l'empreinte officielle de sa nouvelle clé dans <code>~/message-lea.txt</code>. <strong>Vérifie-la avant de faire confiance</strong>, puis rétablis l'accès comme au premier jour. Et je ne veux voir nulle part la vérification des empreintes désactivée."},
+             "desc": "La connexion non interactive vers le compte <code>admin</code> du serveur réinstallé fonctionne ; <code>~/.ssh/known_hosts</code> ne contient plus aucune ancienne empreinte de ce serveur ; ni Ansible ni SSH n'ont la vérification des empreintes désactivée.",
+             "hints": ["Comparez l'empreinte que présente le serveur aujourd'hui à celle du message de Léa. Si elles concordent, il reste deux choses à défaire ou refaire : ce que votre poste sait de l'ancien serveur, et ce que le nouveau ne sait pas encore de vous.", "<code>ssh-keyscan -t ed25519 &lt;serveur&gt; | ssh-keygen -lf -</code> pour comparer ; <code>ssh-keygen -R &lt;serveur&gt;</code> retire les anciennes empreintes ; puis nouvelle connexion (ou <code>ssh-copy-id</code>) : le serveur est neuf, votre clé publique n'y est plus."],
              "checks": [
-                 ('ssh_ok db1', "Pas de connexion SSH non interactive vers admin@db1 : ancienne empreinte encore présente, ou clé publique à réinstaller sur le serveur neuf."),
-                 ('cur=$(sur db1 "cat /etc/ssh/ssh_host_*_key.pub" | awk "{print \\$2}"); k=$(etu "ssh-keygen -F db1; ssh-keygen -F 10.10.0.21" | grep -v "^#" | awk "{print \\$3}"); [ -n "$k" ] && for x in $k; do grep -qxF "$x" <<<"$cur" || exit 1; done', "~/.ssh/known_hosts contient encore une ancienne empreinte de db1 (ssh-keygen -R)."),
+                 ('ssh_ok $LAB_REINSTALLE', "Pas de connexion SSH non interactive vers le serveur réinstallé (compte admin) : ancienne empreinte encore présente, ou clé publique à réinstaller sur le serveur neuf."),
+                 ('cur=$(sur $LAB_REINSTALLE "cat /etc/ssh/ssh_host_*_key.pub" | awk "{print \\$2}"); k=$(etu "ssh-keygen -F $LAB_REINSTALLE; ssh-keygen -F $LAB_REINSTALLE_IP" | grep -v "^#" | awk "{print \\$3}"); [ -n "$k" ] && for x in $k; do grep -qxF "$x" <<<"$cur" || exit 1; done', "~/.ssh/known_hosts contient encore une ancienne empreinte du serveur réinstallé (ssh-keygen -R)."),
                  ('! etu "ansible-config dump --only-changed" | grep -q "^HOST_KEY_CHECKING" && ! grep -qsiE "StrictHostKeyChecking *=? *(no|off)|UserKnownHostsFile *=? */dev/null" $H/.ssh/config && ! grep -qs "ANSIBLE_HOST_KEY_CHECKING" $H/.bashrc $H/.profile $H/.bash_profile', "La vérification des empreintes est désactivée (ansible.cfg, ~/.ssh/config ou variable d'environnement) : retirez ce réglage."),
              ]},
             {"id": "A2.5", "points": 4, "title": "L'export oublié",
@@ -508,7 +524,9 @@ cat > $I/fichiers/index.html <<EOF
 </html>
 EOF
 emit JETON "$jeton"
-# A3.3 : les tâches de Julien (non idempotentes)
+# A3.3 : les tâches de Julien (non idempotentes). Une annonce laissée par une préparation précédente (autre date) est
+# retirée : l'annonce doit rester unique
+for s in web1 web2; do sur $s "rm -f /var/www/html/promo/annonce.txt"; done
 jour=$(shuf -n1 -e "lundi 6 octobre" "mardi 14 octobre" "jeudi 23 octobre" "mercredi 5 novembre" "vendredi 14 novembre")
 cat > $I/fichiers/julien-taches.yml <<EOF
 # Tâches de Julien pour les promotions, à intégrer à web.yml (« ça marche chez moi ! »)
@@ -526,18 +544,23 @@ cat > $I/fichiers/julien-taches.yml <<EOF
       ansible.builtin.shell: apt-get install -y tree
 EOF
 emit JOUR "$jour"
-# A3.4 : le playbook de Marc, avec quatre défauts dont une cible qui ne correspond à rien
+# A3.4 : le playbook de Marc, avec quatre défauts dont une cible qui ne correspond à rien. L'outil, les droits et
+# le propriétaire du dossier de travail dépendent de la variante : le playbook réparé diffère d'un étudiant à l'autre
 dossier="outils-$(tr -dc 'a-z' </dev/urandom | head -c 5)"
-python3 - "$I/marc/outils.yml" "$dossier" <<'PY'
+v=${LAB_VARIANTE_A3_4:-$((RANDOM % 4))}
+python3 - "$I/marc/outils.yml" "$dossier" "$v" <<'PY'
 import random, sys
-chemin, dossier = sys.argv[1:]
+chemin, dossier, v = sys.argv[1], sys.argv[2], int(sys.argv[3])
+paquet, mode, rwx, proprio = [("unzip", "0750", "rwxr-x---", "admin"), ("rsync", "0770", "rwxrwx---", "admin"),
+                              ("unzip", "0700", "rwx------", "www-data"), ("rsync", "0710", "rwx--x---", "www-data")][v]
 d = {"hosts"} | set(random.sample(["tab", "state", "quotes", "become", "mode", "module"], 3))
-t = f"""# Outils de Marc : unzip sur tous les serveurs de production, et un dossier de travail.
+t = f"""# Outils de Marc : {paquet} sur tous les serveurs de production, et un dossier de travail
+# (droits {rwx}, propriétaire {proprio}).
 # « Testé et approuvé ! »
 - name: Outils de Marc
   hosts: {"tous" if "hosts" in d else "production"}
 {"" if "become" in d else "  become: true" + chr(10)}  vars:
-    paquet: unzip
+    paquet: {paquet}
     dossier: /opt/cimes/{dossier}
   tasks:
     - name: Installer l'outil
@@ -551,10 +574,12 @@ t = f"""# Outils de Marc : unzip sur tous les serveurs de production, et un doss
       ansible.builtin.{"fille" if "module" in d else "file"}:
         path: "{{{{ dossier }}}}"
         state: directory
-        owner: admin
-        mode: {"750" if "mode" in d else '"0750"'}
+        owner: {proprio}
+        mode: {mode[1:] if "mode" in d else '"' + mode + '"'}
 """
 open(chemin, "w").write(t)
+print(f"@PAQUET={paquet}")
+print(f"@DROITS={mode[1:]} {proprio}")
 PY
 emit DOSSIER "$dossier"
 own $I
@@ -591,14 +616,14 @@ own $I
                  ("taches $I/web.yml | jq -s -e \"$M\"' all(.[]; ((mod(\"command\") or mod(\"shell\")) | not) or (tostring | test(\"creates|removes|changed_when\")))' >/dev/null", "web.yml contient encore une tâche command ou shell qui répond toujours « changed » : remplacez-la par un module qui décrit l'état voulu."),
              ]},
             {"id": "A3.4", "points": 6, "title": "Le playbook de Marc", "manual": True,
-             "ticket": {"from": "lea", "body": "Marc nous a laissé <code>~/infra/marc/outils.yml</code>, « testé et approuvé ». Il doit installer <code>unzip</code> sur tous les serveurs de production, et y créer un dossier de travail (droits <code>rwxr-x---</code>, propriétaire <code>admin</code>). Il plante… et paraît-il qu'une fois corrigé, il ne fait rien du tout. Répare-le, sans changer ce qu'il est censé faire."},
-             "desc": "<code>ansible-playbook marc/outils.yml</code> réussit sur web1, web2 et db1 : unzip est installé, le dossier de travail prévu par Marc existe avec les droits 0750 et le propriétaire admin ; rejoué, il ne change plus rien.",
+             "ticket": {"from": "lea", "body": "Marc nous a laissé <code>~/infra/marc/outils.yml</code>, « testé et approuvé ». Son en-tête dit ce qu'il doit faire : installer un outil sur tous les serveurs de production, et y créer un dossier de travail avec des droits et un propriétaire précis. Il plante… et paraît-il qu'une fois corrigé, il ne fait rien du tout. Répare-le, sans changer ce qu'il est censé faire."},
+             "desc": "<code>ansible-playbook marc/outils.yml</code> réussit sur web1, web2 et db1 : l'outil prévu par Marc est installé, et le dossier de travail existe avec les droits et le propriétaire annoncés dans l'en-tête du fichier ; rejoué, il ne change plus rien.",
              "hints": ["Une erreur à la fois : <code>--syntax-check</code>, puis un vrai lancement, et lisez le <strong>premier</strong> message en entier. Quand il « réussit », lisez le récapitulatif : combien de serveurs ont-ils été visés ? Et vérifiez les droits obtenus.", "Les suspects habituels : une tabulation, une valeur qui commence par <code>{{</code> sans guillemets, une valeur de <code>state</code> inconnue (<code>ansible-doc apt</code>), un nom de module, un groupe qui n'existe pas, <code>become</code>, et <code>mode</code> sans guillemets."],
              "checks": [
                  ('for s in web1 db1; do sur $s "rm -rf /opt/cimes"; done; joue marc/outils.yml || recap', "ansible-playbook marc/outils.yml échoue encore (voir le récapitulatif)."),
                  ('[ "$(grep -cE "^(web1|web2|db1) +: ok=" /tmp/lab-jeu.txt)" = 3 ]', "Le playbook de Marc ne s'applique pas à web1, web2 et db1 (lisez le récapitulatif : quels serveurs sont visés ?)."),
-                 ('for s in web1 web2 db1; do paquet $s unzip || { echo "MSG:$s"; exit 1; }; done', "unzip n'est pas installé sur tous les serveurs de production."),
-                 ('for s in web1 web2 db1; do d=$(droits $s /opt/cimes/$LAB_DOSSIER | cut -d" " -f1,2); [ "$d" = "750 admin" ] || { echo "MSG:$s : ${d:-absent}"; exit 1; }; done', "Le dossier de travail de Marc doit exister sur les trois serveurs, avec les droits 0750 et le propriétaire admin (le vérificateur l'a supprimé de web1 et db1 avant de rejouer le playbook)."),
+                 ('for s in web1 web2 db1; do paquet $s $LAB_PAQUET || { echo "MSG:$s"; exit 1; }; done', "L'outil prévu par Marc (en-tête du fichier) n'est pas installé sur tous les serveurs de production."),
+                 ('for s in web1 web2 db1; do d=$(droits $s /opt/cimes/$LAB_DOSSIER | cut -d" " -f1,2); [ "$d" = "$LAB_DROITS" ] || { echo "MSG:$s : ${d:-absent}"; exit 1; }; done', "Le dossier de travail de Marc doit exister sur les trois serveurs, avec les droits et le propriétaire annoncés dans l'en-tête du fichier (le vérificateur l'a supprimé de web1 et db1 avant de rejouer le playbook)."),
                  ('joue marc/outils.yml && rien_change || recap', "Rejoué, le playbook de Marc modifie encore quelque chose."),
              ]},
         ],
@@ -768,11 +793,19 @@ anciens=$(shuf -n $((2 + RANDOM % 2)) -e kevin laura damien oceane bastien manon
 { echo "nom;statut"; for u in $equipe; do echo "$u;actif"; done; for u in $anciens; do echo "$u;parti"; done; } > $H/demandes/equipe.csv
 for s in web1 web2; do for u in $anciens; do sur $s "id $u >/dev/null 2>&1 || useradd -m -s /bin/bash -G www-data $u"; done; done
 emit ANCIENS "$anciens"
-# A6.4 : le playbook de maintenance de Julien, et ses variables « booléennes » entre guillemets
+# A6.4 : le playbook de maintenance de Julien, et ses variables « booléennes » entre guillemets. La variante fixe
+# le nom de la variable, ses valeurs et l'écriture des conditions (même piège, réparation propre à chacun)
 m=$(shuf -n1 -e web1 web2)
+case ${LAB_VARIANTE_A6_4:-$((RANDOM % 4))} in
+  0) var=maintenance; non=false; oui=true; si="maintenance"; sinon="not maintenance";;
+  1) var=en_travaux; non=no; oui=yes; si="en_travaux"; sinon="not en_travaux";;
+  2) var=mode_maintenance; non=false; oui=true; si="mode_maintenance == true"; sinon="mode_maintenance == false";;
+  *) var=page_travaux; non=off; oui=on; si="page_travaux"; sinon="not page_travaux";;
+esac
+rm -rf $I/julien
 mkdir -p $I/julien/group_vars $I/julien/host_vars
-cat > $I/julien/maintenance.yml <<'EOF'
-# Page de maintenance : affichée seulement là où « maintenance » est vrai (Julien)
+cat > $I/julien/maintenance.yml <<EOF
+# Page de maintenance : affichée seulement là où « $var » est vrai (Julien)
 - name: Page de maintenance
   hosts: web
   become: true
@@ -782,17 +815,18 @@ cat > $I/julien/maintenance.yml <<'EOF'
         dest: /var/www/html/maintenance.html
         content: "<h1>Maintenance en cours</h1>\n"
         mode: "0644"
-      when: maintenance
+      when: $si
 
     - name: Pas de page de maintenance ailleurs
       ansible.builtin.file:
         path: /var/www/html/maintenance.html
         state: absent
-      when: not maintenance
+      when: $sinon
 EOF
-printf '# Par défaut, pas de maintenance\nmaintenance: "false"\n' > $I/julien/group_vars/web.yml
-printf '# Ce serveur passe en maintenance\nmaintenance: "true"\n' > $I/julien/host_vars/$m.yml
+printf '# Par défaut, pas de maintenance\n%s: "%s"\n' $var $non > $I/julien/group_vars/web.yml
+printf '# Ce serveur passe en maintenance\n%s: "%s"\n' $var $oui > $I/julien/host_vars/$m.yml
 emit MAINT "$m"
+emit MAINTVAR "$var"
 own $I $H/demandes
 ''',
         "exercises": [
@@ -830,15 +864,15 @@ own $I $H/demandes
                  ('joue web.yml && rien_change || recap', "Rejoué, web.yml modifie encore quelque chose."),
              ]},
             {"id": "A6.4", "points": 5, "title": "La maintenance fantôme", "manual": True,
-             "ticket": {"from": "julien", "body": "J'ai écrit <code>~/infra/julien/maintenance.yml</code> : il affiche une page de maintenance là où la variable <code>maintenance</code> est vraie. J'ai mis <code>false</code> pour le groupe web et <code>true</code> pour un seul serveur… et la page de maintenance apparaît partout ! Et Léa voudrait pouvoir tout lever d'un coup avec <code>-e maintenance=false</code>. Tu peux regarder ?"},
-             "desc": "<code>ansible-playbook julien/maintenance.yml</code> dépose <code>/var/www/html/maintenance.html</code> sur le seul serveur que Julien a mis en maintenance, et la retire des autres ; avec <code>-e maintenance=false</code>, elle n'existe plus nulle part. Le choix du serveur reste dans les variables de Julien.",
-             "hints": ["Pour Jinja2, que vaut une chaîne de caractères non vide ? Affichez la valeur et son type sur chaque serveur : <code>ansible web -m debug -a \"msg={{ maintenance | type_debug }}\"</code> (depuis <code>~/infra</code>, avec l'option <code>--playbook-dir julien</code> pour qu'Ansible charge les variables de Julien). Et de quel type sont les valeurs passées par <code>-e</code> ?", "Le filtre <code>| bool</code> dans les deux conditions (<code>when: maintenance | bool</code>) : c'est la seule solution qui marche aussi avec <code>-e maintenance=false</code>."],
+             "ticket": {"from": "julien", "body": "J'ai écrit <code>~/infra/julien/maintenance.yml</code> : il affiche une page de maintenance là où ma variable de maintenance (son nom est en tête du playbook) est vraie. Je l'ai mise à faux pour le groupe web et à vrai pour un seul serveur… et la page n'est pas du tout là où je l'attendais ! Et Léa voudrait pouvoir tout lever d'un coup en passant cette variable à <code>false</code> avec <code>-e</code>. Tu peux regarder ?"},
+             "desc": "<code>ansible-playbook julien/maintenance.yml</code> dépose <code>/var/www/html/maintenance.html</code> sur le seul serveur que Julien a mis en maintenance, et la retire des autres ; avec <code>-e &lt;variable de Julien&gt;=false</code>, elle n'existe plus nulle part. Le choix du serveur reste dans les variables de Julien.",
+             "hints": ["Pour Jinja2, que vaut une chaîne de caractères non vide ? Et une chaîne comparée à un booléen ? Affichez la valeur et son type sur chaque serveur : <code>ansible web -m debug -a \"msg={{ &lt;variable&gt; | type_debug }}\"</code> (depuis <code>~/infra</code>, avec l'option <code>--playbook-dir julien</code> pour qu'Ansible charge les variables de Julien). Et de quel type sont les valeurs passées par <code>-e</code> ?", "Le filtre <code>| bool</code> dans les deux conditions (par exemple <code>when: ma_variable | bool</code>) : c'est la seule solution qui marche aussi avec <code>-e ma_variable=false</code>."],
              "checks": [
                  ("yjson $I/julien/maintenance.yml | jq -e 'any(.[]; .hosts == \"web\")' >/dev/null && [ -z \"$(ls $I/julien/host_vars | grep -v \"^$LAB_MAINT\\.\")\" ]", "Le playbook de Julien doit toujours viser le groupe web, et seul le serveur choisi par Julien doit avoir des host_vars : corrigez la condition, pas la cible."),
                  ('for s in web1 web2; do sur $s "rm -f /var/www/html/maintenance.html"; done; sur web1 "touch /var/www/html/maintenance.html"; sur web2 "touch /var/www/html/maintenance.html"; joue julien/maintenance.yml || recap', "ansible-playbook julien/maintenance.yml échoue (voir le récapitulatif)."),
                  ('for s in web1 web2; do if [ $s = "$LAB_MAINT" ]; then sur $s "test -f /var/www/html/maintenance.html" || { echo "MSG:$s devrait être en maintenance"; exit 1; }; else ! sur $s "test -e /var/www/html/maintenance.html" || { echo "MSG:$s ne devrait pas être en maintenance"; exit 1; }; fi; done', "La page de maintenance n'est pas là où Julien l'a demandée (et seulement là)."),
-                 ('joue julien/maintenance.yml -e maintenance=false || recap', "Avec -e maintenance=false, le playbook de Julien échoue (voir le récapitulatif)."),
-                 ('for s in web1 web2; do ! sur $s "test -e /var/www/html/maintenance.html" || { echo "MSG:$s"; exit 1; }; done', "Avec -e maintenance=false, une page de maintenance reste en place : la chaîne « false » est-elle vraiment comprise comme faux ?"),
+                 ('joue julien/maintenance.yml -e $LAB_MAINTVAR=false || recap', "Avec -e <variable de Julien>=false, le playbook de Julien échoue (voir le récapitulatif)."),
+                 ('for s in web1 web2; do ! sur $s "test -e /var/www/html/maintenance.html" || { echo "MSG:$s"; exit 1; }; done', "Avec -e <variable de Julien>=false, une page de maintenance reste en place : la chaîne « false » est-elle vraiment comprise comme faux ?"),
                  ('joue julien/maintenance.yml || recap', "Relancé sans -e, le playbook de Julien échoue."),
              ]},
         ],
@@ -859,22 +893,34 @@ if [ $((RANDOM % 2)) = 0 ]; then
   sur $c "test -f /etc/nginx/sites-available/default && echo '# Réglage manuel de Marc : ne pas toucher' >> /etc/nginx/sites-available/default" || true
 fi
 emit DERIVES "$(printf '%s\n' $derives | sort -u | paste -sd,)"
+# La page ajoutée : serveur tiré au hasard, emplacement selon la variante
 f=web$((RANDOM % 2 + 1))
-sur $f "mkdir -p /var/www/html && printf '<h1>SOLDES</h1><p>Promo flash : -50 %% sur tout le site !</p>\n' > /var/www/html/soldes.html"
-emit FANTOME "$f"
-# A7.3 : un compte « marc » avec tous les droits, créé à la main
+fp=$(echo soldes.html promo/flash.html offre-speciale.html archives/soldes-2024.html | cut -d' ' -f$((${LAB_VARIANTE_A7_1:-$((RANDOM % 4))} + 1)))
+for s in web1 web2; do sur $s "rm -f /var/www/html/soldes.html /var/www/html/promo/flash.html /var/www/html/offre-speciale.html /var/www/html/archives/soldes-2024.html"; done
+sur $f "mkdir -p \$(dirname /var/www/html/$fp) && printf '<h1>SOLDES</h1><p>Promo flash : -50 %% sur tout le site !</p>\n' > /var/www/html/$fp"
+emit FANTOME "$f:/var/www/html/$fp"
+# A7.3 : un compte avec tous les droits, créé à la main ; le compte et le fichier de sudoers dépendent de la variante
+for s in web1 web2; do sur $s "for c in marc presta sauvegarde olivier; do userdel -r \$c >/dev/null 2>&1; done; rm -f /etc/sudoers.d/marc /etc/sudoers.d/prestataire /etc/sudoers.d/90-sauvegarde /etc/sudoers.d/zz-olivier"; done
+case ${LAB_VARIANTE_A7_3:-$((RANDOM % 4))} in
+  0) c=marc; sf=/etc/sudoers.d/marc;;
+  1) c=presta; sf=/etc/sudoers.d/prestataire;;
+  2) c=sauvegarde; sf=/etc/sudoers.d/90-sauvegarde;;
+  *) c=olivier; sf=/etc/sudoers.d/zz-olivier;;
+esac
 m=web$((RANDOM % 2 + 1))
-sur $m "id marc >/dev/null 2>&1 || useradd -m -s /bin/bash marc; echo 'marc ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/marc; chmod 440 /etc/sudoers.d/marc"
+sur $m "useradd -m -s /bin/bash $c; echo '$c ALL=(ALL) NOPASSWD:ALL' > $sf; chmod 440 $sf"
+emit COMPTE "$c"
+emit SUDOERS "$sf"
 ''',
         "exercises": [
             {"id": "A7.1", "points": 5, "title": "La promo fantôme",
              "ticket": {"from": "sophie", "body": "Des clients nous réclament une remise de 50 %… qu'on n'a jamais proposée ! Quelqu'un a modifié des serveurs <strong>à la main</strong>, et peut-être pas seulement la page d'accueil. Sans te connecter aux serveurs : dis-moi dans <code>~/infra/reponses/derive.txt</code> quels serveurs ne correspondent plus au code, trouve la page de promotion qui a été <strong>ajoutée</strong> (<code>~/infra/reponses/fantome.txt</code>, au format <code>serveur:chemin</code>), puis remets tout en ordre avec Ansible."},
              "desc": "<code>reponses/derive.txt</code> : les serveurs dont l'état diffère de ce que décrit le playbook (un nom par ligne) ; <code>reponses/fantome.txt</code> : <code>serveur:chemin</code> de la page de promotion ajoutée à la main ; ensuite, plus aucune fausse promotion ni modification manuelle sur web1 et web2, corrigées avec Ansible (aucune commande <code>sudo</code> tapée à la main).",
-             "hints": ["Le mode vérification compare chaque serveur à ce que décrit le code et signale les écarts. Mais un fichier dont le code ne parle pas lui est invisible : celui-là, cherchez-le autrement, toujours avec Ansible. (Si vous avez déjà rejoué le playbook, les dérives visibles sont corrigées : « Réinitialiser les fichiers de cette étape » les recrée.)", "<code>ansible-playbook web.yml --check --diff</code> (ou <code>site.yml</code> si le rôle existe déjà) : les serveurs avec une tâche <code>changed</code> ; <code>ansible web -m find -a \"paths=/var/www/html patterns=*.html\"</code> ou <code>-m command -a \"grep -rl Promo /var/www/html\"</code> ; <code>-b -m file -a \"path=… state=absent\"</code> ; puis rejouez le playbook."],
+             "hints": ["Le mode vérification compare chaque serveur à ce que décrit le code et signale les écarts. Mais un fichier dont le code ne parle pas lui est invisible : celui-là, cherchez-le autrement, toujours avec Ansible. (Si vous avez déjà rejoué le playbook, les dérives visibles sont corrigées : « Réinitialiser les fichiers de cette étape » les recrée.)", "<code>ansible-playbook web.yml --check --diff</code> (ou <code>site.yml</code> si le rôle existe déjà) : les serveurs avec une tâche <code>changed</code> ; <code>ansible web -m find -a \"paths=/var/www/html patterns=*.html recurse=yes\"</code> ou <code>-m command -a \"grep -rl Promo /var/www/html\"</code> ; <code>-b -m file -a \"path=… state=absent\"</code> ; puis rejouez le playbook."],
              "checks": [
                  ('[ "$(tr -s " ,\\r\\n" "\\n" < $I/reponses/derive.txt 2>/dev/null | grep . | sort -u | paste -sd,)" = "$LAB_DERIVES" ]', "reponses/derive.txt ne contient pas exactement les serveurs dont l'état diffère du code (mode vérification du playbook)."),
-                 ('[ "$(ans $I/reponses/fantome.txt)" = "$LAB_FANTOME:/var/www/html/soldes.html" ]', "reponses/fantome.txt ne contient pas serveur:chemin de la page de promotion ajoutée à la main (--check ne la voit pas : cherchez-la avec un module)."),
-                 ('for s in web1 web2; do c=$(page $s:8080) && ! grep -q "Promo flash" <<<"$c" && ! sur $s "test -e /var/www/html/soldes.html" || { echo "MSG:$s"; exit 1; }; done', "Une fausse promotion est toujours en ligne (page d'accueil ou page ajoutée), ou un serveur ne répond plus sur 8080."),
+                 ('[ "$(ans $I/reponses/fantome.txt)" = "$LAB_FANTOME" ]', "reponses/fantome.txt ne contient pas serveur:chemin de la page de promotion ajoutée à la main (--check ne la voit pas : cherchez-la avec un module)."),
+                 ('for s in web1 web2; do c=$(page $s:8080) && ! grep -q "Promo flash" <<<"$c" || { echo "MSG:$s"; exit 1; }; done; ! sur "${LAB_FANTOME%%:*}" "test -e ${LAB_FANTOME#*:}" || { echo "MSG:la page ajoutée à la main est toujours là"; exit 1; }', "Une fausse promotion est toujours en ligne (page d'accueil ou page ajoutée), ou un serveur ne répond plus sur 8080."),
                  ('for s in web1 web2; do ! sur $s "grep -q Marc /etc/nginx/sites-available/default" || exit 1; done', "La modification manuelle de la configuration de nginx est toujours là : rejouez le playbook."),
                  ('for s in web1 web2; do m=$(a_la_main $s $LAB_DEBUT); [ -z "$m" ] || { echo "MSG:$s : $(head -1 <<<"$m")"; exit 1; }; done', "Une commande a été tapée à la main avec sudo sur un serveur web : la remise en ordre doit se faire avec Ansible, pas en ajoutant une dérive de plus."),
              ]},
@@ -894,12 +940,12 @@ sur $m "id marc >/dev/null 2>&1 || useradd -m -s /bin/bash marc; echo 'marc ALL=
                  ('page web1:8080 | grep -q web1 && page web2:8080 | grep -q web2', "Après site.yml, les serveurs web ne servent plus leur page sur le port 8080 (le vérificateur avait supprimé celle de web2)."),
              ]},
             {"id": "A7.3", "points": 4, "title": "Ce que --check ne voit pas", "manual": True,
-             "ticket": {"from": "sophie", "body": "L'audit a trouvé un compte <code>marc</code> avec tous les droits sudo sur un de nos serveurs web. Marc est parti depuis des mois ! Et ton <code>--check</code> n'avait rien signalé… Supprime-le, et surtout fais en sorte que <code>site.yml</code> l'interdise : si quelqu'un le recrée, le prochain passage doit le faire disparaître."},
-             "desc": "<code>site.yml</code> garantit l'absence, sur web1 et web2, du compte <code>marc</code>, de son dossier personnel et du fichier <code>/etc/sudoers.d/marc</code> (le vérificateur les recrée sur les deux serveurs avant de rejouer) ; rejoué, il ne change rien.",
-             "hints": ["<code>--check</code> compare les serveurs à ce que décrit le code : ce que le code ne mentionne pas n'existe pas pour lui. Comment <em>décrire</em> une absence ?", "Dans le rôle web : <code>ansible.builtin.user</code> avec <code>name: marc</code>, <code>state: absent</code>, <code>remove: true</code> ; <code>ansible.builtin.file</code> avec <code>path: /etc/sudoers.d/marc</code>, <code>state: absent</code>."],
+             "ticket": {"from": "sophie", "body": "L'audit a trouvé, sur un de nos serveurs web, un compte avec tous les droits sudo : celui de quelqu'un qui est parti depuis des mois ! Et ton <code>--check</code> n'avait rien signalé… Trouve-le (le compte, et le fichier qui lui donne ces droits), supprime-le, et surtout fais en sorte que <code>site.yml</code> l'interdise : si quelqu'un le recrée, le prochain passage doit le faire disparaître."},
+             "desc": "<code>site.yml</code> garantit l'absence, sur web1 et web2, du compte trouvé par l'audit, de son dossier personnel et du fichier de <code>/etc/sudoers.d</code> qui lui donne tous les droits (le vérificateur les recrée sur les deux serveurs avant de rejouer) ; rejoué, il ne change rien.",
+             "hints": ["<code>--check</code> compare les serveurs à ce que décrit le code : ce que le code ne mentionne pas n'existe pas pour lui. Commencez par trouver le compte, avec Ansible : quels fichiers de <code>/etc/sudoers.d</code> donnent des droits, et à qui ? Puis, comment <em>décrire</em> une absence ?", "<code>ansible web -b -m find -a \"paths=/etc/sudoers.d\"</code>, puis <code>ansible web -b -m command -a \"cat &lt;fichier&gt;\"</code>. Dans le rôle web : <code>ansible.builtin.user</code> avec <code>name: &lt;compte&gt;</code>, <code>state: absent</code>, <code>remove: true</code> ; <code>ansible.builtin.file</code> avec <code>path: &lt;fichier de sudoers&gt;</code>, <code>state: absent</code>."],
              "checks": [
-                 (r'''for s in web1 web2; do sur $s "id marc >/dev/null 2>&1 || useradd -m -s /bin/bash marc; echo 'marc ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/marc; chmod 440 /etc/sudoers.d/marc"; done; joue site.yml || recap''', "ansible-playbook site.yml échoue (voir le récapitulatif)."),
-                 ('for s in web1 web2; do ! sur $s "id marc" && ! sur $s "test -e /etc/sudoers.d/marc" && ! sur $s "test -d /home/marc" || { echo "MSG:$s"; exit 1; }; done', "Le vérificateur a recréé le compte marc (et ses droits sudo) : après site.yml, il existe encore, ou son dossier personnel, ou /etc/sudoers.d/marc."),
+                 (r'''for s in web1 web2; do sur $s "id $LAB_COMPTE >/dev/null 2>&1 || useradd -m -s /bin/bash $LAB_COMPTE; echo '$LAB_COMPTE ALL=(ALL) NOPASSWD:ALL' > $LAB_SUDOERS; chmod 440 $LAB_SUDOERS"; done; joue site.yml || recap''', "ansible-playbook site.yml échoue (voir le récapitulatif)."),
+                 ('for s in web1 web2; do ! sur $s "id $LAB_COMPTE" && ! sur $s "test -e $LAB_SUDOERS" && ! sur $s "test -d /home/$LAB_COMPTE" || { echo "MSG:$s"; exit 1; }; done', "Le vérificateur a recréé le compte trouvé par l'audit (et ses droits sudo) : après site.yml, il existe encore, ou son dossier personnel, ou son fichier dans /etc/sudoers.d."),
                  ('joue site.yml && rien_change || recap', "Rejoué, site.yml modifie encore quelque chose."),
              ]},
         ],
@@ -917,10 +963,73 @@ printf 'De : Sophie Marchand\nObjet : Redis de production\n\nLe mot de passe de 
 own $H/message-sophie.txt
 chmod 600 $H/message-sophie.txt
 emit REDISPW "$pw"
-# A8.4 : Julien a « rangé » les variables du rôle web pendant le week-end
+# A8.4 : Julien a « rangé » le projet pendant le week-end, et quelque chose impose désormais environnement: production
+# au-dessus de host_vars. La variante dit quoi : vars/ du rôle, vars: du play, set_fact ou include_vars dans le rôle
+# (si le projet de l'étudiant ne s'y prête pas, vars/ du rôle). Ce qu'une préparation précédente avait ajouté est retiré.
 if [ -d $I/roles/web ]; then
   mkdir -p $I/roles/web/vars
-  printf -- '---\n# Variables du rôle web, rangées par Julien le week-end dernier\nenvironnement: production\nhttp_port: 8080\n' > $I/roles/web/vars/main.yml
+  python3 - "$I" "${LAB_VARIANTE_A8_4:-$((RANDOM % 4))}" <<'PY'
+import os, re, sys, yaml
+I, v = sys.argv[1], int(sys.argv[2])
+R = os.path.join(I, "roles/web")
+SITE, TACHES, VARS = os.path.join(I, "site.yml"), os.path.join(R, "tasks/main.yml"), os.path.join(R, "vars/main.yml")
+VARS_JULIEN = "---\n# Variables du rôle web, rangées par Julien le week-end dernier\nenvironnement: production\nhttp_port: 8080\n"
+PLAY_JULIEN = "{0}# Valeurs communes, rangées par Julien le week-end dernier\n{0}vars:\n{0}  environnement: production\n"
+FAIT = "- name: Valeurs par défaut du site (rangées par Julien)\n  ansible.builtin.set_fact:\n    environnement: production\n\n"
+INCLUS = "- name: Réglages du site (rangés par Julien)\n  ansible.builtin.include_vars: reglages.yml\n\n"
+def lire(f):
+    try:
+        return open(f, encoding="utf-8").read()
+    except OSError:
+        return None
+def ecrire(f, t):
+    open(f, "w", encoding="utf-8").write(t)
+if lire(VARS) == VARS_JULIEN:
+    ecrire(VARS, "---\n# vars file for web\n")
+t = lire(SITE)
+if t is not None:
+    ecrire(SITE, re.sub(r"(?m)^ *# Valeurs communes, rangées par Julien le week-end dernier\n *vars:\n *environnement: production\n", "", t))
+t = lire(TACHES)
+if t is not None:
+    ecrire(TACHES, t.replace(FAIT, "").replace(INCLUS, ""))
+if os.path.exists(os.path.join(R, "vars/reglages.yml")):
+    os.remove(os.path.join(R, "vars/reglages.yml"))
+def dans_le_role():
+    ecrire(VARS, VARS_JULIEN)
+    return True
+def dans_le_play():
+    t = lire(SITE)
+    try:
+        jeux = yaml.safe_load(t)
+    except Exception:
+        return False
+    if not isinstance(jeux, list) or any(isinstance(j, dict) and j.get("hosts") == "web" and "vars" in j for j in jeux):
+        return False
+    m = re.search(r"(?m)^( *- +| *)hosts: *web *\n", t or "")
+    if not m:
+        return False
+    ecrire(SITE, t[:m.end()] + PLAY_JULIEN.format(" " * len(m.group(1))) + t[m.end():])
+    return True
+def en_tete(bloc):
+    t = lire(TACHES)
+    if t is None:
+        return False
+    lignes = t.splitlines(keepends=True)
+    i = 0
+    while i < len(lignes) and (not lignes[i].strip() or lignes[i].startswith("#") or lignes[i].strip() == "---"):
+        i += 1
+    if i < len(lignes) and not lignes[i].startswith("- "):
+        return False
+    ecrire(TACHES, "".join(lignes[:i]) + bloc + "".join(lignes[i:]))
+    return True
+def par_include_vars():
+    if not en_tete(INCLUS):
+        return False
+    ecrire(os.path.join(R, "vars/reglages.yml"), "---\n# Réglages du site, rangés par Julien le week-end dernier\nenvironnement: production\n")
+    return True
+if not [dans_le_role, dans_le_play, lambda: en_tete(FAIT), par_include_vars][v]():
+    dans_le_role()
+PY
   own $I/roles
 fi
 ''',
@@ -964,9 +1073,9 @@ fi
                  ('joue site.yml && rien_change || recap', "Rejoué, site.yml modifie encore quelque chose : il n'est pas idempotent."),
              ]},
             {"id": "A8.4", "points": 5, "title": "Le bandeau a disparu", "manual": True,
-             "ticket": {"from": "thomas", "body": "Julien a « rangé » les variables du rôle web ce week-end. Relance <code>site.yml</code> : web2, notre serveur de recette, se prend pour la production ! Plus de bandeau, plus de htop. Pourtant <code>host_vars/web2.yml</code> dit bien recette, et <code>ansible-inventory --host web2</code> aussi. Je n'y comprends rien."},
-             "desc": "Après <code>site.yml</code>, web2 affiche le bandeau RECETTE et a htop, web1 non ; <code>roles/web/vars/main.yml</code> ne fixe plus ni <code>environnement</code> ni <code>http_port</code> (les valeurs par défaut du rôle vont là où elles peuvent être surchargées).",
-             "hints": ["<code>ansible-inventory</code> ne voit que l'inventaire, pas les variables des rôles. Affichez la valeur de <code>environnement</code> <strong>pendant le jeu</strong>, sur web2. Qui peut l'emporter sur <code>host_vars</code> ? (Tableau du jour 4.)", "Les variables de <code>roles/web/vars/main.yml</code> passent avant <code>host_vars</code> ; les valeurs par défaut vont dans <code>roles/web/defaults/main.yml</code>."],
+             "ticket": {"from": "thomas", "body": "Julien a « rangé » le projet ce week-end. Relance <code>site.yml</code> : web2, notre serveur de recette, se prend pour la production ! Plus de bandeau, plus de htop. Pourtant <code>host_vars/web2.yml</code> dit bien recette, et <code>ansible-inventory --host web2</code> aussi. Je n'y comprends rien."},
+             "desc": "Après <code>site.yml</code>, web2 affiche le bandeau RECETTE et a htop, web1 non : plus rien, dans le projet, n'impose <code>environnement</code> au-dessus de <code>host_vars</code>, et <code>roles/web/vars/main.yml</code> ne fixe ni <code>environnement</code> ni <code>http_port</code> (les valeurs par défaut du rôle vont là où elles peuvent être surchargées).",
+             "hints": ["<code>ansible-inventory</code> ne voit que l'inventaire : ni les variables des rôles, ni celles des plays, ni celles que les tâches définissent. Affichez la valeur de <code>environnement</code> <strong>pendant le jeu</strong>, sur web2, puis cherchez qui la définit : lesquelles de ces sources l'emportent sur <code>host_vars</code> ? (Tableau du jour 4.)", "<code>grep -rn environnement ~/infra --include=*.yml</code> : <code>vars/</code> d'un rôle, <code>vars:</code> d'un play, <code>set_fact</code> ou <code>include_vars</code> passent tous avant <code>host_vars</code>. Retirez ce que Julien a ajouté ; les valeurs par défaut vont dans <code>roles/web/defaults/main.yml</code>."],
              "checks": [
                  (r'''! grep -qsE '^[[:space:]]*(environnement|http_port)[[:space:]]*:' $I/roles/web/vars/main.yml''', "roles/web/vars/main.yml fixe encore environnement ou http_port : ces variables y ont une priorité plus forte que host_vars."),
                  ('joue site.yml || recap', "ansible-playbook site.yml échoue (voir le récapitulatif)."),
@@ -983,16 +1092,23 @@ fi
         "setup": r'''
 for s in web1 web2 db1; do serveur $s; done
 docker inspect web3 >/dev/null 2>&1 && serveur web3
-# A9.2 : le script de purge de Marc, sur les serveurs web
+# A9.2 : le script de purge de Marc, sur les serveurs web. Ses conventions (code « purge déjà en cours », mot qui
+# signale une erreur, clé du compte rendu) dépendent de la variante
+case ${LAB_VARIANTE_A9_2:-$((RANDOM % 4))} in
+  0) rc=3; err=ERREUR; cle=SUPPRIMES;;
+  1) rc=4; err=ECHEC; cle=PURGES;;
+  2) rc=5; err=FATAL; cle=EFFACES;;
+  *) rc=2; err=IMPOSSIBLE; cle=RETIRES;;
+esac
 for s in $(webs); do
-  docker exec -i $s bash -c "mkdir -p /var/cache/boutique /etc/boutique && cat > /usr/local/sbin/purge-cache && chmod 755 /usr/local/sbin/purge-cache" <<'EOF'
+  docker exec -i $s bash -c "mkdir -p /var/cache/boutique /etc/boutique && cat > /usr/local/sbin/purge-cache && chmod 755 /usr/local/sbin/purge-cache" <<EOF
 #!/bin/bash
 # Purge du cache des pages de la boutique (Marc)
-if [ -e /run/purge.lock ]; then echo "Une purge est déjà en cours"; exit 3; fi
-if [ ! -f /etc/boutique/purge.conf ]; then echo "ERREUR: /etc/boutique/purge.conf introuvable"; exit 0; fi
-n=$(find /var/cache/boutique -type f | wc -l)
+if [ -e /run/purge.lock ]; then echo "Une purge est déjà en cours"; exit $rc; fi
+if [ ! -f /etc/boutique/purge.conf ]; then echo "$err: /etc/boutique/purge.conf introuvable"; exit 0; fi
+n=\$(find /var/cache/boutique -type f | wc -l)
 find /var/cache/boutique -type f -delete
-echo "SUPPRIMES=$n"
+echo "$cle=\$n"
 EOF
   sur $s "echo 'repertoire=/var/cache/boutique' > /etc/boutique/purge.conf; touch /var/cache/boutique/page-accueil.html /var/cache/boutique/page-soldes.html"
 done
@@ -1032,15 +1148,15 @@ emit V1 "$v1"; emit V2 "$v2"; emit VC "$vc"
                  ('joue rapport.yml && rien_change || recap', "Rejoué, rapport.yml annonce des changements : une simple lecture ne change rien, et le rapport est identique."),
              ]},
             {"id": "A9.2", "points": 6, "title": "La purge qui ment", "manual": True,
-             "ticket": {"from": "thomas", "body": "Le script <code>/usr/local/sbin/purge-cache</code> de Marc (sur chaque serveur web) vide le cache des pages et affiche <code>SUPPRIMES=&lt;nombre&gt;</code>. Écris <code>purge.yml</code> qui le lance sur les serveurs web. Mais attention : quand il échoue, il affiche <code>ERREUR: …</code> et renvoie 0 quand même ; et quand une purge est déjà en cours, il renvoie 3, ce qui n'est pas grave. Je veux un récapitulatif honnête : « changed » seulement si des fichiers ont été supprimés, « failed » en cas d'erreur, et rien d'autre."},
-             "desc": "<code>purge.yml</code> lance le script sur les serveurs web ; un serveur n'est <code>changed</code> que si des fichiers ont été supprimés ; le jeu échoue si la sortie contient <code>ERREUR</code> ; le code 3 (purge déjà en cours) n'est pas un échec.",
-             "hints": ["Enregistrez le résultat de la commande et regardez-le en entier (<code>-v</code>) : <code>rc</code>, <code>stdout</code>… C'est à vous de dire à Ansible ce que « changé » et « échoué » veulent dire pour ce script.", "<code>register</code>, puis <code>changed_when:</code> une condition sur le texte de <code>stdout</code>, et <code>failed_when:</code> qui combine deux conditions avec <code>or</code> ; <code>in</code> teste la présence d'un texte, et aussi l'appartenance à une liste (<code>rc in [0, 3]</code>)."],
+             "ticket": {"from": "thomas", "body": "Le script <code>/usr/local/sbin/purge-cache</code> de Marc (sur chaque serveur web) vide le cache des pages et affiche le nombre de fichiers supprimés. Écris <code>purge.yml</code> qui le lance sur les serveurs web. Mais attention, Marc a ses propres conventions (lis son script) : quand il échoue, il affiche un message d'erreur et renvoie 0 quand même ; et quand une purge est déjà en cours, il renvoie un code non nul, ce qui n'est pas grave. Je veux un récapitulatif honnête : « changed » seulement si des fichiers ont été supprimés, « failed » en cas d'erreur, et rien d'autre."},
+             "desc": "<code>purge.yml</code> lance le script sur les serveurs web ; un serveur n'est <code>changed</code> que si des fichiers ont été supprimés ; le jeu échoue quand le script signale une erreur ; le code de retour « purge déjà en cours » n'est pas un échec.",
+             "hints": ["Lisez d'abord le script (avec Ansible : <code>-m command -a \"cat /usr/local/sbin/purge-cache\"</code>) : quels messages, quels codes de retour ? Puis enregistrez le résultat de la commande et regardez-le en entier (<code>-v</code>) : <code>rc</code>, <code>stdout</code>… C'est à vous de dire à Ansible ce que « changé » et « échoué » veulent dire pour ce script.", "<code>register</code>, puis <code>changed_when:</code> une condition sur le texte de <code>stdout</code>, et <code>failed_when:</code> qui combine deux conditions avec <code>or</code> ; <code>in</code> teste la présence d'un texte, et aussi l'appartenance à une liste (<code>rc in [0, …]</code>)."],
              "checks": [
                  ('for s in $(groupe web | tr , " "); do sur $s "rm -f /run/purge.lock /var/cache/boutique/*; test -f /etc/boutique/purge.conf || echo repertoire=/var/cache/boutique > /etc/boutique/purge.conf"; done; sur web1 "touch /var/cache/boutique/a.html /var/cache/boutique/b.html"; joue purge.yml || recap', "ansible-playbook purge.yml échoue alors que la purge s'est bien passée (voir le récapitulatif)."),
                  ('[ "$(changes web1)" = 1 ] && [ "$(changes web2)" = 0 ] && [ -z "$(sur web1 "ls /var/cache/boutique")" ]', "Le vérificateur avait mis deux fichiers dans le cache de web1 et aucun dans celui de web2 : web1 seul doit être « changed » (changed=1), et son cache vidé."),
                  ('joue purge.yml && rien_change || recap', "Relancé sur des caches vides, purge.yml annonce encore des changements."),
-                 ('sur web2 "touch /run/purge.lock"; joue purge.yml; r=$?; sur web2 "rm -f /run/purge.lock"; [ $r = 0 ] || recap', "Une purge déjà en cours (code 3) a fait échouer le jeu : ce n'est pas une erreur."),
-                 ('sur web1 "mv /etc/boutique/purge.conf /etc/boutique/purge.conf.sauve"; joue purge.yml; r=$?; sur web1 "mv /etc/boutique/purge.conf.sauve /etc/boutique/purge.conf"; [ $r != 0 ] && echec_attendu', "Le script a affiché « ERREUR: … » sur web1 (le vérificateur avait retiré sa configuration), mais le jeu a réussi : l'échec doit être signalé."),
+                 ('sur web2 "touch /run/purge.lock"; joue purge.yml; r=$?; sur web2 "rm -f /run/purge.lock"; [ $r = 0 ] || recap', "Une purge déjà en cours a fait échouer le jeu : d'après le script de Marc, ce n'est pas une erreur."),
+                 ('sur web1 "mv /etc/boutique/purge.conf /etc/boutique/purge.conf.sauve"; joue purge.yml; r=$?; sur web1 "mv /etc/boutique/purge.conf.sauve /etc/boutique/purge.conf"; [ $r != 0 ] && echec_attendu', "Le script a signalé une erreur sur web1 (le vérificateur avait retiré sa configuration), mais le jeu a réussi : l'échec doit être signalé."),
              ]},
             {"id": "A9.3", "points": 4, "title": "Garde-fous", "manual": True,
              "ticket": {"from": "sophie", "body": "Julien a lancé <code>site.yml -e http_port=80</code> « pour voir »… Plus jamais de déploiement avec un port réservé ou un environnement inventé : <code>site.yml</code> doit refuser un <code>http_port</code> hors de 1024-65535 et un <code>environnement</code> autre que <code>production</code> ou <code>recette</code>, <strong>avant</strong> de toucher à quoi que ce soit sur les serveurs, avec un message clair."},
@@ -1077,10 +1193,17 @@ emit V1 "$v1"; emit V2 "$v2"; emit VC "$vc"
         "setup": r'''
 for s in web1 web2 db1; do serveur $s; done
 docker inspect web3 >/dev/null 2>&1 && serveur web3
-# A10.1 : quatre incidents tirés au hasard (la réinstallation d'un serveur, s'il y en a une, en dernier)
+# A10.1 : quatre incidents tirés au hasard (la réinstallation d'un serveur, s'il y en a une, en dernier). La variante
+# désigne un serveur épargné : « tous les serveurs » n'est jamais la bonne réponse
 W=($(webs))
+T=("${W[@]}" db1)
+i=${LAB_VARIANTE_A10_1:-$RANDOM}
+intact=${T[$((i % ${#T[@]}))]}
+W=($(printf '%s\n' "${W[@]}" | grep -vx "$intact"))
+autres=$(printf '%s\n' "${T[@]}" | grep -vx "$intact" | xargs)
+pool="nginx port page droits stagiaire reinstalle"; [ "$intact" = db1 ] || pool="$pool redis"
 touches=""
-choix=$(shuf -n4 -e nginx redis port page droits stagiaire reinstalle)
+choix=$(shuf -n4 -e $pool)
 for c in $(grep -v reinstalle <<<"$choix") $(grep reinstalle <<<"$choix"); do
   s=$(shuf -n1 -e "${W[@]}")
   case $c in
@@ -1089,7 +1212,7 @@ for c in $(grep -v reinstalle <<<"$choix") $(grep reinstalle <<<"$choix"); do
     port) sur $s "sed -i 's/listen [0-9]*/listen 8081/' /etc/nginx/sites-available/default && nginx -s reload" || true;;
     page) sur $s "rm -f /var/www/html/index.html" || true;;
     droits) sur $s "chmod 000 /var/www/html" || true; emit DROITS "$s";;
-    stagiaire) s=$(shuf -n1 -e "${W[@]}" db1); sur $s "id stagiaire >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo stagiaire"; emit STAGIAIRE "$s";;
+    stagiaire) s=$(shuf -n1 -e $autres); sur $s "id stagiaire >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo stagiaire"; emit STAGIAIRE "$s";;
     reinstalle) reinstalle $s;;
   esac
   touches="$touches $s"

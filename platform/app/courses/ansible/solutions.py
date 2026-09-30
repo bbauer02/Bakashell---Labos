@@ -45,36 +45,57 @@ remote_user = admin
 EOF
 ansible production -m ping
 #@ A1.4
-#? Un motif combine des groupes : `a:b` pour l'union, `a:&b` pour l'intersection, `a:!b` pour l'exclusion et `a[0]` pour le premier serveur du groupe `a`, dans l'ordre de l'inventaire.
+#? Un motif combine des groupes : `a:b` pour l'union, `a:&b` pour l'intersection, `a:!b` pour l'exclusion, `a[0]` pour le premier serveur du groupe `a` et `a[-1]` pour le dernier, dans l'ordre de l'inventaire.
 #? Le piège était de recopier des noms de serveurs : le motif doit rester juste le jour où le parc change, et seuls des noms de groupes le permettent.
 #? Entourez toujours le motif de guillemets simples : sans eux, le shell interprète lui-même `!` et `&` avant qu'Ansible ne les voie.
-#? `--list-hosts` affiche les serveurs visés sans rien exécuter : c'est le moyen sûr de tester un motif. Les quatre demandes sont tirées au sort, les vôtres peuvent donc différer de celles traitées ici.
+#? `--list-hosts` affiche les serveurs visés sans rien exécuter : c'est le moyen sûr de tester un motif. Les villes du parc et les quatre demandes sont tirées au sort : vos motifs diffèrent de ceux d'un camarade, même quand les phrases se ressemblent.
 cat exercices/demandes.txt
-# Pour chaque demande, le motif correspondant, vérifié avec --list-hosts (aucune connexion)
+# Pour chaque demande, le motif correspondant, vérifié avec --list-hosts (aucune connexion).
+# Les villes sont des groupes de l'inventaire : leur nom en minuscules.
 : > reponses/motifs.txt
 grep -E '^[0-9]\. ' exercices/demandes.txt | while read -r num texte; do
+  ville=$(echo "$texte" | grep -oE '(de|à) [A-Z][a-z]+' | head -1 | cut -d' ' -f2 | tr 'A-Z' 'a-z')
   case "$texte" in
-    "Les serveurs web de Lyon.") m='web:&lyon' ;;
+    "Les serveurs web de "*) m="web:&$ville" ;;
     "Toute la production, sauf les bases de données.") m='production:!bdd' ;;
-    "Les serveurs de recette situés à Paris.") m='recette:&paris' ;;
+    "Les serveurs de recette situés à "*) m="recette:&$ville" ;;
     "Le premier serveur du groupe web"*) m='web[0]' ;;
-    "Tous les serveurs, sauf ceux de Lyon.") m='all:!lyon' ;;
+    "Le dernier serveur du groupe bdd"*) m='bdd[-1]' ;;
+    "Tous les serveurs, sauf ceux de "*) m="all:!$ville" ;;
     "Les serveurs de cache et les bases de données.") m='cache:bdd' ;;
+    *"qui ne sont pas en production.") m="$ville:!production" ;;
   esac
   echo "$m" >> reponses/motifs.txt
   ansible -i exercices/parc.ini "$m" --list-hosts
 done
 ''',
     2: r'''
+#@ A2.4
+#? Une empreinte qui change peut signaler une réinstallation… ou une attaque de l'homme du milieu : on ne fait confiance à la nouvelle qu'après l'avoir comparée à une source sûre, ici le message de Léa.
+#? `ssh-keygen -R <serveur>` oublie l'ancienne empreinte, puis on enregistre la nouvelle ; comme le serveur est neuf, sa liste de clés autorisées est vide et il faut y réinstaller votre clé publique avec `ssh-copy-id`.
+#? Le piège était de désactiver la vérification des empreintes (`host_key_checking = False`, `StrictHostKeyChecking no`) : la connexion passe, mais vous accepteriez n'importe quel serveur, y compris celui d'un attaquant.
+#? Le serveur réinstallé est tiré au sort (db1, web1 ou web2), et son empreinte dépend de votre propre environnement : refaire les commandes d'un camarade ne répare pas forcément le bon serveur.
+#? Ce corrigé passe en premier : tant que l'accès au serveur réinstallé n'est pas rétabli, Ansible ne peut plus le joindre, et les autres exercices qui le visent échouent.
+cd ~/infra
+cat ~/message-lea.txt
+s=$(sed -n 's/^Objet : \([a-z0-9]*\) réinstallé$/\1/p' ~/message-lea.txt)
+# 1. Comparer l'empreinte présentée par le serveur à l'empreinte officielle
+officielle=$(grep -oE 'SHA256:[^ ]+' ~/message-lea.txt)
+presentee=$(ssh-keyscan -t ed25519 $s 2>/dev/null | ssh-keygen -lf - | awk '{print $2}')
+[ "$officielle" = "$presentee" ] && echo "Empreinte conforme : on peut lui faire confiance"
+# 2. Oublier l'ancien serveur, enregistrer le nouveau (empreinte vérifiée), réinstaller la clé publique
+ssh-keygen -R $s
+ssh-keyscan $s >> ~/.ssh/known_hosts 2>/dev/null
+sshpass -p cimes ssh-copy-id -i ~/.ssh/id_ed25519.pub admin@$s
+ssh -o BatchMode=yes admin@$s hostname
 #@ A2.1
 #? Ansible n'installe aucun agent : pour chaque tâche, il emballe le module dans un fichier `AnsiballZ_<module>.py`, l'envoie par SSH dans un dossier temporaire du serveur, l'exécute avec le Python du serveur, lit le JSON renvoyé, puis efface le tout.
 #? Avec `-vvv`, la ligne `PUT` montre l'envoi du fichier et son dossier de destination, et la ligne `EXEC` montre l'interpréteur qui l'exécute.
 #? Le piège était de confondre les deux dossiers temporaires : `ansible-local-…` est sur le poste de contrôle, alors que la réponse attendue est celui du serveur, sous `/home/admin/.ansible/tmp`.
-#? La commande de Julien est tirée au sort : le nom du module (et donc du fichier) peut différer du vôtre.
-cd ~/infra
+#? La commande de Julien est tirée au sort : le module (donc le nom du fichier) et le serveur visé peuvent différer des vôtres.
 cat ~/message-julien.txt
 # La commande de Julien, en mode très bavard
-cmd=$(grep -E '^ +ansible web1' ~/message-julien.txt | sed 's/^ *//')
+cmd=$(grep -E '^ +ansible ' ~/message-julien.txt | sed 's/^ *//')
 eval "$cmd -vvv" > /tmp/vvv.txt 2>&1
 # « PUT <fichier local> TO <dossier du serveur>/AnsiballZ_<module>.py » : le fichier envoyé et son dossier
 grep -o "AnsiballZ_[a-z_]*\.py" /tmp/vvv.txt | head -1 > reponses/module.txt
@@ -104,21 +125,6 @@ cat ~/message-thomas.txt
 uid=$(grep -oE 'UID [0-9]+' ~/message-thomas.txt | cut -d' ' -f2)
 ansible web -b -m user -a "name=deploy uid=$uid groups=www-data append=true shell=/bin/bash"
 ansible web -b -m copy -a "dest=/etc/motd content='Serveur géré par Ansible - ne pas modifier à la main\n'"
-#@ A2.4
-#? Une empreinte qui change peut signaler une réinstallation… ou une attaque de l'homme du milieu : on ne fait confiance à la nouvelle qu'après l'avoir comparée à une source sûre, ici le message de Léa.
-#? `ssh-keygen -R db1` oublie l'ancienne empreinte, puis on enregistre la nouvelle ; comme le serveur est neuf, sa liste de clés autorisées est vide et il faut y réinstaller votre clé publique avec `ssh-copy-id`.
-#? Le piège était de désactiver la vérification des empreintes (`host_key_checking = False`, `StrictHostKeyChecking no`) : la connexion passe, mais vous accepteriez n'importe quel serveur, y compris celui d'un attaquant.
-#? L'empreinte officielle dépend de la réinstallation de votre propre db1 : elle diffère d'un environnement à l'autre.
-cat ~/message-lea.txt
-# 1. Comparer l'empreinte présentée par db1 à l'empreinte officielle
-officielle=$(grep -oE 'SHA256:[^ ]+' ~/message-lea.txt)
-presentee=$(ssh-keyscan -t ed25519 db1 2>/dev/null | ssh-keygen -lf - | awk '{print $2}')
-[ "$officielle" = "$presentee" ] && echo "Empreinte conforme : on peut lui faire confiance"
-# 2. Oublier l'ancien db1, enregistrer le nouveau (empreinte vérifiée), réinstaller la clé publique
-ssh-keygen -R db1
-ssh-keyscan db1 >> ~/.ssh/known_hosts 2>/dev/null
-sshpass -p cimes ssh-copy-id -i ~/.ssh/id_ed25519.pub admin@db1
-ssh -o BatchMode=yes admin@db1 hostname
 #@ A2.5
 #? Le module `find` cherche sur tous les serveurs à la fois ; `-b` est indispensable, car certains dossiers ne sont lisibles que par root et seraient sinon ignorés.
 #? Le motif `clients-*.csv` porte sur le nom complet du fichier : il écarte les leurres comme `clients.csv.gpg`, `clients-….csv.bak` ou `fournisseurs-….csv`.
@@ -208,20 +214,36 @@ ansible-playbook web.yml
 ansible-playbook web.yml     # second passage : changed=0
 #@ A3.4
 #? Les défauts se corrigent un par un, en relisant les erreurs : tabulation interdite en YAML, `{{ }}` en début de valeur sans guillemets, valeur de `state` inconnue du module `apt`, nom de module erroné, `become` absent.
-#? `mode: 750` sans guillemets est l'entier décimal 750, soit 1356 en octal : les droits doivent s'écrire `"0750"`.
+#? `mode: 750` sans guillemets est l'entier décimal 750, soit 1356 en octal : les droits s'écrivent en octal, entre guillemets et avec le zéro initial, en traduisant ceux de l'en-tête (`rwxr-x---` donne `"0750"` : r = 4, w = 2, x = 1 pour chaque tiers).
 #? Le défaut le plus sournois est `hosts: tous` : aucun groupe ne porte ce nom, Ansible affiche « no hosts matched » et termine sans erreur… sans rien avoir fait. Lisez toujours le récapitulatif.
-#? Le nom du dossier de travail de Marc est tiré au sort : le vôtre peut différer.
+#? L'outil, les droits, le propriétaire et le nom du dossier de travail sont tirés au sort : le playbook réparé d'un camarade ne ferait pas ce que votre Marc a prévu.
 ansible-playbook marc/outils.yml --syntax-check || true
 # Défauts possibles : tabulation, {{ }} sans guillemets, state: installed, module « fille », become absent,
-# mode: 750 (décimal !), et surtout hosts: tous, qui ne correspond à aucun groupe (« no hosts matched »)
+# mode sans guillemets (décimal !), et surtout hosts: tous, qui ne correspond à aucun groupe (« no hosts matched »)
+# Ce que Marc a prévu : l'en-tête et les variables du fichier
+head -3 marc/outils.yml
 dossier=$(grep -o '/opt/cimes/[a-z-]*' marc/outils.yml)
+paquet=$(sed -n 's/^    paquet: *//p' marc/outils.yml)
+proprio=$(sed -n 's/^# (droits [rwx-]*, propriétaire \(.*\))\.$/\1/p' marc/outils.yml)
+rwx=$(grep -oE 'droits [rwx-]{9}' marc/outils.yml | cut -d' ' -f2)
+# rwx → octal : r = 4, w = 2, x = 1, pour le propriétaire, le groupe et les autres
+mode=0
+for i in 0 3 6; do
+  c=0
+  [ "${rwx:$i:1}" = r ] && c=$((c + 4))
+  [ "${rwx:$((i + 1)):1}" = w ] && c=$((c + 2))
+  [ "${rwx:$((i + 2)):1}" = x ] && c=$((c + 1))
+  mode="$mode$c"
+done
+echo "$paquet, $dossier : $rwx = $mode, propriétaire $proprio"
 cat > marc/outils.yml <<EOF
-# Outils de Marc : unzip sur tous les serveurs de production, et un dossier de travail.
+# Outils de Marc : $paquet sur tous les serveurs de production, et un dossier de travail
+# (droits $rwx, propriétaire $proprio).
 - name: Outils de Marc
   hosts: production
   become: true
   vars:
-    paquet: unzip
+    paquet: $paquet
     dossier: $dossier
   tasks:
     - name: Installer l'outil
@@ -235,8 +257,8 @@ cat > marc/outils.yml <<EOF
       ansible.builtin.file:
         path: "{{ dossier }}"
         state: directory
-        owner: admin
-        mode: "0750"
+        owner: $proprio
+        mode: "$mode"
 EOF
 ansible-playbook marc/outils.yml
 ansible-playbook marc/outils.yml     # changed=0
@@ -504,15 +526,18 @@ sed -i '/^    - name: Outils de diagnostic, en recette seulement/e cat /tmp/comp
 ansible-playbook web.yml
 ansible-playbook web.yml     # changed=0
 #@ A6.4
-#? `maintenance: "false"` entre guillemets est une chaîne non vide, donc vraie pour `when` : la page apparaissait partout. `type_debug` le révèle en affichant `str`.
-#? Le filtre `| bool` convertit les chaînes `"true"`, `"false"`, `"yes"`, `"no"`… en vrais booléens ; c'est indispensable ici, car `-e maintenance=false` passe toujours une chaîne.
+#? Une valeur entre guillemets (`"false"`, `"no"`, `"off"`…) est une chaîne : non vide, elle est vraie pour `when`, et elle n'est jamais égale au booléen `true` ni au booléen `false`. `type_debug` le révèle en affichant `str`.
+#? Le filtre `| bool` convertit les chaînes `"true"`, `"false"`, `"yes"`, `"no"`, `"on"`, `"off"`… en vrais booléens ; c'est indispensable ici, car `-e variable=false` passe toujours une chaîne.
 #? Retirer les guillemets dans les fichiers de Julien ne suffisait donc pas : seul `| bool` fonctionne aussi avec `-e`. Une valeur JSON (`-e '{"maintenance": false}'`) donnerait un vrai booléen, mais on ne peut pas compter sur tous les utilisateurs pour y penser.
-#? Le serveur mis en maintenance par Julien est tiré au sort : ce peut être web1 ou web2 chez vous.
-# « false » entre guillemets est une chaîne non vide, donc vraie ; -e passe toujours des chaînes : | bool
-ansible web -m debug -a "msg={{ maintenance | type_debug }} {{ maintenance }}" --playbook-dir julien
-sed -i 's/^      when: maintenance$/      when: maintenance | bool/; s/^      when: not maintenance$/      when: not (maintenance | bool)/' julien/maintenance.yml
+#? Le nom de la variable, ses valeurs, l'écriture des conditions et le serveur mis en maintenance sont tirés au sort : le playbook réparé d'un camarade ne fonctionnerait pas chez vous.
+# Le nom de la variable de Julien, et sa valeur (avec son type) sur chaque serveur
+var=$(sed -n 's/^\([a-z_]*\): .*/\1/p' julien/group_vars/web.yml)
+ansible web -m debug -a "msg={{ $var | type_debug }} {{ $var }}" --playbook-dir julien
+# Une chaîne non vide est vraie, et n'est égale à aucun booléen ; -e passe toujours des chaînes : | bool
+sed -i -E "s/^( +when: )not $var\$/\1not ($var | bool)/; s/^( +when: )$var( == (true|false))?\$/\1$var | bool\2/" julien/maintenance.yml
+grep 'when:' julien/maintenance.yml
 ansible-playbook julien/maintenance.yml
-ansible-playbook julien/maintenance.yml -e maintenance=false
+ansible-playbook julien/maintenance.yml -e $var=false
 ansible-playbook julien/maintenance.yml
 ''',
     7: r'''
@@ -520,7 +545,7 @@ ansible-playbook julien/maintenance.yml
 #? `--check --diff` compare les serveurs à ce que décrit le code, sans rien modifier : les serveurs qui ont une tâche `changed` sont ceux qui ont dérivé.
 #? Le mode vérification ne voit pas ce que le code ne décrit pas : la page de promotion ajoutée à la main se cherche avec un module (`find` avec `contains`, ou `grep` via `command`).
 #? Le piège était de corriger en SSH avec sudo : on ajouterait une dérive de plus. On supprime avec `file state=absent`, puis on rejoue le playbook pour revenir à l'état décrit.
-#? Les serveurs modifiés et le chemin de la page ajoutée sont tirés au sort : vos réponses peuvent différer de celles d'un camarade.
+#? Les serveurs modifiés, ainsi que le serveur et l'emplacement de la page ajoutée (parfois dans un sous-dossier, d'où `recurse=yes`), sont tirés au sort : les réponses d'un camarade ne sont pas les vôtres.
 cd ~/infra
 # 1. Les écarts avec le code : le mode vérification les voit
 ansible-playbook web.yml --check --diff
@@ -528,7 +553,7 @@ ansible-playbook web.yml --check | grep -oE "changed: \[web[0-9]\]" | grep -oE "
 cat reponses/derive.txt
 # 2. Ce que le code ne décrit pas : il faut le chercher (ici, toute page qui parle de promotion)
 for s in web1 web2; do
-  for f in $(ansible $s -b -m find -a "paths=/var/www/html patterns=*.html contains=.*Promo.*" | grep -o '"path": "[^"]*"' | cut -d'"' -f4); do
+  for f in $(ansible $s -b -m find -a "paths=/var/www/html patterns=*.html contains=.*Promo.* recurse=yes" | grep -o '"path": "[^"]*"' | cut -d'"' -f4); do
     if [ "$f" != /var/www/html/index.html ]; then
       echo "$s:$f" > reponses/fantome.txt
       ansible $s -b -m file -a "path=$f state=absent"
@@ -658,20 +683,31 @@ ansible-playbook site.yml
 ansible-playbook site.yml    # changed=0
 #@ A7.3
 #? `--check` ne signale que les écarts avec ce que décrit le code ; un compte que le code ne mentionne pas lui est invisible.
-#? La solution est de décrire l'absence : `user` avec `state: absent` et `remove: true` pour le compte et son dossier, `file` avec `state: absent` pour `/etc/sudoers.d/marc`.
-#? Supprimer le compte à la main ne suffisait pas : s'il est recréé, seul le code le fera disparaître au passage suivant, tout en restant à `changed=0` quand il n'y a rien à faire.
-# Ce que le code ne décrit pas n'existe pas pour --check : on décrit l'absence
-cat >> roles/web/tasks/main.yml <<'EOF'
+#? On le trouve en lisant, avec Ansible, les fichiers de `/etc/sudoers.d` : `admin` (le compte d'administration) et `journal` (le journal de sudo) sont légitimes, l'intrus donne tous les droits au compte oublié.
+#? La solution est de décrire l'absence : `user` avec `state: absent` et `remove: true` pour le compte et son dossier, `file` avec `state: absent` pour son fichier de sudoers (dont le nom n'est pas forcément celui du compte).
+#? Supprimer le compte à la main ne suffisait pas : s'il est recréé, seul le code le fera disparaître au passage suivant, tout en restant à `changed=0` quand il n'y a rien à faire. Le compte et son fichier de sudoers sont tirés au sort : ceux d'un camarade ne sont pas les vôtres.
+# 1. Trouver l'intrus : quels fichiers de /etc/sudoers.d donnent des droits, et à qui ?
+ansible web -b -m find -a "paths=/etc/sudoers.d"
+for s in web1 web2; do
+  for f in $(ansible $s -b -m find -a "paths=/etc/sudoers.d" | grep -o '"path": "[^"]*"' | cut -d'"' -f4); do
+    case $f in */admin|*/journal|*/README) continue;; esac
+    fichier=$f
+    compte=$(ansible $s -b -m command -a "cat $f" | grep -oE '^[a-z][a-z0-9_-]* ALL=' | cut -d' ' -f1)
+  done
+done
+echo "Compte oublié : $compte (droits donnés par $fichier)"
+# 2. Ce que le code ne décrit pas n'existe pas pour --check : on décrit l'absence
+cat >> roles/web/tasks/main.yml <<EOF
 
-- name: Plus de compte marc (parti depuis des mois)
+- name: Plus de compte $compte (parti depuis des mois)
   ansible.builtin.user:
-    name: marc
+    name: $compte
     state: absent
     remove: true
 
-- name: Plus de droits sudo pour marc
+- name: Plus de droits sudo pour $compte
   ansible.builtin.file:
-    path: /etc/sudoers.d/marc
+    path: $fichier
     state: absent
 EOF
 ansible-playbook site.yml
@@ -753,14 +789,20 @@ ansible-playbook site.yml --limit web3
 ansible-playbook site.yml
 ansible-playbook site.yml    # changed=0 sur les quatre serveurs
 #@ A8.4
-#? Les variables de `roles/<rôle>/vars/main.yml` ont une priorité plus forte que `host_vars` : elles écrasaient `environnement: recette` de web2.
-#? `ansible-inventory --host web2` ne montre que les variables de l'inventaire, pas celles des rôles : c'est pour cela qu'il affichait « recette » alors que le jeu utilisait « production ».
-#? La correction vide `vars/main.yml` ; supprimer ce fichier serait tout aussi valable. Les valeurs par défaut du rôle vont dans `defaults/main.yml`, la priorité la plus faible, que tout le reste peut surcharger.
-# vars/main.yml l'emporte sur host_vars : les valeurs par défaut du rôle vont dans defaults/main.yml
+#? Julien a défini `environnement: production` à un endroit dont la priorité dépasse celle de `host_vars` : `vars/main.yml` du rôle, `vars:` du play, une tâche `set_fact` ou une tâche `include_vars`. Chacun écrasait `environnement: recette` de web2.
+#? `ansible-inventory --host web2` ne montre que les variables de l'inventaire, pas celles des rôles, des plays ou des tâches : c'est pour cela qu'il affichait « recette » alors que le jeu utilisait « production ». Chercher où la variable est définie (`grep -rn`) désigne le coupable.
+#? L'endroit choisi par Julien est tiré au sort : la réparation d'un camarade ne vise pas forcément le bon fichier. Les valeurs par défaut du rôle vont dans `defaults/main.yml`, la priorité la plus faible, que tout le reste peut surcharger.
 # Diagnostic : ansible-inventory --host web2 dit « recette », mais pendant le jeu la valeur est « production »
 ansible-inventory --host web2 | grep environnement
-cat roles/web/vars/main.yml
-printf -- '---\n# vars file for web\n' > roles/web/vars/main.yml
+# Qui définit environnement, en dehors de l'inventaire (group_vars, host_vars) et des valeurs par défaut du rôle ?
+grep -rnE 'environnement:|set_fact|include_vars' site.yml roles/web/tasks roles/web/vars
+# 1. vars/main.yml du rôle : vidé
+if grep -qE '^(environnement|http_port):' roles/web/vars/main.yml; then printf -- '---\n# vars file for web\n' > roles/web/vars/main.yml; fi
+# 2. vars: ajouté au play des serveurs web (avec le commentaire de Julien)
+sed -i '/# Valeurs communes, rangées par Julien/,/environnement: production/d' site.yml
+# 3. et 4. set_fact ou include_vars ajouté en tête du rôle : la tâche (jusqu'à la ligne vide qui la suit), et son fichier
+sed -i '/^- name: .*(rangée\?s\? par Julien)$/,/^$/d' roles/web/tasks/main.yml
+rm -f roles/web/vars/reglages.yml
 cat roles/web/defaults/main.yml
 ansible-playbook site.yml
 ''',
@@ -811,10 +853,18 @@ cat reponses/versions.txt
 ansible-playbook rapport.yml     # changed=0
 #@ A9.2
 #? `changed_when` et `failed_when` remplacent le jugement par défaut d'Ansible (toujours `changed` pour `command`, échec si le code de retour n'est pas 0) par une règle adaptée au script.
-#? `failed_when` combine deux conditions : le texte `ERREUR` dans la sortie (le script renvoie 0 même en cas d'échec) et un code de retour autre que 0 ou 3, le code 3 signalant seulement une purge déjà en cours.
-#? Le piège était `ignore_errors: true` : le code 3 passerait, mais une vraie erreur serait masquée elle aussi.
-#? Variante valable : `changed_when: purge.stdout is search('SUPPRIMES=[1-9]')`, qui teste directement qu'au moins un fichier a été supprimé.
-cat > purge.yml <<'EOF'
+#? `failed_when` combine deux conditions : le mot qui signale une erreur dans la sortie (le script renvoie 0 même en cas d'échec) et un code de retour autre que 0 ou celui d'une purge déjà en cours.
+#? Le piège était `ignore_errors: true` : la purge déjà en cours passerait, mais une vraie erreur serait masquée elle aussi.
+#? `changed_when: purge.stdout is search('CLE=[1-9]')` teste directement qu'au moins un fichier a été supprimé ; `'CLE=' in purge.stdout and 'CLE=0' not in purge.stdout` est une variante valable.
+#? Les conventions du script (code de retour, mot d'erreur, clé du compte rendu) sont tirées au sort : on les lit dans le script, et le `purge.yml` d'un camarade ne conviendrait pas au vôtre.
+# Les conventions de Marc, lues dans son script : code « purge déjà en cours », mot d'erreur, clé du compte rendu
+ansible web1 -m command -a "cat /usr/local/sbin/purge-cache"
+script=$(ansible web1 -m command -a "cat /usr/local/sbin/purge-cache")
+en_cours=$(echo "$script" | grep 'déjà en cours' | grep -oE 'exit [0-9]+' | cut -d' ' -f2)
+erreur=$(echo "$script" | grep 'introuvable' | grep -oE 'echo "[A-Z]+:' | sed 's/echo "//; s/://')
+cle=$(echo "$script" | grep -oE 'echo "[A-Z_]+=' | sed 's/echo "//; s/=//')
+echo "Purge en cours : code $en_cours ; erreur : « $erreur » ; compte rendu : $cle=<nombre>"
+cat > purge.yml <<EOF
 - name: Purge du cache des pages
   hosts: web
   become: true
@@ -823,9 +873,10 @@ cat > purge.yml <<'EOF'
     - name: Purger le cache
       ansible.builtin.command: /usr/local/sbin/purge-cache
       register: purge
-      changed_when: "'SUPPRIMES=' in purge.stdout and 'SUPPRIMES=0' not in purge.stdout"
-      failed_when: "'ERREUR' in purge.stdout or purge.rc not in [0, 3]"
+      changed_when: purge.stdout is search('$cle=[1-9]')
+      failed_when: "'$erreur' in purge.stdout or purge.rc not in [0, $en_cours]"
 EOF
+cat purge.yml
 ansible-playbook purge.yml
 ansible-playbook purge.yml     # caches vides : changed=0
 #@ A9.3
@@ -934,7 +985,7 @@ ansible-playbook livraison.yml -e version=$vc || echo "Échec rattrapé : retour
 #? Face à un incident, on constate d'abord sans rien toucher (SSH, HTTP, Redis, groupe sudo), on rétablit l'accès en vérifiant les empreintes comme au jour 2, puis on laisse le code remettre l'infrastructure en ordre.
 #? Ce que le code ne décrivait pas (droits du dossier du site, compte stagiaire) doit y entrer : `file` avec `mode` pour le dossier, `user` avec `state: absent` dans un rôle appliqué à tous les serveurs.
 #? Le piège était de réparer à la main avec `chmod` ou `userdel` : la vérification recrée ces écarts avant de rejouer `site.yml`, et seul le code les corrige de façon durable.
-#? Les serveurs touchés et les pannes sont tirés au sort : votre `incident.txt` peut citer d'autres serveurs que celui d'un camarade.
+#? Les pannes et les serveurs touchés sont tirés au sort, et au moins un serveur est toujours épargné : l'`incident.txt` d'un camarade, ou la liste de tous les serveurs, ne correspond pas au vôtre.
 cd ~/infra
 : > reponses/incident.txt
 # 1. Constater, sans rien toucher. Qui répond encore à SSH ?

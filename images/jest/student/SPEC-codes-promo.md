@@ -7,13 +7,13 @@ Le catalogue des codes est dans `src/data/codes.js` :
 
 ## Résultat
 
-- Code accepté : `{ valide: true, remise: <pourcentage> }` (par exemple `{ valide: true, remise: 10 }`)
+- Code accepté : `{ valide: true, remise: <pourcentage> }` (par exemple `{ valide: true, remise: {{REMISE_A}} }`)
 - Code refusé : `{ valide: false, raison: '<RAISON>' }`
 
 ## Règles, dans cet ordre
 
-1. **Saisie** : les espaces autour du code sont ignorés, et la casse aussi (`" rando10 "` équivaut à `"RANDO10"`).
-2. **FORMAT** : après normalisation, le code doit contenir **4 à 10** caractères, uniquement des lettres
+1. **Saisie** : les espaces autour du code sont ignorés, et la casse aussi (`" {{CODE_A_MIN}} "` équivaut à `"{{CODE_A}}"`).
+2. **FORMAT** : après normalisation, le code doit contenir **{{CODES_MIN}} à {{CODES_MAX}}** caractères, uniquement des lettres
    majuscules A-Z et des chiffres. Sinon : raison `FORMAT`.
 3. **INCONNU** : un code bien formé mais absent du catalogue.
 4. **EXPIRE** : le code est valable **jusqu'au jour d'expiration inclus** (jusqu'à 23:59:59.999, heure locale) ;

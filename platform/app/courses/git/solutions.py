@@ -31,24 +31,33 @@ echo "brouillon-perso.txt" > .gitignore
 git add .gitignore
 git commit -m "Ignorer le brouillon personnel"
 #@ G1.4
-#? `git status` puis `git diff` révèlent deux fichiers modifiés : `stock.csv` (le travail de Léa) et `README.md` (l'essai de Julien).
+#? `git status` puis `git diff` révèlent deux fichiers modifiés : `stock.csv` (le travail de Léa) et le fichier où Julien a fait son essai.
 #? En n'indexant que `stock.csv`, le commit ne contient que l'inventaire ; un `git commit -a` ou un `git add .` y aurait mêlé l'essai.
-#? `git restore README.md` ramène le fichier à sa version indexée, ici celle du dernier commit : c'est définitif, l'essai n'est enregistré nulle part, et c'est exactement ce que Léa demandait.
-#? La quantité de sacs et le texte de l'essai sont tirés au sort : ils peuvent différer dans votre environnement.
+#? `git restore` sur le fichier de l'essai le ramène à sa version indexée, ici celle du dernier commit : c'est définitif, l'essai n'est enregistré nulle part, et c'est exactement ce que Léa demandait.
+#? Le fichier de l'essai, son texte et la quantité de sacs sont tirés au sort : chez vous, l'essai n'est pas forcément dans le même fichier que chez votre voisin.
 cd ~/inventaire
-git status                     # stock.csv ET README.md sont modifiés
-git diff                       # README.md : l'essai de Julien
+git status                     # stock.csv ET le fichier de l'essai sont modifiés
+git diff                       # l'essai de Julien
 git add stock.csv
 git commit -m "Inventaire d'octobre"
-git restore README.md          # jette l'essai (retour à la version du dernier commit)
+essai=$(git diff --name-only)  # le seul fichier encore modifié : celui de l'essai
+git restore $essai             # jette l'essai (retour à la version du dernier commit)
 #@ G1.5
 #? `git add -p` découpe les modifications du fichier en morceaux (hunks) et demande pour chacun s'il faut l'indexer : `y` pour les centimes, `n` pour la ligne de debug.
 #? `git diff --staged` montre ce qui partira dans le commit et `git diff` ce qui restera dans le fichier : contrôler les deux évite de commiter le debug par erreur.
-#? Si les deux modifications s'étaient trouvées dans le même morceau, la touche `s` aurait permis de le découper, ou `e` de l'éditer.
-#? Le `printf 'y\nn\n'` du corrigé ne fait que simuler vos réponses au clavier ; le marqueur de la ligne de debug est tiré au sort dans chaque environnement.
+#? Quand les deux modifications sont proches, elles forment un seul morceau : la touche `s` le découpe (ou `e` permet de l'éditer), puis on répond pour chaque partie.
+#? L'ordre des fonctions et la place du debug sont tirés au sort : selon les environnements, les centimes viennent en premier ou en second, dans un morceau à part ou non. Lisez `git diff` avant de répondre.
+#? Le `printf` du corrigé ne fait que simuler vos réponses au clavier, qu'il déduit de `git diff` (nombre de morceaux, ordre des deux modifications).
 cd ~/boutique-js
-git diff                       # deux morceaux : les centimes (en haut), le debug (en bas)
-printf 'y\nn\n' | git add -p js/app.js    # y : les centimes, n : le debug
+git diff                       # les centimes et le debug : un ou deux morceaux, dans un ordre qui varie
+rep=""
+if [ "$(git diff js/app.js | grep -c '^@@')" -eq 1 ]; then rep='s\n'; fi   # un seul morceau : le découper
+if git diff js/app.js | grep '^+[^+]' | head -n 1 | grep -q DEBUG; then
+  rep="${rep}n\ny\n"           # le debug d'abord : n, puis y pour les centimes
+else
+  rep="${rep}y\nn\n"           # les centimes d'abord : y, puis n pour le debug
+fi
+printf "$rep" | git add -p js/app.js
 git diff --staged              # contrôle : seule la correction est indexée
 git commit -m "Affichage des prix avec les centimes"
 ''',
@@ -57,7 +66,7 @@ git commit -m "Affichage des prix avec les centimes"
 #? `git log -S "0.055"` (la « pioche ») liste les commits qui changent le nombre d'occurrences de ce texte, sans avoir à lire tout l'historique.
 #? Le piège : deux commits sortent, dont « Rayon librairie : cartes et topoguides », qui introduit légitimement le taux réduit des livres dans `js/livres.js` ; limiter la recherche avec `-- js/panier.js` ne garde que le coupable.
 #? `git show` sur ce commit permet de confirmer ; 7 caractères du hash suffisent, et une ligne entière de `git log --oneline` est acceptée.
-#? Les identifiants de commit dépendent des dates de création des archives : les vôtres diffèrent de ceux de vos camarades.
+#? Le commit fautif (son message et sa place dans l'historique) est tiré au sort, et son identifiant dépend de la date de création des archives : le vôtre diffère de celui de vos camarades.
 cd ~/archives-site
 git log -S "0.055" --oneline                   # deux commits : les livres (légitime) et le panier
 git log -S "0.055" --oneline -- js/panier.js > ~/commit-tva.txt
@@ -83,21 +92,24 @@ git revert --no-edit "$(awk '{ print $1 }' ~/commit-tva.txt)"
 #? `git blame` attribue chaque ligne au dernier commit qui l'a touchée : ici « Mise en forme du code » de Julien, qui n'a fait que remplacer des tabulations par des espaces.
 #? `git blame -w` ignore les changements d'espaces et remonte jusqu'au commit qui a réellement fixé le montant actuel.
 #? Autre piège : « Frais de port 2024 » a bien modifié les frais standard, mais ce n'est pas la valeur actuelle ; `git log -L '/standard/,+1:js/port.js'`, qui retrace toute l'histoire de la ligne, est une variante valable.
-#? Le montant actuel et l'auteur de ce commit sont tirés au sort : ils peuvent différer dans votre environnement.
+#? Le montant actuel, le message, la place et l'auteur de ce commit sont tirés au sort : ils peuvent différer dans votre environnement.
 cd ~/archives-site
 git blame js/port.js                           # tout est attribué à « Mise en forme du code »…
 git blame -w js/port.js                        # … -w ignore les changements d'espaces
 git blame -w --porcelain -L '/standard/,+1' js/port.js | head -n 1 | cut -d ' ' -f 1 > ~/commit-frais.txt
 #@ G2.5
 #? Annuler un vieux commit, c'est appliquer son inverse sur la version actuelle : comme Marc a retouché la même ligne ensuite (« Précision sur le seuil »), le revert s'arrête sur un conflit.
-#? Résoudre, c'est écrire la ligne voulue : la valeur 60 d'origine avec le commentaire précisé, sans aucun des marqueurs `<<<<<<<`, `=======` et `>>>>>>>`.
+#? Résoudre, c'est écrire la ligne voulue : la valeur d'avant « Seuil de livraison relevé » avec le commentaire précisé, sans aucun des marqueurs `<<<<<<<`, `=======` et `>>>>>>>`.
 #? On termine par `git add` puis `git revert --continue`, et non par un nouveau `git revert` ; `git revert --abort` aurait tout annulé pour repartir de zéro.
+#? Les seuils et les commentaires sont tirés au sort : le corrigé lit l'ancienne valeur dans le parent du commit annulé (`git show hash^:js/livraison.js`) et le commentaire dans la version actuelle.
 #? Dans le corrigé, `GIT_EDITOR=true` accepte le message proposé sans ouvrir l'éditeur ; dans nano, il suffit d'enregistrer et de quitter.
 cd ~/archives-site
 seuil=$(git log --format=%h --grep='^Seuil de livraison relevé$')
+avant=$(git show "$seuil^:js/livraison.js" | sed -n 's/^const SEUIL_LIVRAISON = \([0-9]*\);.*/\1/p')   # l'ancien seuil
+comm=$(git show HEAD:js/livraison.js | sed -n 's|^const SEUIL_LIVRAISON = [0-9]*; \(//.*\)$|\1|p')    # le commentaire précisé
 git revert --no-edit "$seuil"                  # CONFLICT : la ligne a été retouchée depuis
-# Résolution : la valeur d'origine (60) avec le commentaire précisé ensuite
-sed -i '/^<<<<<<< /,/^>>>>>>> /c\const SEUIL_LIVRAISON = 60; // livraison offerte à partir de ce montant (TTC)' js/livraison.js
+# Résolution : l'ancienne valeur avec le commentaire précisé ensuite
+sed -i "/^<<<<<<< /,/^>>>>>>> /c\\const SEUIL_LIVRAISON = $avant; $comm" js/livraison.js
 git add js/livraison.js
 GIT_EDITOR=true git revert --continue
 ''',
@@ -109,12 +121,14 @@ GIT_EDITOR=true git revert --continue
 cd ~
 git clone /srv/git/boutique.git
 #@ G3.2
-#? Deux fautes dans l'accroche : « Randonée » prend deux n, et la majuscule n'a rien à faire au milieu de la phrase.
+#? Deux fautes dans l'accroche : un mot mal écrit (« Randonée » pour « randonnée », par exemple), et une majuscule qui n'a rien à faire au milieu de la phrase.
+#? La phrase est tirée au sort à la création du dépôt partagé : le corrigé contient la correction de chacune des versions possibles, une seule s'applique chez vous.
 #? Relire `git diff` avant de commiter confirme qu'une seule ligne change ; `git commit -am` indexe les fichiers suivis modifiés et commite en une seule commande.
 #? Rien n'arrive sur le dépôt partagé sans `git push` : un commit local reste local.
 #? Si un collègue avait publié entre-temps, le push aurait été refusé : on intègre alors son travail avec `git pull` (jour 4), jamais avec `--force`.
 cd ~/boutique
-sed -i 's/Tout le matériel de Randonée/Tout le matériel de randonnée/' index.html
+sed -i -e 's/matériel de Randonée,/matériel de randonnée,/' -e "s/l'équipemment de Montagne,/l'équipement de montagne,/" \
+  -e 's/matériel de Bivouac, livrée/matériel de bivouac, livré/' -e "s/matériel d'Escalade, livrer/matériel d'escalade, livré/" index.html
 git diff
 git commit -am "Correction des fautes de la page d'accueil"
 git push
@@ -152,7 +166,7 @@ git push
 #? `git fetch` télécharge les nouveaux commits et met à jour `origin/main` sans toucher à la branche `main` de Sophie ; `git pull`, lui, les aurait intégrés.
 #? `main..origin/main` désigne les commits accessibles depuis `origin/main` mais pas depuis `main`, et `git rev-list --count` les compte.
 #? Variante : `git status` affiche « Your branch is behind 'origin/main' by … commits » avec le même nombre.
-#? Ce nombre dépend d'un tirage au sort et de ce que vous avez vous-même publié : il peut différer dans votre environnement.
+#? Ce nombre dépend d'un tirage au sort (de zéro à cinq commits publiés en plus par l'équipe) et de ce que vous avez vous-même publié : il diffère d'un environnement à l'autre.
 cd ~/poste-sophie
 git fetch                                      # télécharge sans intégrer
 git status                                     # « Your branch is behind 'origin/main' by … commits »
@@ -217,27 +231,32 @@ sed -n 's/^const CODE_PROMO = "\(.*\)";$/\1/p' code-promo.js > ~/code-promo.txt
 git switch main
 #@ G5.5
 #? Une branche n'est qu'une étiquette : `git branch feature/panier-v2` en pose une nouvelle sur le dernier commit de Julien, sans s'y placer.
-#? `git reset --hard HEAD~2` recule ensuite l'étiquette `main` de deux commits ; ces commits ne sont pas perdus, puisque `feature/panier-v2` les désigne toujours.
+#? `git reset --hard` sur « Script du panier » recule ensuite l'étiquette `main` ; les commits du panier v2 ne sont pas perdus, puisque `feature/panier-v2` les désigne toujours.
+#? Le nombre de commits de Julien est tiré au sort (de deux à quatre) : viser directement « Script du panier » évite de se tromper dans un `HEAD~n`.
 #? L'ordre compte : un reset avant d'avoir posé la branche laisserait les commits sans étiquette, récupérables seulement par le reflog.
 #? Réécrire est acceptable ici car rien n'est poussé ; un `git revert` aurait laissé les commits sur `main` au lieu de faire reculer l'étiquette.
-#? Variante valable : `git switch -c feature/panier-v2` puis `git branch -f main HEAD~2`, qui déplace `main` sans quitter la nouvelle branche.
+#? Variante valable : `git switch -c feature/panier-v2` puis `git branch -f main <hash>`, qui déplace `main` sans quitter la nouvelle branche.
 cd ~/panier-julien
+git log --oneline                              # les commits « Panier v2 : … » au-dessus de « Script du panier »
+base=$(git log --format=%h --grep='^Script du panier$')
 git branch feature/panier-v2                   # une étiquette sur les commits de Julien
-git reset --hard HEAD~2                        # main recule de deux commits
+git reset --hard "$base"                       # main recule sur « Script du panier »
 #@ G5.6
-#? `git log --grep` retrouve le commit du correctif par son message, où qu'il soit dans la refonte : sa position est tirée au sort, comme son hash.
+#? `git log main..feature/refonte -- js/formulaire.js` ne garde que les commits de la refonte qui modifient le formulaire : il n'y en a qu'un, le correctif, où qu'il soit.
+#? Le message du correctif et sa place dans la refonte sont tirés au sort, et « Refonte : styles du formulaire » n'est qu'un leurre (il ne touche que la feuille de style) : fiez-vous au fichier modifié, ou vérifiez avec `git show`.
 #? `git cherry-pick` rejoue ce seul commit sur `main` ; la copie reçoit un nouvel identifiant et `feature/refonte` reste intacte.
 #? L'option `-x` ajoute « (cherry picked from commit …) » au message : c'est la traçabilité demandée par Nadia.
 #? Le piège : fusionner ou rebaser la refonte apporterait sur `main` tout le travail inachevé de Thomas.
 cd ~/refonte
-fix=$(git log --format=%h --grep='^Échappement des champs du formulaire$' feature/refonte)
+fix=$(git log --format=%h main..feature/refonte -- js/formulaire.js)
 git switch main
 git cherry-pick -x "$fix"
 ''',
     6: r'''
 #@ G6.1
 #? On met `main` à jour, puis on fusionne `origin/feature/tarifs` : le conflit vient de ce que Thomas (le libellé) et Nadia (le prix) ont modifié la même ligne.
-#? La résolution garde une seule ligne qui combine les deux, « Sac à dos 40 L : 89 euros », et supprime les trois marqueurs ; `git add` marque le conflit comme résolu et `git commit --no-edit` termine la fusion.
+#? La résolution garde une seule ligne qui combine les deux (par exemple « Sac à dos 40 L : 89 euros ») et supprime les trois marqueurs ; `git add` marque le conflit comme résolu et `git commit --no-edit` termine la fusion.
+#? L'article, le libellé et le prix sont tirés au sort : le corrigé prend la ligne de Thomas (côté `HEAD`, en haut) et y met le prix de Nadia (côté de la branche, en bas).
 #? Le piège : une branche publiée se fusionne, elle ne se rebase pas ; et avec `pull.rebase=true`, `git pull origin feature/tarifs` rebaserait votre `main` au lieu de fusionner.
 #? Variante valable : `git merge --continue` termine la fusion aussi bien que `git commit`.
 cd ~/boutique
@@ -245,7 +264,11 @@ git switch main
 git pull                                   # récupère d'abord le commit de Thomas
 git merge origin/feature/tarifs            # CONFLICT (content): Merge conflict in tarifs.html
 # Résolution : le libellé de Thomas et le prix de Nadia, sans les marqueurs de conflit
-sed -i '/^<<<<<<< /,/^>>>>>>> /c\  <li>Sac à dos 40 L : 89 euros</li>' tarifs.html
+thomas=$(sed -n '/^<<<<<<< /{n;p;q}' tarifs.html)             # la ligne de main (Thomas)
+nadia=$(grep -B 1 '^>>>>>>> ' tarifs.html | head -n 1)        # la ligne de la branche (Nadia)
+prix=$(echo "$nadia" | sed 's/.* : \([0-9]*\) euros.*/\1/')
+ligne=$(echo "$thomas" | sed "s/ : [0-9]* euros/ : $prix euros/")
+sed -i "/^<<<<<<< /,/^>>>>>>> /c\\$ligne" tarifs.html
 git add tarifs.html
 git commit --no-edit
 git push
@@ -256,14 +279,18 @@ git push
 cd ~/depot-julien
 git merge --abort
 #@ G6.3
-#? Un commit de fusion a deux parents : le parent 1 est `main` avant la fusion, le parent 2 est le dernier commit de `feature/paiement`.
-#? `git revert -m 1` crée un nouveau commit qui ramène le contenu à celui du parent 1 : tout ce que la branche a apporté disparaît (`paiement.js`, le lien), et les mentions légales commitées ensuite restent.
-#? Les pièges : un `reset` ou un rebase réécriraient une histoire publiée, et `-m 2` annulerait au contraire ce que `main` avait apporté (la page livraison).
+#? Un commit de fusion a deux parents : le parent 1 est la branche sur laquelle on a fusionné, le parent 2 la branche fusionnée ; `git show` sur la fusion les liste dans cet ordre (ligne « Merge: »).
+#? Selon les environnements (tirage au sort), Sophie a fusionné le paiement dans `main` (main = parent 1), ou fusionné `main` dans la branche du paiement avant d'avancer `main` dessus (main = parent 2) : il faut donc vérifier lequel des deux parents était `main`, celui qui n'a pas `paiement.js`.
+#? `git revert -m <n>` crée un nouveau commit qui ramène le contenu à celui du parent n : tout ce que la branche a apporté disparaît (`paiement.js`, le lien), et ce qui a été commité ensuite (mentions légales) reste.
+#? Les pièges : un `reset` ou un rebase réécriraient une histoire publiée, et le mauvais numéro de parent annulerait au contraire ce que `main` avait apporté (la page livraison).
 #? Pour réintégrer la branche plus tard, il faudra annuler cette annulation : pour Git, ses commits sont déjà fusionnés.
 cd ~/boutique-prod
 git log --oneline --graph
 fusion=$(git log --merges --format=%h --grep='^Fusion du nouveau paiement$')
-git revert --no-edit -m 1 "$fusion"        # parent 1 : main avant la fusion
+git show --no-patch "$fusion"              # Merge: <parent 1> <parent 2>
+# Le parent de référence est main avant la fusion : celui qui n'a pas paiement.js
+for n in 1 2; do git cat-file -e "$fusion^$n:paiement.js" 2>/dev/null || m=$n; done
+git revert --no-edit -m "$m" "$fusion"
 #@ G6.4
 #? `git merge maj-stock` fusionne seul `README.md` (des lignes différentes des deux côtés) et s'arrête sur `stock.json`.
 #? `git checkout --theirs stock.json` prend la version entière de la branche fusionnée (`--ours` désignerait `main`) ; `git add` puis `git commit --no-edit` terminent la fusion.
@@ -306,19 +333,26 @@ git switch feature/filtres
 git rebase main
 #@ G7.4
 #? `git rebase -i main` ouvre la liste des cinq commits de la branche, du plus ancien au plus récent ; on la réorganise pour n'en garder que deux.
-#? On remonte « oups oubli » juste après « faute de frappe », puis on remplace `pick` par `fixup` pour « wip », « faute de frappe » et « oups oubli » : ils fondent dans « Ajout du formulaire de contact » en abandonnant leur message.
-#? Déplacer « oups oubli » avant « Validation des champs du formulaire » ne crée pas de conflit : les deux commits touchent des fichiers différents, et le contenu final reste identique.
+#? Chaque retouche rejoint le commit principal du fichier qu'elle modifie (`git show --stat` l'indique) : on la place juste en dessous et on remplace `pick` par `fixup`, pour qu'elle y fonde en abandonnant son message.
+#? L'ordre des retouches et le fichier que chacune modifie sont tirés au sort : chez vous, ce n'est pas forcément « oups oubli » qu'il faut déplacer, ni vers le même commit que chez votre voisin.
+#? Déplacer une retouche au-dessus d'un commit qui touche un autre fichier ne crée pas de conflit, et le contenu final reste identique ; l'ordre des retouches d'un même fichier, lui, doit être conservé.
 #? `squash` fonctionnerait aussi, mais ouvrirait l'éditeur pour combiner les messages, qu'il faudrait ensuite nettoyer.
 #? Le script du corrigé ne fait que réécrire cette liste à votre place, via `GIT_SEQUENCE_EDITOR` ; vous, vous la modifiez dans nano.
 cd ~/contact
+git log --oneline --stat main..feature/contact   # quel fichier chaque retouche modifie-t-elle ?
 # L'étudiant fait « git rebase -i main » et modifie la liste dans nano ; ici, un script fait la même chose :
-# le formulaire, ses trois retouches en fixup (oups oubli remonté), puis la validation.
+# chaque commit principal, suivi en fixup des retouches qui modifient le même fichier.
 cat > /tmp/ordre-rebase.sh <<'EOF'
 #!/bin/sh
 {
-  grep ' Ajout du formulaire de contact$' "$1"
-  grep -E ' (wip|faute de frappe|oups oubli)$' "$1" | sed 's/^pick/fixup/'
-  grep ' Validation des champs du formulaire$' "$1"
+  for principal in "Ajout du formulaire de contact" "Validation des champs du formulaire"; do
+    ligne=$(grep " $principal\$" "$1")
+    echo "$ligne"
+    fichier=$(git show --name-only --format= "$(echo "$ligne" | cut -d ' ' -f 2)")
+    grep -E '^pick [0-9a-f]+ (wip|faute de frappe|oups oubli)$' "$1" | while read -r cmd h msg; do
+      if [ "$(git show --name-only --format= "$h")" = "$fichier" ]; then echo "fixup $h $msg"; fi
+    done
+  done
 } > "$1.nouveau"
 mv "$1.nouveau" "$1"
 EOF
@@ -326,12 +360,14 @@ chmod +x /tmp/ordre-rebase.sh
 GIT_SEQUENCE_EDITOR=/tmp/ordre-rebase.sh git rebase -i main
 git log --oneline main..feature/contact
 #@ G7.5
-#? `git reset HEAD~2` (mode `--mixed`, par défaut) recule la branche de deux commits en gardant leurs modifications dans le répertoire de travail, non indexées.
+#? `git reset` sur le commit « Site » (mode `--mixed`, par défaut) recule la branche en gardant les modifications des commits retirés dans le répertoire de travail, non indexées.
+#? Le nombre de commits ratés est tiré au sort (de deux à quatre) : viser directement « Site », ou compter les commits avec `git log --oneline` avant un `HEAD~n`, évite de se tromper.
 #? On recommite ensuite seulement `faq.html` : `notes-perso.txt` redevient un simple fichier non suivi, toujours présent sur le disque.
 #? Le piège : `--hard` jetterait les modifications, notes comprises ; `--soft` convient aussi, à condition de retirer les notes de l'index avec `git restore --staged notes-perso.txt`.
 #? Ignorer ensuite les notes (dans `.git/info/exclude`, par exemple) est également accepté par la vérification.
 cd ~/faq-julien
-git reset HEAD~2                           # --mixed : les modifications restent, non indexées
+git log --oneline                          # les commits de Julien au-dessus de « Site »
+git reset "$(git log --format=%h --grep='^Site$')"   # --mixed : les modifications restent, non indexées
 git add faq.html
 git commit -m "Page FAQ"
 git status                                 # ?? notes-perso.txt
@@ -380,12 +416,13 @@ git tag -a v1.0 -m "Première version en production"
 git push --force origin v1.0                         # remplace l'étiquette publiée
 #@ G8.3
 #? `reset --hard` n'a pas détruit les commits : il a seulement déplacé l'étiquette `main`, et le reflog garde la trace de toutes les positions de `HEAD`.
-#? `HEAD@{1}` désigne la position juste avant le dernier déplacement, ici le commit « Conclusion » ; `git branch sauvetage` pose dessus une étiquette qui le met à l'abri.
-#? Si vous avez fait d'autres manipulations depuis, `HEAD@{1}` peut désigner autre chose : repérez plutôt la ligne « Conclusion » dans `git reflog` et utilisez son hash.
-#? Variante : `git reset --hard` sur ce hash remettrait `main` dessus, mais Julien demande une branche `sauvetage`.
+#? On repère dans `git reflog` la ligne du commit « Conclusion », la dernière position de `HEAD` avant la perte ; `git branch sauvetage` pose dessus une étiquette qui le met à l'abri.
+#? Ce que Julien a fait ensuite est tiré au sort (rien, d'autres commits, un second reset, un détour par une autre branche) : la conclusion n'est donc pas forcément `HEAD@{1}`. Son hash, lu dans le reflog, ne trompe pas.
+#? Variante : `git reset --hard` sur ce hash remettrait `main` dessus, mais Julien demande une branche `sauvetage` (et il perdrait ce qu'il a fait depuis).
 cd ~/rapport
-git reflog                                 # HEAD@{1} : le commit « Conclusion », juste avant le reset
-git branch sauvetage "HEAD@{1}"
+git reflog                                 # repérer la ligne du commit « Conclusion »
+perdu=$(git log -g --format='%H %s' | awk '$2 == "Conclusion" { print $1; exit }')
+git branch sauvetage "$perdu"
 ''',
     9: r'''
 #@ G9.1

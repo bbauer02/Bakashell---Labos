@@ -20,11 +20,12 @@ WORKDIR /opt/jest-lab
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund && npm cache clean --force && chmod -R a+rX /opt/jest-lab
 
-# Fichiers privés : code de référence, mutants, tests cachés, correcteur (root uniquement)
+# Fichiers privés : code de référence, mutants, variantes, tests cachés, correcteur (root uniquement)
 COPY ref/ private/ref/
 COPY student/ private/student/
 COPY hidden/ private/hidden/
 COPY mutants.json private/mutants.json
+COPY variantes.json private/variantes.json
 COPY verifier.js verifier.js
 RUN chown -R root:root private verifier.js && chmod -R go-rwx private verifier.js
 

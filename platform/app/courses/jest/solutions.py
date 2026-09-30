@@ -224,9 +224,14 @@ EOF
 #@ J2.5
 #? La règle ne garantit pas l'ordre : on vérifie combien de résultats (`toHaveLength`) et lesquels (`toContainEqual`), jamais leur position.
 #? Piège : `toEqual([gourde, gourdeInox])` serait trop strict et casserait sur les variantes correctes qui inversent ou trient les résultats par prix.
-#? Chaque phrase du commentaire donne un cas : casse (« GOURDE »), milieu du libellé (« front »), espaces autour, et la limite de 2 caractères testée des deux côtés (« la » et « e »).
+#? Chaque phrase du commentaire donne un cas : casse (« GOURDE »), milieu du libellé (« front »), espaces autour, et la longueur minimale du terme, testée des deux côtés.
+#? La longueur minimale se lit dans le commentaire de `rechercher` (elle n'est pas la même dans tous les projets) : avec 3 caractères, par exemple, « lam » doit trouver la lampe et « la » ne rien trouver.
 #? Chercher « GOURDE » alors que la lampe est le premier produit du catalogue détecte aussi le mutant qui renvoie toujours le premier produit ; `expect.arrayContaining` avec `toHaveLength` serait une variante également valable.
-cat > tests/catalogue.test.js <<'EOF'
+# Longueur minimale du terme, d'après le commentaire de rechercher
+MIN=$(grep -oP 'un terme de moins de \K\d+' src/catalogue.js)
+ASSEZ=$(echo lampe | cut -c1-$MIN)
+TROP_COURT=$(echo lampe | cut -c1-$((MIN - 1)))
+cat > tests/catalogue.test.js <<EOF
 const { rechercher } = require('../src/catalogue');
 
 const lampe = { ref: 'LAMPE', libelle: 'Lampe frontale', prixHT: 25 };
@@ -250,36 +255,46 @@ test('les espaces autour du terme sont ignorés', () => {
   expect(rechercher(produits, '  lampe ')).toEqual([lampe]);
 });
 
-test('2 caractères suffisent, 1 ne suffit pas', () => {
-  expect(rechercher(produits, 'la')).toEqual([lampe]);
-  expect(rechercher(produits, 'e')).toEqual([]);
+test('$MIN caractères suffisent, $((MIN - 1)) ne suffisent pas', () => {
+  expect(rechercher(produits, '$ASSEZ')).toEqual([lampe]);
+  expect(rechercher(produits, '$TROP_COURT')).toEqual([]);
 });
 EOF
 ''',
     3: r'''
 cd ~/boutique
 #@ J3.1
-#? Les bugs se cachent aux frontières : chaque limite de poids est testée juste en dessous et pile dessus (0,99 / 1, 4,99 / 5), et chaque pays au moins une fois.
-#? Un `<` écrit `<=` ne se voit que sur la valeur limite exacte : sans les cas 1 kg et 5 kg, ces mutants survivent.
-#? Pour `livraisonOfferte`, il faut les seuils pile (60 € en France, 100 € ailleurs), juste en dessous, et un pays étranger à 60 € pour détecter une livraison offerte dès 60 € partout.
+#? Les bugs se cachent aux frontières : chaque limite de poids est testée juste en dessous et pile dessus (0,99 / 1 kg si la première tranche s'arrête à 1 kg), et chaque pays au moins une fois.
+#? Un `<` écrit `<=` ne se voit que sur la valeur limite exacte : sans un cas pile sur chaque limite, ces mutants survivent.
+#? Pour `livraisonOfferte`, il faut chaque seuil pile, juste en dessous, et un pays étranger au seuil français, pour détecter une livraison offerte dès ce montant partout.
 #? Les cas refusés font partie de la règle : un pays non desservi doit lever une erreur (pas coûter 0 €) et un poids nul doit être refusé.
-cat > tests/livraison.test.js <<'EOF'
-const { fraisLivraison, livraisonOfferte } = require('../src/livraison');
+#? La grille (tranches, tarifs, suppléments, seuils) n'est pas la même dans tous les projets : les valeurs attendues se calculent à partir des commentaires et de la table des suppléments de `src/livraison.js`, jamais en appelant le code testé. Ici, un petit script les calcule et écrit les lignes du `test.each`.
+node - <<'EOF'
+const fs = require('fs');
+const src = fs.readFileSync('src/livraison.js', 'utf8');
+const nombre = (t) => Number(t.replace(',', '.'));
+const [l1, b1, l2, b2, b3] = src.match(/moins de (\d+) kg -> ([\d,]+) € ; moins de (\d+) kg -> ([\d,]+) € ; au-delà -> ([\d,]+) €/).slice(1).map(nombre);
+const sup = Object.fromEntries([...src.matchAll(/^ {2}([A-Z]{2}): ([\d.]+),$/gm)].map((m) => [m[1], Number(m[2])]));
+const [seuilFR, seuilAilleurs] = src.match(/offerte dès (\d+) € TTC en France, (\d+) € ailleurs/).slice(1).map(Number);
 
+const centimes = (x) => Math.round(x * 100) / 100;
+const frais = (poids, pays) => centimes((poids < l1 ? b1 : poids < l2 ? b2 : b3) + sup[pays]);
+const cas = [
+  [l1 / 2, 'FR'], [centimes(l1 - 0.01), 'FR'], [l1, 'FR'], [centimes(l2 - 0.01), 'FR'], [l2, 'FR'], [l2 + 7, 'FR'],
+  [l1, 'BE'], [l1 / 2, 'LU'], [l1 + 1, 'DE'], [0.2, 'ES'], [l2 + 1, 'IT'], [l2, 'NL'],
+];
+const offerte = [
+  [centimes(seuilFR - 0.01), 'FR', false], [seuilFR, 'FR', true], [seuilFR, 'DE', false],
+  [centimes(seuilAilleurs - 0.01), 'BE', false], [seuilAilleurs, 'BE', true],
+];
+const lignes = (rows) => rows.map((r) => `    [${r.map((v) => JSON.stringify(v).replace(/"/g, "'")).join(', ')}],`).join('\n');
+
+fs.writeFileSync('tests/livraison.test.js', `const { fraisLivraison, livraisonOfferte } = require('../src/livraison');
+
+// Valeurs attendues calculées à partir de la grille décrite dans src/livraison.js
 describe('fraisLivraison', () => {
   test.each([
-    [0.5, 'FR', 4.9],
-    [0.99, 'FR', 4.9],
-    [1, 'FR', 8.9],
-    [4.99, 'FR', 8.9],
-    [5, 'FR', 14.9],
-    [12, 'FR', 14.9],
-    [1, 'BE', 11.9],
-    [0.5, 'LU', 7.9],
-    [2, 'DE', 16.9],
-    [0.2, 'ES', 12.9],
-    [6, 'IT', 22.9],
-    [5, 'NL', 22.9],
+${lignes(cas.map(([poids, pays]) => [poids, pays, frais(poids, pays)]))}
   ])('%s kg vers %s : %s €', (poids, pays, attendu) => {
     expect(fraisLivraison(poids, pays)).toBe(attendu);
   });
@@ -295,15 +310,12 @@ describe('fraisLivraison', () => {
 
 describe('livraisonOfferte', () => {
   test.each([
-    [59.99, 'FR', false],
-    [60, 'FR', true],
-    [60, 'DE', false],
-    [99.99, 'BE', false],
-    [100, 'BE', true],
+${lignes(offerte)}
   ])('%s € vers %s : %s', (total, pays, attendu) => {
     expect(livraisonOfferte(total, pays)).toBe(attendu);
   });
 });
+`);
 EOF
 #@ J3.2
 #? Le panier était créé une seule fois en haut du fichier : chaque test héritait de ce que les précédents y avaient mis, et l'ordre d'exécution décidait du résultat.
@@ -381,59 +393,76 @@ EOF
 cd ~/boutique
 #@ J4.1
 #? Chaque test reçoit une date fixe (`JOUR`) : le résultat ne dépend plus du jour réel, et les tests passent même avec une horloge système déplacée dans le futur.
-#? Les limites de format sont testées des deux côtés : 3 et 11 caractères refusés pour `FORMAT`, 4 et 10 caractères bien formés mais `INCONNU`, ce qui prouve qu'ils franchissent le contrôle de format.
-#? Le 31 août à 20 h, ETE2026 doit encore être valable : ce cas détecte une expiration calculée à minuit au début du jour.
-#? NOEL25, à la fois expiré et épuisé, vérifie la priorité entre les règles ; `toEqual` sur l'objet complet détecte aussi une remise renvoyée en fraction (0.1) au lieu de 10.
-cat > tests/codesPromo.test.js <<'EOF'
-const { validerCode } = require('../src/codesPromo');
+#? Les limites de format sont testées des deux côtés : une longueur de moins que le minimum et de plus que le maximum refusées pour `FORMAT`, les longueurs limites bien formées mais `INCONNU`, ce qui prouve qu'elles franchissent le contrôle de format.
+#? Le code saisonnier (celui qui expire le premier) doit encore être valable le soir de son dernier jour : ce cas détecte une expiration calculée à minuit au début du jour.
+#? Le code à la fois expiré et épuisé vérifie la priorité entre les règles ; `toEqual` sur l'objet complet détecte aussi une remise renvoyée en fraction (0.1) au lieu d'un pourcentage (10).
+#? Les codes et les longueurs autorisées ne sont pas les mêmes dans tous les projets : ils se lisent dans `src/data/codes.js` et dans la spécification. Ici, un petit script les lit et écrit les tests.
+node - <<'EOF'
+const fs = require('fs');
+const codes = require('./src/data/codes');
+const [min, max] = fs.readFileSync('SPEC-codes-promo.md', 'utf8').match(/\*\*(\d+) à (\d+)\*\*/).slice(1).map(Number);
+const JOUR = '2026-06-01';
+const disponibles = codes.filter((c) => c.restants > 0).sort((a, b) => a.expire.localeCompare(b.expire));
+const saisonnier = disponibles[0];                                   // expire le premier
+const valide = disponibles[disponibles.length - 1];
+const epuise = codes.find((c) => c.restants <= 0 && c.expire > JOUR);
+const expireEtEpuise = codes.find((c) => c.restants <= 0 && c.expire < JOUR);
+const lendemain = new Date(`${saisonnier.expire}T12:00:00Z`);
+lendemain.setUTCDate(lendemain.getUTCDate() + 1);
+const lettres = 'ABCDEFGHIJKLMNOP';
 
-const JOUR = new Date('2026-06-01T10:00:00');
+fs.writeFileSync('tests/codesPromo.test.js', `const { validerCode } = require('../src/codesPromo');
+
+const JOUR = new Date('${JOUR}T10:00:00');
 
 test('un code valide renvoie sa remise en pourcentage', () => {
-  expect(validerCode('RANDO10', JOUR)).toEqual({ valide: true, remise: 10 });
+  expect(validerCode('${valide.code}', JOUR)).toEqual({ valide: true, remise: ${valide.remise} });
 });
 
 test('la casse est ignorée', () => {
-  expect(validerCode('rando10', JOUR)).toEqual({ valide: true, remise: 10 });
+  expect(validerCode('${valide.code.toLowerCase()}', JOUR)).toEqual({ valide: true, remise: ${valide.remise} });
 });
 
 test('les espaces autour sont ignorés', () => {
-  expect(validerCode('  RANDO10 ', JOUR)).toEqual({ valide: true, remise: 10 });
+  expect(validerCode('  ${valide.code} ', JOUR)).toEqual({ valide: true, remise: ${valide.remise} });
 });
 
-test.each(['ABC', 'ABCDEFGHIJK', 'RANDO-10'])('le code « %s » est mal formé', (code) => {
+test.each(['${lettres.slice(0, min - 1)}', '${lettres.slice(0, max + 1)}', 'AB-CD'])('le code « %s » est mal formé', (code) => {
   expect(validerCode(code, JOUR)).toEqual({ valide: false, raison: 'FORMAT' });
 });
 
-test.each(['ABCD', 'ABCDEFGHIJ'])('le code « %s », bien formé mais absent, est INCONNU', (code) => {
+test.each(['${lettres.slice(0, min)}', '${lettres.slice(0, max)}'])('le code « %s », bien formé mais absent, est INCONNU', (code) => {
   expect(validerCode(code, JOUR)).toEqual({ valide: false, raison: 'INCONNU' });
 });
 
 test("un code est valable jusqu'au soir de son expiration", () => {
-  expect(validerCode('ETE2026', new Date('2026-08-31T20:00:00'))).toEqual({ valide: true, remise: 15 });
+  expect(validerCode('${saisonnier.code}', new Date('${saisonnier.expire}T20:00:00'))).toEqual({ valide: true, remise: ${saisonnier.remise} });
 });
 
 test('un code est expiré le lendemain', () => {
-  expect(validerCode('ETE2026', new Date('2026-09-01T08:00:00'))).toEqual({ valide: false, raison: 'EXPIRE' });
+  expect(validerCode('${saisonnier.code}', new Date('${lendemain.toISOString().slice(0, 10)}T08:00:00'))).toEqual({ valide: false, raison: 'EXPIRE' });
 });
 
 test('un code sans utilisations restantes est épuisé', () => {
-  expect(validerCode('VIP30', JOUR)).toEqual({ valide: false, raison: 'EPUISE' });
+  expect(validerCode('${epuise.code}', JOUR)).toEqual({ valide: false, raison: 'EPUISE' });
 });
 
 test("l'expiration est prioritaire sur l'épuisement", () => {
-  expect(validerCode('NOEL25', JOUR)).toEqual({ valide: false, raison: 'EXPIRE' });
+  expect(validerCode('${expireEtEpuise.code}', JOUR)).toEqual({ valide: false, raison: 'EXPIRE' });
 });
+`);
 EOF
 #@ J4.2
 #? L'ordre des contrôles suit la spécification : format, existence, expiration, puis épuisement ; la première règle violée donne la raison.
 #? La fin de validité est construite en heure locale avec une date-heure sans `Z` (`T23:59:59.999`) : le code reste valable toute la journée de son expiration.
 #? Piège : `new Date(entree.expire)`, une date seule au format ISO, représente minuit UTC ; le code serait refusé le jour même, avec un résultat qui change selon le fuseau horaire.
-#? Le paramètre par défaut `maintenant = new Date()` garde la fonction utilisable en production tout en permettant aux tests d'injecter une date ; comparer `maintenant` au minuit local du lendemain avec `>=` serait une variante également valable.
+#? Les longueurs autorisées viennent de la spécification du projet (elles ne sont pas les mêmes partout) ; le paramètre par défaut `maintenant = new Date()` garde la fonction utilisable en production tout en permettant aux tests d'injecter une date.
+# Longueurs autorisées d'après la spécification (par exemple « 4 à 10 » -> {4,10})
+LONGUEURS=$(grep -oP '\*\*\K\d+ à \d+(?=\*\*)' SPEC-codes-promo.md | sed 's/ à /,/')
 cat > src/codesPromo.js <<'EOF'
 const CODES = require('./data/codes');
 
-const FORMAT = /^[A-Z0-9]{4,10}$/;
+const FORMAT = /^[A-Z0-9]{LONGUEURS}$/;
 
 function validerCode(code, maintenant = new Date()) {
   const saisi = String(code).trim().toUpperCase();
@@ -455,11 +484,12 @@ function validerCode(code, maintenant = new Date()) {
 
 module.exports = { validerCode };
 EOF
+sed -i "s/{LONGUEURS}/{$LONGUEURS}/" src/codesPromo.js
 #@ J4.3
 #? `String(null)` donne « null », puis « NULL » après `toUpperCase()` : bien formé mais absent du catalogue, d'où la réponse `INCONNU`.
 #? En TDD, on complète d'abord la spécification, puis on écrit un test qui échoue sur l'ancien code (Red), avant de corriger le code (Green).
 #? Le contrôle `typeof code !== 'string'` doit précéder toute normalisation : c'est la conversion en chaîne qui fabriquait un code plausible.
-#? Piège : un contrôle limité à `null` et `undefined` laisserait passer un tableau, et `String(['RANDO10'])` vaut justement « RANDO10 » : un code valide !
+#? Piège : un contrôle limité à `null` et `undefined` laisserait passer un tableau, et `String([code])` redonne justement le code lui-même : un tableau contenant un code valide serait accepté !
 cat >> SPEC-codes-promo.md <<'EOF'
 
 ## Saisie qui n'est pas une chaîne
@@ -475,22 +505,30 @@ test.each([null, undefined, 1234, { code: 'RANDO10' }])('la saisie %p, qui n’e
 EOF
 sed -i "s/^  const saisi = String(code).trim().toUpperCase();/  if (typeof code !== 'string') {\n    return { valide: false, raison: 'FORMAT' };\n  }\n  const saisi = code.trim().toUpperCase();/" src/codesPromo.js
 #@ J4.4
-#? Le dernier instant valide est le 31 août à 23:59:59.999 et le premier instant expiré le 1er septembre à 00:00:00.000, tous deux en heure locale.
+#? Le dernier instant valide est le jour d'expiration à 23:59:59.999 et le premier instant expiré le lendemain à 00:00:00.000, tous deux en heure locale.
 #? Le constructeur numérique `new Date(2026, 7, 31, …)` est toujours en heure locale, quel que soit le fuseau ; attention, les mois commencent à 0 (7 = août).
 #? Les mutants à détecter : la dernière seconde refusée (fin à 23:59:59 sans les millisecondes), une comparaison `>=` au lieu de `>`, et une fin de validité calculée en UTC, visible uniquement hors du fuseau UTC (à Montréal, par exemple).
-#? Variante également valable : une chaîne date-heure sans `Z`, comme `new Date('2026-08-31T23:59:59.999')`, elle aussi interprétée en heure locale.
-cat > tests/codes-minuit.test.js <<'EOF'
-const { validerCode } = require('../src/codesPromo');
+#? Variante également valable : une chaîne date-heure sans `Z`, comme `new Date('2026-08-31T23:59:59.999')`, elle aussi interprétée en heure locale. Le code et sa date d'expiration se lisent dans `src/data/codes.js` (ils changent d'un projet à l'autre) : ici, un petit script écrit les tests pour le code qui expire le premier.
+node - <<'EOF'
+const fs = require('fs');
+const codes = require('./src/data/codes');
+const code = codes.filter((c) => c.restants > 0).sort((a, b) => a.expire.localeCompare(b.expire))[0];
+const [a, m, j] = code.expire.split('-').map(Number);
+const lendemain = new Date(Date.UTC(a, m - 1, j + 1));
+const [a2, m2, j2] = [lendemain.getUTCFullYear(), lendemain.getUTCMonth() + 1, lendemain.getUTCDate()];
 
-// ETE2026 expire le 31 août 2026, jour inclus, en heure locale.
-// Le constructeur numérique est toujours en heure locale, quel que soit le fuseau (mois 7 = août).
-test("le code est valable jusqu'à la dernière milliseconde du 31 août", () => {
-  expect(validerCode('ETE2026', new Date(2026, 7, 31, 23, 59, 59, 999))).toEqual({ valide: true, remise: 15 });
+fs.writeFileSync('tests/codes-minuit.test.js', `const { validerCode } = require('../src/codesPromo');
+
+// ${code.code} expire le ${code.expire}, jour inclus, en heure locale.
+// Le constructeur numérique est toujours en heure locale, quel que soit le fuseau (mois numérotés à partir de 0).
+test("le code est valable jusqu'à la dernière milliseconde de son dernier jour", () => {
+  expect(validerCode('${code.code}', new Date(${a}, ${m - 1}, ${j}, 23, 59, 59, 999))).toEqual({ valide: true, remise: ${code.remise} });
 });
 
-test('le code est expiré à minuit pile le 1er septembre', () => {
-  expect(validerCode('ETE2026', new Date(2026, 8, 1, 0, 0, 0, 0))).toEqual({ valide: false, raison: 'EXPIRE' });
+test('le code est expiré à minuit pile le lendemain', () => {
+  expect(validerCode('${code.code}', new Date(${a2}, ${m2 - 1}, ${j2}, 0, 0, 0, 0))).toEqual({ valide: false, raison: 'EXPIRE' });
 });
+`);
 EOF
 ''',
     5: r'''
@@ -798,15 +836,17 @@ EOF
     7: r'''
 cd ~/boutique
 #@ J7.1
-#? Les faux minuteurs font avancer une horloge virtuelle : 24 h s'écoulent en quelques millisecondes, et `useRealTimers` dans `afterEach` rétablit les vrais minuteurs.
-#? La limite exacte se teste des deux côtés : rien à 24 h moins 1 ms, l'e-mail pile à 24 h ; trois jours plus tard, toujours un seul envoi, ce qui détecte un `setInterval`.
-#? Le délai est écrit en dur dans le test : réutiliser `DELAI_RELANCE_MS`, exporté par le code testé, ferait suivre au test un délai erroné.
+#? Les faux minuteurs font avancer une horloge virtuelle : plusieurs jours s'écoulent en quelques millisecondes, et `useRealTimers` dans `afterEach` rétablit les vrais minuteurs.
+#? La limite exacte se teste des deux côtés : rien au délai moins 1 ms, l'e-mail pile au délai ; trois délais plus tard, toujours un seul envoi, ce qui détecte un `setInterval`.
+#? Le délai (lu dans le commentaire de `programmerRelance`, il change d'un projet à l'autre) est écrit en dur dans le test : réutiliser `DELAI_RELANCE_MS`, exporté par le code testé, ferait suivre au test un délai erroné.
 #? Un panier de 3 gourdes (une seule ligne) distingue le nombre d'articles du nombre de lignes dans le message ; l'annulation et le panier vidé entre-temps couvrent les deux cas où rien ne doit partir.
-cat > tests/relance.test.js <<'EOF'
+# Délai annoncé par le commentaire de programmerRelance, en heures
+H=$(grep -oP 'envoyé une seule fois \K\d+(?= h)' src/relance.js)
+cat > tests/relance.test.js <<EOF
 const { Panier } = require('../src/panier');
 const { programmerRelance } = require('../src/relance');
 
-const VINGT_QUATRE_HEURES = 24 * 60 * 60 * 1000;
+const DELAI = $H * 60 * 60 * 1000; // $H h, écrit en dur : jamais la constante du code testé
 const client = { email: 'bob@exemple.fr' };
 let mailer;
 let panier;
@@ -821,45 +861,48 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-test("rien n'est envoyé avant 24 h", () => {
+test("rien n'est envoyé avant $H h", () => {
   programmerRelance(panier, client, mailer);
-  jest.advanceTimersByTime(VINGT_QUATRE_HEURES - 1);
+  jest.advanceTimersByTime(DELAI - 1);
   expect(mailer.envoyer).not.toHaveBeenCalled();
 });
 
-test('la relance part au bout de 24 h avec le nombre d’articles', () => {
+test('la relance part au bout de $H h avec le nombre d’articles', () => {
   programmerRelance(panier, client, mailer);
-  jest.advanceTimersByTime(VINGT_QUATRE_HEURES);
+  jest.advanceTimersByTime(DELAI);
   expect(mailer.envoyer).toHaveBeenCalledWith(
     'bob@exemple.fr', 'Votre panier vous attend', 'Vous avez 3 article(s) dans votre panier.');
 });
 
-test('une seule relance, même trois jours plus tard', () => {
+test('une seule relance, même trois délais plus tard', () => {
   programmerRelance(panier, client, mailer);
-  jest.advanceTimersByTime(3 * VINGT_QUATRE_HEURES);
+  jest.advanceTimersByTime(3 * DELAI);
   expect(mailer.envoyer).toHaveBeenCalledTimes(1);
 });
 
 test('une relance annulée ne part jamais', () => {
   const relance = programmerRelance(panier, client, mailer);
   relance.annuler();
-  jest.advanceTimersByTime(2 * VINGT_QUATRE_HEURES);
+  jest.advanceTimersByTime(2 * DELAI);
   expect(mailer.envoyer).not.toHaveBeenCalled();
 });
 
 test('un panier vidé entre-temps ne reçoit pas de relance', () => {
   programmerRelance(panier, client, mailer);
   panier.retirer('GOURDE');
-  jest.advanceTimersByTime(2 * VINGT_QUATRE_HEURES);
+  jest.advanceTimersByTime(2 * DELAI);
   expect(mailer.envoyer).not.toHaveBeenCalled();
 });
 EOF
 #@ J7.2
 #? `advanceTimersByTime` est synchrone : les promesses (`await`) n'avancent pas entre deux minuteurs. `advanceTimersByTimeAsync` les laisse se résoudre, et doit lui-même être attendu.
-#? On compte les appels juste avant et pile à chaque échéance (999 ms puis 1 ms, 1999 ms puis 1 ms) : des délais inversés, identiques ou absents sont ainsi détectés.
-#? L'assertion `rejects` est créée avant de faire avancer le temps : la promesse rejetée a déjà un gestionnaire au moment où elle échoue.
+#? On compte les appels juste avant et pile à chaque échéance (1 ms avant, puis 1 ms plus tard) : des délais inversés, identiques ou absents sont ainsi détectés.
+#? Les délais se lisent dans le commentaire de `debiterPatiemment` (ils changent d'un projet à l'autre) ; l'assertion `rejects` est créée avant de faire avancer le temps : la promesse rejetée a déjà un gestionnaire au moment où elle échoue.
 #? Le second test vérifie à la fois le message final et le nombre exact de tentatives : ni 2, ni 4, mais 3.
-cat > tests/debit-patient.test.js <<'EOF'
+# Délais annoncés par le commentaire de debiterPatiemment (« On attend 1 s avant la 2e tentative, puis 2 s avant la 3e »), en millisecondes
+read P1 P2 < <(grep -oP 'On attend \K[\d,]+ s avant la 2e tentative, puis [\d,]+(?= s avant la 3e)' src/debit-patient.js \
+  | sed 's/ s avant la 2e tentative, puis / /; s/,/./g' | awk '{ print $1 * 1000, $2 * 1000 }')
+cat > tests/debit-patient.test.js <<EOF
 const { debiterPatiemment } = require('../src/debit-patient');
 
 let banque;
@@ -875,18 +918,18 @@ afterEach(() => {
 
 // advanceTimersByTime est synchrone : entre deux minuteurs, les promesses (await) n'avancent pas.
 // Les variantes Async laissent les promesses se résoudre.
-test('attend 1 s avant la 2e tentative, puis 2 s avant la 3e', async () => {
+test('attend $P1 ms avant la 2e tentative, puis $P2 ms avant la 3e', async () => {
   banque.debiter
     .mockRejectedValueOnce(new Error('ETIMEDOUT'))
     .mockRejectedValueOnce(new Error('ETIMEDOUT'))
     .mockResolvedValueOnce({ accepte: true, transaction: 'TX-3' });
   const resultat = debiterPatiemment(banque, '4970-1234', 60);
   expect(banque.debiter).toHaveBeenCalledTimes(1);
-  await jest.advanceTimersByTimeAsync(999);
+  await jest.advanceTimersByTimeAsync($((P1 - 1)));
   expect(banque.debiter).toHaveBeenCalledTimes(1);
   await jest.advanceTimersByTimeAsync(1);
   expect(banque.debiter).toHaveBeenCalledTimes(2);
-  await jest.advanceTimersByTimeAsync(1999);
+  await jest.advanceTimersByTimeAsync($((P2 - 1)));
   expect(banque.debiter).toHaveBeenCalledTimes(2);
   await jest.advanceTimersByTimeAsync(1);
   expect(banque.debiter).toHaveBeenCalledTimes(3);
@@ -926,8 +969,12 @@ fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
 #? Chaque cas du tableau exerce une branche et vérifie le nombre exact de points : couvrir une ligne ne suffit pas, il faut que le résultat distingue le bon calcul du mauvais.
 #? Les montants sont choisis pour cela : 99,90 € donne 99 points (et non 100 avec `Math.round`), 101 € en silver donne 151 (et non 152 avec `Math.ceil`) ; avec 100 € en silver, les deux arrondis donneraient 150.
 #? Un achat nul le mois de l'anniversaire doit rapporter 0 point : ce cas détecte un `< 0` à la place de `<= 0`, qui ajouterait le bonus.
-#? Les autres mutants se voient sur un résultat chiffré : multiplicateur gold, bonus de 100 points, plafond de 1000 et statut silver reconnu.
-cat > tests/fidelite.test.js <<'EOF'
+#? Le multiplicateur gold, le bonus d'anniversaire et le plafond se lisent dans le commentaire de `pointsFidelite` (ils changent d'un projet à l'autre) : un achat égal au plafond, en gold, dépasse le plafond et doit y être ramené.
+# Règles lues dans le commentaire de pointsFidelite
+GOLD=$(grep -oP 'statut gold : ×\K\d+' src/fidelite.js)
+BONUS=$(grep -oP '\+\K\d+(?= points le mois)' src/fidelite.js)
+PLAFOND=$(grep -oP 'au plus \K\d+(?= points)' src/fidelite.js)
+cat > tests/fidelite.test.js <<EOF
 const { pointsFidelite } = require('../src/fidelite');
 
 const standard = { statut: 'standard', dateAchat: '2026-03-10' };
@@ -936,11 +983,11 @@ test.each([
   ['un achat nul', 0, standard, 0],
   ['un montant négatif', -5, standard, 0],
   ['un client standard (euros entiers)', 99.9, standard, 99],
-  ['un client gold (x2)', 100, { ...standard, statut: 'gold' }, 200],
+  ['un client gold (x$GOLD)', 100, { ...standard, statut: 'gold' }, $((100 * GOLD))],
   ['un client silver (x1,5 arrondi inférieur)', 101, { ...standard, statut: 'silver' }, 151],
-  ['un anniversaire dans le mois (+100)', 50, { ...standard, anniversaire: '1990-03-22' }, 150],
+  ['un anniversaire dans le mois (+$BONUS)', 50, { ...standard, anniversaire: '1990-03-22' }, $((50 + BONUS))],
   ['un anniversaire un autre mois', 50, { ...standard, anniversaire: '1990-07-22' }, 50],
-  ['le plafond de 1000 points', 800, { ...standard, statut: 'gold' }, 1000],
+  ['le plafond de $PLAFOND points', $PLAFOND, { ...standard, statut: 'gold' }, $PLAFOND],
   ['un achat nul le mois de son anniversaire', 0, { ...standard, anniversaire: '1990-03-22' }, 0],
 ])('%s', (_cas, montant, client, attendu) => {
   expect(pointsFidelite(montant, client)).toBe(attendu);
@@ -948,20 +995,23 @@ test.each([
 EOF
 #@ J8.3
 #? L'ordre entre deux règles ne se voit que sur un client concerné par les deux à la fois.
-#? Gold et anniversaire : (50 × 2) + 100 = 200, alors qu'un bonus ajouté avant le multiplicateur donnerait (50 + 100) × 2 = 300.
-#? Plafond et anniversaire : 950 + 100 = 1050, plafonné à 1000 ; un plafond appliqué avant le bonus donnerait 1050.
+#? Gold et anniversaire : avec un multiplicateur de 2 et un bonus de 100, (50 × 2) + 100 = 200, alors qu'un bonus ajouté avant le multiplicateur donnerait (50 + 100) × 2 = 300.
+#? Plafond et anniversaire : un achat juste sous le plafond (plafond moins la moitié du bonus) le dépasse une fois le bonus ajouté, et doit y être ramené ; un plafond appliqué avant le bonus le laisserait dépasser.
 #? Variante également valable pour le premier cas : un client silver, car le bonus serait lui aussi multiplié par 1,5 s'il était ajouté trop tôt.
-cat >> tests/fidelite.test.js <<'EOF'
+GOLD=$(grep -oP 'statut gold : ×\K\d+' src/fidelite.js)
+BONUS=$(grep -oP '\+\K\d+(?= points le mois)' src/fidelite.js)
+PLAFOND=$(grep -oP 'au plus \K\d+(?= points)' src/fidelite.js)
+cat >> tests/fidelite.test.js <<EOF
 
 describe("ordre des règles : statut, puis bonus d'anniversaire, puis plafond", () => {
   test("le bonus d'anniversaire s'ajoute après le multiplicateur gold", () => {
-    // 50 € -> 50 points, x2 = 100, +100 = 200 (et non (50 + 100) x 2 = 300)
-    expect(pointsFidelite(50, { ...standard, statut: 'gold', anniversaire: '1990-03-22' })).toBe(200);
+    // 50 € -> 50 points, x$GOLD = $((50 * GOLD)), +$BONUS = $((50 * GOLD + BONUS)) (et non (50 + $BONUS) x $GOLD = $(((50 + BONUS) * GOLD)))
+    expect(pointsFidelite(50, { ...standard, statut: 'gold', anniversaire: '1990-03-22' })).toBe($((50 * GOLD + BONUS)));
   });
 
   test("le plafond s'applique après le bonus d'anniversaire", () => {
-    // 950 € -> 950 points, +100 = 1050, plafonnés à 1000 (et non 950 puis +100 = 1050)
-    expect(pointsFidelite(950, { ...standard, anniversaire: '1990-03-22' })).toBe(1000);
+    // $((PLAFOND - BONUS / 2)) € -> $((PLAFOND - BONUS / 2)) points, +$BONUS = $((PLAFOND + BONUS / 2)), plafonnés à $PLAFOND
+    expect(pointsFidelite($((PLAFOND - BONUS / 2)), { ...standard, anniversaire: '1990-03-22' })).toBe($PLAFOND);
   });
 });
 EOF
@@ -969,35 +1019,61 @@ EOF
     9: r'''
 cd ~/boutique
 #@ J9.1
-#? Le test doit utiliser des valeurs qui distinguent les deux comportements : 66 € TTC avant remise (au-dessus du seuil de 60 €), 59,40 € après (en dessous).
-#? Le résultat attendu est calculé à la main à partir de la règle : port dû de 8,90 €, total de 68,30 € ; la version boguée offre le port.
+#? Le test doit utiliser des valeurs qui distinguent les deux comportements : un article dont le prix TTC dépasse le seuil de livraison offerte avant la remise, mais plus après (avec un seuil de 60 € : 72 € TTC avant 20 % de remise, 57,60 € après).
+#? Le résultat attendu est calculé à la main à partir de la règle : les frais de port restent dus, et la version boguée les offre.
 #? Le second test, au-dessus du seuil même après remise, vérifie que la future correction ne tombera pas dans l'excès inverse.
-cat > tests/facture.test.js <<'EOF'
-const { Panier } = require('../src/panier');
+#? Le seuil et la grille de livraison se lisent dans `src/livraison.js` (ils changent d'un projet à l'autre) : ici, un petit script en déduit les valeurs attendues et écrit les tests.
+node - <<'EOF'
+const fs = require('fs');
+const src = fs.readFileSync('src/livraison.js', 'utf8');
+const nombre = (t) => Number(t.replace(',', '.'));
+const [l1, b1, l2, b2] = src.match(/moins de (\d+) kg -> ([\d,]+) € ; moins de (\d+) kg -> ([\d,]+) €/).slice(1).map(nombre);
+const seuil = Number(src.match(/offerte dès (\d+) € TTC en France/)[1]);
+const centimes = (x) => Math.round(Number((x * 100).toFixed(6))) / 100;
+const port2kg = 2 < l1 ? b1 : b2; // colis de 2 kg, en France : pas de supplément
+
+// Un article à « seuil » € HT : 1,2 × seuil TTC (au-dessus du seuil), puis 0,96 × seuil après 20 % de remise (en dessous)
+const apresRemise = centimes(centimes(seuil * 1.2) * 0.8);
+// Avec 10 % de remise seulement : 1,08 × seuil, toujours au-dessus
+const offert = centimes(centimes(seuil * 1.2) * 0.9);
+
+fs.writeFileSync('tests/facture.test.js', `const { Panier } = require('../src/panier');
 const { genererFacture } = require('../src/facture');
 
 test('bug #218 : le port est dû quand la remise fait passer sous le seuil', () => {
-  // 55 € HT -> 66 € TTC (au-dessus de 60 €) -> -10 % = 59,40 € (en dessous) -> port 8,90 €
-  const panier = new Panier().ajouter({ ref: 'SAC', libelle: 'Sac 40 L', prixHT: 55 });
-  expect(genererFacture(panier, { pays: 'FR', poidsKg: 2, remise: 10 })).toEqual({ produitsTTC: 59.4, port: 8.9, total: 68.3 });
+  // ${seuil} € HT -> ${centimes(seuil * 1.2)} € TTC (au-dessus de ${seuil} €) -> -20 % = ${apresRemise} € (en dessous) -> port ${port2kg} €
+  const panier = new Panier().ajouter({ ref: 'SAC', libelle: 'Sac 40 L', prixHT: ${seuil} });
+  expect(genererFacture(panier, { pays: 'FR', poidsKg: 2, remise: 20 })).toEqual({ produitsTTC: ${apresRemise}, port: ${port2kg}, total: ${centimes(apresRemise + port2kg)} });
 });
 
 test('au-dessus du seuil après remise, le port reste offert', () => {
-  const panier = new Panier().ajouter({ ref: 'SAC', libelle: 'Sac 40 L', prixHT: 100 });
-  expect(genererFacture(panier, { pays: 'FR', poidsKg: 6, remise: 20 })).toEqual({ produitsTTC: 96, port: 0, total: 96 });
+  const panier = new Panier().ajouter({ ref: 'SAC', libelle: 'Sac 40 L', prixHT: ${seuil} });
+  expect(genererFacture(panier, { pays: 'FR', poidsKg: 6, remise: 10 })).toEqual({ produitsTTC: ${offert}, port: 0, total: ${offert} });
 });
+`);
 EOF
 #@ J9.2
 #? Les deux corrections : comparer le seuil à `produitsTTC` (après remise), et calculer le port sur `poidsKg` exact au lieu de `Math.round(poidsKg)`.
-#? Pour #219, le poids doit franchir une tranche une fois arrondi : 4,6 kg devient 5 kg (14,90 € au lieu de 8,90 €), alors qu'un poids comme 2 kg ou 4,2 kg ne montrerait rien.
+#? Pour #219, le poids doit franchir une tranche une fois arrondi : 0,4 kg sous la limite supérieure (4,6 kg si elle est de 5 kg) est arrondi à cette limite et payé au tarif supérieur, alors qu'un poids entier ne montrerait rien.
 #? Chaque test de non-régression échoue sur son bug même si l'autre est corrigé : le test #218 utilise un poids entier, et le test #219 un panier sans remise sous le seuil.
-cat >> tests/facture.test.js <<'EOF'
+node - <<'EOF'
+const fs = require('fs');
+const src = fs.readFileSync('src/livraison.js', 'utf8');
+const nombre = (t) => Number(t.replace(',', '.'));
+const [l2, b2] = src.match(/moins de (\d+) kg -> ([\d,]+) € ; au-delà/).slice(1).map(nombre);
+const seuil = Number(src.match(/offerte dès (\d+) € TTC en France/)[1]);
+const centimes = (x) => Math.round(Number((x * 100).toFixed(6))) / 100;
+// Un article à seuil / 2 € HT : 0,6 × seuil TTC, sous le seuil ; un colis de 0,4 kg sous la limite supérieure
+const produits = centimes(seuil / 2 * 1.2);
+const poids = centimes(l2 - 0.4);
 
+fs.appendFileSync('tests/facture.test.js', `
 test('bug #219 : le port suit le poids exact du colis', () => {
-  // 40 € HT -> 48 € TTC (sous le seuil) ; 4,6 kg -> tranche « moins de 5 kg » : 8,90 €
-  const panier = new Panier().ajouter({ ref: 'SAC', libelle: 'Sac 40 L', prixHT: 40 });
-  expect(genererFacture(panier, { pays: 'FR', poidsKg: 4.6 })).toEqual({ produitsTTC: 48, port: 8.9, total: 56.9 });
+  // ${seuil / 2} € HT -> ${produits} € TTC (sous le seuil) ; ${poids} kg -> tranche « moins de ${l2} kg » : ${b2} €
+  const panier = new Panier().ajouter({ ref: 'SAC', libelle: 'Sac 40 L', prixHT: ${seuil / 2} });
+  expect(genererFacture(panier, { pays: 'FR', poidsKg: ${poids} })).toEqual({ produitsTTC: ${produits}, port: ${b2}, total: ${centimes(produits + b2)} });
 });
+`);
 EOF
 sed -i 's/livraisonOfferte(totalTTC, pays)/livraisonOfferte(produitsTTC, pays)/; s/fraisLivraison(Math.round(poidsKg), pays)/fraisLivraison(poidsKg, pays)/' src/facture.js
 #@ J9.3
@@ -1022,10 +1098,16 @@ EOF
 cd ~/boutique
 #@ J10.1
 #? Les modificateurs se cachent sous plusieurs formes : `test.only.each`, `test.skip`, `xit`, `describe.skip`. Il faut toutes les chercher dans `tests/`.
-#? Un test réactivé qui échoue n'est pas forcément un bug du code : 5 kg vers l'Espagne coûtent 14,90 € + 8 € = 22,90 €, la valeur 16,90 € du brouillon était fausse.
+#? Un test réactivé qui échoue n'est pas forcément un bug du code : le colis « pile » à la limite de la dernière tranche vers l'Espagne relève du tarif « au-delà », plus le supplément de l'Espagne (avec la grille 8,90 € / 14,90 € et 8 € de supplément : 22,90 €, et non 16,90 €). La valeur du brouillon, qui n'avait jamais tourné, était fausse.
 #? Piège : `test.only` n'affecte que son fichier, et les tests ignorés n'apparaissent que comme « skipped » dans le résumé : ils passent facilement inaperçus.
-# Réactive tous les tests du brouillon, et corrige la valeur fausse qui n'avait jamais tourné (5 kg vers l'Espagne : 14,90 + 8 = 22,90 €)
-sed -i 's/test\.only\.each(/test.each(/; s/test\.skip(/test(/; s/^  xit(/  test(/; s/^describe\.skip(/describe(/; s/toBe(16\.9)/toBe(22.9)/' tests/wip-thomas.test.js
+# Valeur juste du colis pile à la limite vers l'Espagne : tarif « au-delà » + supplément de l'Espagne (grille de src/livraison.js)
+JUSTE=$(node -e '
+const src = require("fs").readFileSync("src/livraison.js", "utf8");
+const auDela = Number(src.match(/au-delà -> ([\d,]+) €/)[1].replace(",", "."));
+const espagne = Number(src.match(/^ {2}ES: ([\d.]+),$/m)[1]);
+console.log(Math.round((auDela + espagne) * 100) / 100);
+')
+sed -i "s/test\.only\.each(/test.each(/; s/test\.skip(/test(/; s/^  xit(/  test(/; s/^describe\.skip(/describe(/; s/\(fraisLivraison([0-9.]*, 'ES'))\.toBe(\)[0-9.]*)/\1$JUSTE)/" tests/wip-thomas.test.js
 #@ J10.2
 #? `on: [push, pull_request]` déclenche le workflow sur les deux événements, et la matrice `node: [22, 24]` exécute le même job avec chaque version.
 #? L'ordre des étapes compte : récupérer le code (`checkout`), installer Node, installer les dépendances, puis lancer les tests avec la couverture.

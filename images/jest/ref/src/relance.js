@@ -1,7 +1,8 @@
-const DELAI_RELANCE_MS = 24 * 60 * 60 * 1000;
+const DELAI_RELANCE_MS = {{RELANCE_H}} * 60 * 60 * 1000;
 
 /**
- * Programme un e-mail de relance si le panier est toujours plein après le délai.
+ * Programme un e-mail de relance, envoyé une seule fois {{RELANCE_H}} h après l'abandon du panier (délai fixé
+ * par le marketing), si le panier est toujours plein à ce moment-là.
  * Retourne { annuler() } pour annuler la relance (par exemple si le client commande).
  */
 function programmerRelance(panier, client, mailer, delai = DELAI_RELANCE_MS) {

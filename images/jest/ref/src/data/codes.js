@@ -1,7 +1,7 @@
 /** Catalogue des codes promo (date d'expiration incluse). */
 module.exports = [
-  { code: 'RANDO10', remise: 10, expire: '2026-12-31', restants: 50 },
-  { code: 'ETE2026', remise: 15, expire: '2026-08-31', restants: 10 },
-  { code: 'VIP30', remise: 30, expire: '2027-06-30', restants: 0 },
-  { code: 'NOEL25', remise: 25, expire: '2025-12-31', restants: 0 },
+  { code: '{{CODE_A}}', remise: {{REMISE_A}}, expire: '{{EXPIRE_A}}', restants: {{RESTANTS_A}} },
+  { code: '{{CODE_B}}', remise: {{REMISE_B}}, expire: '{{EXPIRE_B}}', restants: {{RESTANTS_B}} },
+  { code: '{{CODE_C}}', remise: {{REMISE_C}}, expire: '{{EXPIRE_C}}', restants: {{RESTANTS_C}} },
+  { code: '{{CODE_D}}', remise: {{REMISE_D}}, expire: '{{EXPIRE_D}}', restants: {{RESTANTS_D}} },
 ];

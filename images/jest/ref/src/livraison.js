@@ -1,17 +1,17 @@
 /** Supplément par pays (en €), ajouté au tarif de base. */
 const SUPPLEMENTS = {
   FR: 0,
-  BE: 3,
-  LU: 3,
-  DE: 8,
-  ES: 8,
-  IT: 8,
-  NL: 8,
+  BE: {{LIV_SP}},
+  LU: {{LIV_SP}},
+  DE: {{LIV_SL}},
+  ES: {{LIV_SL}},
+  IT: {{LIV_SL}},
+  NL: {{LIV_SL}},
 };
 
 /**
  * Frais de port TTC.
- * Tarif de base : moins de 1 kg -> 4,90 € ; moins de 5 kg -> 8,90 € ; au-delà -> 14,90 €.
+ * Tarif de base : moins de {{LIV_L1}} kg -> {{LIV_B1_TXT}} € ; moins de {{LIV_L2}} kg -> {{LIV_B2_TXT}} € ; au-delà -> {{LIV_B3_TXT}} €.
  */
 function fraisLivraison(poidsKg, pays) {
   if (!(pays in SUPPLEMENTS)) {
@@ -21,19 +21,19 @@ function fraisLivraison(poidsKg, pays) {
     throw new RangeError('Poids invalide');
   }
   let base;
-  if (poidsKg < 1) {
-    base = 4.9;
-  } else if (poidsKg < 5) {
-    base = 8.9;
+  if (poidsKg < {{LIV_L1}}) {
+    base = {{LIV_B1}};
+  } else if (poidsKg < {{LIV_L2}}) {
+    base = {{LIV_B2}};
   } else {
-    base = 14.9;
+    base = {{LIV_B3}};
   }
   return Math.round((base + SUPPLEMENTS[pays]) * 100) / 100;
 }
 
-/** Livraison offerte dès 60 € TTC en France, 100 € ailleurs. */
+/** Livraison offerte dès {{LIV_SFR}} € TTC en France, {{LIV_SAU}} € ailleurs. */
 function livraisonOfferte(totalTTC, pays) {
-  return pays === 'FR' ? totalTTC >= 60 : totalTTC >= 100;
+  return pays === 'FR' ? totalTTC >= {{LIV_SFR}} : totalTTC >= {{LIV_SAU}};
 }
 
 module.exports = { fraisLivraison, livraisonOfferte };

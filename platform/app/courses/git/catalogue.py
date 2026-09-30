@@ -43,20 +43,27 @@ nouveau_depot() { chantier "$1"; git init -q -b main .; }
 livre() { cd /; chown -R etudiant:etudiant "$TMPD"; rm -rf "$DEST"; mv -T "$TMPD" "$DEST"; }
 # Échanges avec le dépôt partagé : les programmes Git qui y lisent ou y écrivent tournent en tant qu'etudiant
 AS_ETU="runuser -u etudiant -- env HOME=$H"
+# Phrase d'accroche de la page d'accueil (G3.2), tirée au sort à la création du dépôt partagé : avec ses deux
+# fautes, et corrigée
+ACC_FAUX=("Tout le matériel de Randonée, livré chez vous en 48 h." "Tout l'équipemment de Montagne, livré chez vous en 48 h."
+  "Tout le matériel de Bivouac, livrée chez vous en 48 h." "Tout le matériel d'Escalade, livrer chez vous en 48 h.")
+ACC_BON=("Tout le matériel de randonnée, livré chez vous en 48 h." "Tout l'équipement de montagne, livré chez vous en 48 h."
+  "Tout le matériel de bivouac, livré chez vous en 48 h." "Tout le matériel d'escalade, livré chez vous en 48 h.")
 # Dépôt partagé de l'équipe (créé une seule fois : le travail poussé par l'étudiant est conservé)
 depot_equipe() {
   [ -e $R ] && return 0
+  local v=${LAB_VARIANTE_G3_2:-$((RANDOM % 4))}
   nouveau_depot /var/lib/lab/equipe/init  # (préparé dans le chantier)
   printf '# Boutique Cimes & Sentiers\n\nSite de la boutique en ligne de matériel de randonnée.\n' > README.md
   commit thomas 900 "Premier commit : README"
   mkdir -p css
-  cat > index.html <<'EOF'
+  cat > index.html <<EOF
 <!DOCTYPE html>
 <html lang="fr">
 <head><meta charset="utf-8"><title>Cimes & Sentiers</title><link rel="stylesheet" href="css/style.css"></head>
 <body>
   <h1>Cimes & Sentiers</h1>
-  <p>Tout le matériel de Randonée, livré chez vous en 48 h.</p>
+  <p>${ACC_FAUX[v]}</p>
   <a href="tarifs.html">Nos tarifs</a>
 </body>
 </html>
@@ -154,48 +161,51 @@ livre
 nouveau_depot $H/inventaire
 printf 'article;quantite\nbatons;12\nsacs;8\ntentes;5\nrechauds;9\n' > stock.csv
 printf '# Inventaire\n\nInventaire mensuel de la réserve du magasin.\n' > README.md
+printf 'fournisseur;delai\nAltiSport;5 jours\nTrekPro;8 jours\n' > fournisseurs.csv
+printf '# Rayons\n\n- Rayon A : sacs et bâtons\n- Rayon B : tentes et réchauds\n' > rayons.md
+printf 'date;article;quantite\n2024-09-02;sacs;10\n' > commandes.csv
 commit lea 48 "Inventaire de septembre"
 emit INV_BASE "$(git rev-parse HEAD)"
 Q=$((RANDOM % 80 + 20)); T=ESSAI-$RANDOM$RANDOM
 sed -i "s/^sacs;8$/sacs;$Q/" stock.csv
-printf '\n%s : essai de Julien, à ne pas garder\n' "$T" >> README.md
+# L'essai de Julien : dans un fichier suivi tiré au sort (variante)
+v=${LAB_VARIANTE_G1_4:-$((RANDOM % 4))}
+case $v in
+  0) printf '\n%s : essai de Julien, à ne pas garder\n' "$T" >> README.md ;;
+  1) printf 'EssaiJulien;%s\n' "$T" >> fournisseurs.csv ;;
+  2) printf -- '- Rayon C : %s (essai de Julien, à ne pas garder)\n' "$T" >> rayons.md ;;
+  *) printf '2024-10-01;%s;0\n' "$T" >> commandes.csv ;;
+esac
 emit INV_Q "$Q"
 emit INV_TOK "$T"
 livre
 # Boutique de Thomas : une correction et une ligne de debug dans le même fichier
 nouveau_depot $H/boutique-js
 mkdir -p js
-cat > js/app.js <<'EOF'
-// Fonctions d'affichage de la boutique
-
-function prixAffiche(prix) {
-  return prix.toFixed(0) + " €";
+# Variante : ordre des fonctions et place de la ligne de debug, donc ordre des morceaux de git add -p (et
+# parfois un seul morceau, à découper)
+v=${LAB_VARIANTE_G1_5:-$((RANDOM % 4))}
+fonction() {
+  case $1 in
+    P) printf 'function prixAffiche(prix) {\n  return prix.toFixed(0) + " €";\n}\n' ;;
+    N) printf 'function nomProduit(p) {\n  return p.marque + " " + p.modele;\n}\n' ;;
+    B) printf 'function badgeStock(p) {\n  if (p.stock === 0) return "Rupture";\n  if (p.stock < 5) return "Plus que " + p.stock;\n  return "En stock";\n}\n' ;;
+    L) printf 'function lienProduit(p) {\n  return "/produits/" + p.id;\n}\n' ;;
+    A) printf 'function afficherPanier(panier) {\n  const lignes = panier.map(l => nomProduit(l.produit) + " : " + prixAffiche(l.total));\n  return lignes.join(", ");\n}\n' ;;
+  esac
 }
-
-function nomProduit(p) {
-  return p.marque + " " + p.modele;
-}
-
-function badgeStock(p) {
-  if (p.stock === 0) return "Rupture";
-  if (p.stock < 5) return "Plus que " + p.stock;
-  return "En stock";
-}
-
-function lienProduit(p) {
-  return "/produits/" + p.id;
-}
-
-function afficherPanier(panier) {
-  const lignes = panier.map(l => nomProduit(l.produit) + " : " + prixAffiche(l.total));
-  return lignes.join(", ");
-}
-EOF
+case $v in
+  0) ordre="P N B L A"; apres="const lignes"; vue=lignes ;;
+  1) ordre="N B L A P"; apres="function nomProduit"; vue=p ;;
+  2) ordre="P N B L A"; apres="function nomProduit"; vue=p ;;
+  *) ordre="N P B L A"; apres="function nomProduit"; vue=p ;;
+esac
+{ echo "// Fonctions d'affichage de la boutique"; for f in $ordre; do echo; fonction $f; done; } > js/app.js
 commit thomas 30 "Fonctions d'affichage"
 emit BJ_BASE "$(git rev-parse HEAD)"
 T=$RANDOM$RANDOM
 sed -i 's/prix.toFixed(0)/prix.toFixed(2)/' js/app.js
-awk -v t="$T" '{ print } /const lignes/ { print "  console.log(\"DEBUG-" t "\", lignes);" }' js/app.js > js/app.tmp
+awk -v t="$T" -v a="$apres" -v x="$vue" '{ print } index($0, a) { print "  console.log(\"DEBUG-" t "\", " x ");" }' js/app.js > js/app.tmp
 mv js/app.tmp js/app.js
 emit BJ_TOK "$T"
 livre
@@ -236,7 +246,7 @@ livre
             {"id": "G1.4", "points": 4, "title": "Le bon fichier au bon moment",
              "ticket": {"from": "lea", "body": "J'ai mis à jour le stock des sacs dans <code>~/inventaire</code>. Julien a aussi fait un essai dans ce dossier, je ne sais plus où. Commite <strong>uniquement</strong> mon inventaire, avec le message « Inventaire d'octobre », et jette l'essai de Julien : il ne doit rester nulle part."},
              "desc": "Dans <code>~/inventaire</code>, un seul nouveau commit « Inventaire d'octobre », à votre nom, avec le nouveau stock des sacs et sans l'essai de Julien ; l'essai a disparu du répertoire de travail et <code>git status</code> n'affiche plus rien.",
-             "hints": ["Avant d'indexer quoi que ce soit, comparez le répertoire de travail au dernier commit : quels fichiers ont changé, et quelles lignes ?", "<code>git diff</code> montre l'essai ; <code>git add stock.csv</code>, <code>git commit -m \"Inventaire d'octobre\"</code>, puis <code>git restore README.md</code> pour revenir à la version du dernier commit."],
+             "hints": ["Avant d'indexer quoi que ce soit, comparez le répertoire de travail au dernier commit : quels fichiers ont changé, et quelles lignes ?", "<code>git status</code> et <code>git diff</code> montrent dans quel fichier est l'essai ; <code>git add stock.csv</code>, <code>git commit -m \"Inventaire d'octobre\"</code>, puis <code>git restore &lt;fichier de l'essai&gt;</code> pour revenir à la version du dernier commit."],
              "checks": [
                  ('g $H/inventaire show HEAD:stock.csv | grep -qx "sacs;$LAB_INV_Q"', "Le dernier commit de ~/inventaire ne contient pas le nouveau stock des sacs de Léa."),
                  ('! g $H/inventaire grep -qF "$LAB_INV_TOK" HEAD --', "L'essai de Julien est parti dans le commit : seul l'inventaire devait être commité (bouton « Réinitialiser les fichiers de cette étape » pour recommencer)."),
@@ -248,7 +258,7 @@ livre
             {"id": "G1.5", "points": 5, "title": "Juste la correction",
              "ticket": {"from": "thomas", "body": "Dans <code>~/boutique-js</code>, <code>js/app.js</code> contient ma correction de l'affichage des prix (les centimes) <strong>et</strong> une ligne de debug que je garde encore un peu pour mes essais. Commite seulement la correction (message libre) ; la ligne de debug doit rester dans mon fichier, sans être commitée."},
              "desc": "Un seul nouveau commit dans <code>~/boutique-js</code>, à votre nom : il contient la correction des centimes mais pas la ligne de debug ; celle-ci est toujours dans <code>js/app.js</code>, non indexée, et rien d'autre n'est modifié.",
-             "hints": ["Les deux modifications sont dans le même fichier, loin l'une de l'autre : Git sait n'indexer qu'une partie d'un fichier, morceau par morceau. Contrôlez ensuite ce qui est indexé et ce qui ne l'est pas.", "<code>git add -p js/app.js</code> : <kbd>y</kbd> pour le morceau des centimes, <kbd>n</kbd> pour celui du debug ; <code>git diff --staged</code> pour contrôler, puis <code>git commit</code>."],
+             "hints": ["Les deux modifications sont dans le même fichier : Git sait n'indexer qu'une partie d'un fichier, morceau par morceau, et même découper un morceau qui en contient deux. Contrôlez ensuite ce qui est indexé et ce qui ne l'est pas.", "<code>git add -p js/app.js</code> : <kbd>y</kbd> pour le morceau des centimes, <kbd>n</kbd> pour celui du debug, dans l'ordre où Git les présente (<kbd>s</kbd> d'abord si un seul morceau contient les deux) ; <code>git diff --staged</code> pour contrôler, puis <code>git commit</code>."],
              "checks": [
                  ('g $H/boutique-js show HEAD:js/app.js | grep -qF "toFixed(2)"', "Le dernier commit ne contient pas la correction des centimes."),
                  ('! g $H/boutique-js show HEAD:js/app.js | grep -qF "DEBUG-$LAB_BJ_TOK"', "La ligne de debug est partie dans le commit : seule la correction devait l'être (bouton « Réinitialiser les fichiers de cette étape » pour recommencer)."),
@@ -266,6 +276,36 @@ livre
         "lesson": """<h3>Lire l'historique</h3><pre>git log                      # tous les commits, du plus récent au plus ancien<br>git log --oneline --graph    # compact, avec les branches<br>git log -p fichier           # l'historique d'un fichier, avec les modifications<br>git log --author=Marc<br>git log -S "texte"           # la « pioche » : commits qui changent le nombre d'occurrences de ce texte<br>git log -G "regex"           # commits dont une ligne ajoutée ou retirée correspond à l'expression<br>git log --diff-filter=D --name-only   # commits qui ont supprimé des fichiers<br>git log ... -- chemin        # (à la fin) limiter la recherche à un fichier ou un dossier</pre><div class="tip"><code>-S</code> ne voit pas un texte simplement déplacé (le nombre d'occurrences ne change pas) ; <code>-G</code> le voit. Et un texte peut apparaître légitimement à plusieurs endroits : regardez <em>quel fichier</em> chaque commit a modifié.</div><h3>Examiner un commit</h3><pre>git show 3f9c2a1             # message et modifications d'un commit<br>git show 3f9c2a1:js/app.js   # un fichier tel qu'il était dans ce commit<br>git diff a1b2c3d 3f9c2a1     # différences entre deux commits</pre><p><code>HEAD</code> désigne le commit courant ; <code>HEAD~1</code> (ou <code>HEAD^</code>) son parent, <code>3f9c2a1^</code> le parent de <code>3f9c2a1</code>.</p><h3>Qui a écrit cette ligne ?</h3><pre>git blame fichier            # pour chaque ligne : le dernier commit qui l'a modifiée, son auteur, sa date<br>git blame -L 10,20 fichier   # seulement les lignes 10 à 20<br>git log -L 10,20:fichier     # toute l'histoire de ces lignes, commit par commit</pre><p><code>blame</code> montre le <strong>dernier</strong> commit qui a touché la ligne… y compris un commit qui n'a changé que l'indentation. Lisez <code>git help blame</code> : des options permettent d'ignorer ce genre de modification.</p><h3>Récupérer une ancienne version d'un fichier</h3><pre>git restore --source=3f9c2a1 chemin/fichier   # (ancienne syntaxe : git checkout 3f9c2a1 -- chemin/fichier)</pre><p>Le fichier revient dans le répertoire de travail : il reste à l'ajouter et à le commiter. Attention : <code>git checkout 3f9c2a1</code> <strong>sans</strong> nom de fichier déplace tout le dépôt sur ce commit (« tête détachée ») : ce n'est pas une restauration.</p><h3>Annuler un commit… sans réécrire l'histoire</h3><pre>git revert 3f9c2a1</pre><p><code>revert</code> crée un <strong>nouveau commit</strong> qui applique l'inverse du commit visé, avec le message « Revert … » et la mention « This reverts commit … ». L'historique reste intact : c'est la seule façon d'annuler un commit déjà partagé sans réécrire l'histoire commune.</p><div class="tip"><code>git revert</code> ouvre l'éditeur pour le message : enregistrez et quittez (ou ajoutez <code>--no-edit</code>).</div><h3>Quand l'annulation bute sur la suite</h3><p>Annuler un vieux commit, c'est appliquer son inverse sur la version <em>actuelle</em>. Si les mêmes lignes ont été modifiées depuis, Git ne peut pas décider seul : le revert s'arrête sur un <strong>conflit</strong>, avec des marqueurs dans le fichier (voir le jour 6).</p><pre>git status                 # fichiers en conflit, et la marche à suivre<br># éditez, gardez le bon contenu, supprimez les marqueurs &lt;&lt;&lt;&lt;&lt;&lt;&lt; ======= &gt;&gt;&gt;&gt;&gt;&gt;&gt;<br>git add fichier<br>git revert --continue      # termine l'annulation (ou : git revert --abort pour tout abandonner)</pre>""",
         "setup": r'''
 S=$H/archives-site
+# Variantes tirées au sort : G2.1 (et G2.3) le commit qui casse la TVA, G2.4 le commit qui fixe les frais
+# standard actuels, G2.5 les seuils et commentaires de la livraison offerte
+v1=${LAB_VARIANTE_G2_1:-$((RANDOM % 4))}
+v4=${LAB_VARIANTE_G2_4:-$((RANDOM % 4))}
+v5=${LAB_VARIANTE_G2_5:-$((RANDOM % 4))}
+case $v1 in
+  0) TVA_H=1850; TVA_M="Optimisation du panier" ;;
+  1) TVA_H=1780; TVA_M="Simplification du calcul" ;;
+  2) TVA_H=1920; TVA_M="Nettoyage du panier" ;;
+  *) TVA_H=1680; TVA_M="Refactorisation du panier" ;;
+esac
+case $v4 in
+  0) PORT_H=1450; PORT_M="Mise à jour des tarifs d'expédition" ;;
+  1) PORT_H=1320; PORT_M="Nouveau contrat avec le transporteur" ;;
+  2) PORT_H=1520; PORT_M="Révision des frais de port" ;;
+  *) PORT_H=1280; PORT_M="Tarifs de livraison de la rentrée" ;;
+esac
+case $v5 in
+  0) SEUIL_A=60; SEUIL_B=100; COM_A="livraison offerte dès ce montant"; COM_B="livraison offerte à partir de ce montant (TTC)" ;;
+  1) SEUIL_A=50; SEUIL_B=80; COM_A="frais de port offerts à partir de ce montant"; COM_B="frais de port offerts à partir de ce montant, hors promotions" ;;
+  2) SEUIL_A=75; SEUIL_B=120; COM_A="seuil de gratuité"; COM_B="seuil de gratuité de la livraison, en euros TTC" ;;
+  *) SEUIL_A=45; SEUIL_B=90; COM_A="livraison gratuite au-delà"; COM_B="livraison gratuite au-delà de ce montant (France métropolitaine)" ;;
+esac
+tva() { sed -i 's/const TVA = 0.20;/const TVA = 0.055;/' js/panier.js; commit marc $TVA_H "$TVA_M"; emit TVA "$(git rev-parse HEAD)"; }
+frais() {
+  local f; f=$(shuf -n 1 -e 5.20 5.60 5.80 6.10 6.30 6.50 6.90)
+  sed -i "s/standard: 5.40/standard: $f/" js/port.js
+  commit "$(shuf -n 1 -e nadia sophie thomas)" $PORT_H "$PORT_M"
+  emit PORT "$(git rev-parse HEAD)"
+}
 nouveau_depot $S
 mkdir -p js data
 printf '<h1>Cimes & Sentiers</h1>\n<p>Boutique de randonnée</p>\n' > index.html
@@ -282,21 +322,22 @@ printf 'fournisseur;telephone\nAltiSport;04 76 %02d %02d %02d\nTrekPro;04 76 %02
 commit marc 2000 "Import du site"
 printf '<p>Mentions légales : Cimes & Sentiers SARL</p>\n' > mentions.html
 commit marc 1950 "Ajout des mentions légales"
+if [ $TVA_H = 1920 ]; then tva; fi
 printf 'h1 { color: #2d6a4f; }\n' > style.css
 commit marc 1900 "Un peu de couleur"
-sed -i 's/const TVA = 0.20;/const TVA = 0.055;/' js/panier.js
-commit marc 1850 "Optimisation du panier"
-emit TVA "$(git rev-parse HEAD)"
-# Leurre, plus récent : 0.055 est aussi (légitimement) le taux des livres
+if [ $TVA_H = 1850 ]; then tva; fi
+# Leurre : 0.055 est aussi (légitimement) le taux des livres
 printf '// Cartes et topoguides : taux réduit de TVA des livres\nconst TVA_LIVRES = 0.055;\n' > js/livres.js
 commit thomas 1800 "Rayon librairie : cartes et topoguides"
 emit LIVRES "$(git rev-parse HEAD)"
+if [ $TVA_H = 1780 ]; then tva; fi
 printf '\nfunction arrondi(x) {\n  return Math.round(x * 100) / 100;\n}\n' >> js/panier.js
 commit marc 1750 "Petites retouches du panier"
 printf '// Frais de port (euros)\nconst FRAIS = {\n\tstandard: 4.90,\n\tmontagne: 7.90,\n};\n' > js/port.js
 commit thomas 1700 "Frais de port"
-printf '// Livraison\nconst SEUIL_LIVRAISON = 60; // livraison offerte dès ce montant\n' > js/livraison.js
-printf '<p>Livraison offerte dès 60 euros</p>\n' >> index.html
+if [ $TVA_H = 1680 ]; then tva; fi
+printf '// Livraison\nconst SEUIL_LIVRAISON = %s; // %s\n' "$SEUIL_A" "$COM_A" > js/livraison.js
+printf '<p>Livraison offerte dès %s euros</p>\n' "$SEUIL_A" >> index.html
 commit marc 1650 "Livraison offerte"
 emit AVANT "$(git rev-parse HEAD)"
 git rm -q data/fournisseurs.csv
@@ -304,22 +345,23 @@ commit marc 1600 "Ménage"
 sed -i 's/standard: 4.90/standard: 5.40/' js/port.js
 commit lea 1550 "Frais de port 2024"
 emit PORT0 "$(git rev-parse HEAD)"
+if [ $PORT_H = 1520 ]; then frais; fi
 printf 'p { line-height: 1.5; }\n' >> style.css
 commit marc 1500 "Interlignage"
-F=$(shuf -n 1 -e 5.20 5.60 5.80 6.10 6.30 6.50 6.90)
-sed -i "s/standard: 5.40/standard: $F/" js/port.js
-commit "$(shuf -n 1 -e nadia sophie thomas)" 1450 "Mise à jour des tarifs d'expédition"
-emit PORT "$(git rev-parse HEAD)"
+if [ $PORT_H = 1450 ]; then frais; fi
 sed -i 's/montagne: 7.90/montagne: 8.90/' js/port.js
 commit lea 1400 "Frais de port en montagne"
-sed -i 's/SEUIL_LIVRAISON = 60;/SEUIL_LIVRAISON = 100;/' js/livraison.js
+sed -i "s/SEUIL_LIVRAISON = $SEUIL_A;/SEUIL_LIVRAISON = $SEUIL_B;/" js/livraison.js
 commit marc 1350 "Seuil de livraison relevé"
 emit SEUIL "$(git rev-parse HEAD)"
+if [ $PORT_H = 1320 ]; then frais; fi
 printf '<p>Contact : contact@cimes-sentiers.fr</p>\n' >> mentions.html
 commit marc 1300 "Adresse de contact"
-sed -i 's|// livraison offerte dès ce montant|// livraison offerte à partir de ce montant (TTC)|' js/livraison.js
+if [ $PORT_H = 1280 ]; then frais; fi
+sed -i "s|// $COM_A\$|// $COM_B|" js/livraison.js
 commit marc 1250 "Précision sur le seuil"
 emit SEUIL2 "$(git rev-parse HEAD)"
+emit SEUIL_LIGNE "const SEUIL_LIVRAISON = $SEUIL_A; // $COM_B"
 sed -i 's/^\t/  /' js/port.js
 commit julien 1200 "Mise en forme du code"
 emit FIN "$(git rev-parse HEAD)"
@@ -366,15 +408,15 @@ livre
                  ('hashok $H/commit-frais.txt "$LAB_PORT"', "~/commit-frais.txt ne contient pas l'identifiant du commit qui a fixé le montant actuel des frais standard (7 caractères au moins)."),
              ]},
             {"id": "G2.5", "points": 6, "title": "Annuler malgré la suite",
-             "ticket": {"from": "nadia", "body": "Marc avait relevé le seuil de livraison gratuite à 100 euros (commit « Seuil de livraison relevé »), sans l'accord de la direction : on revient à 60. Annule ce commit proprement, comme pour la TVA. Attention, il a retouché la même ligne ensuite pour préciser le commentaire : cette précision-là, on la garde."},
-             "desc": "Un nouveau commit de <code>~/archives-site</code> annule « Seuil de livraison relevé » : le seuil de <code>js/livraison.js</code> est de nouveau 60, avec le commentaire précisé ensuite par Marc ; l'historique est intact et aucun marqueur de conflit ne subsiste.",
-             "hints": ["Annuler un vieux commit, c'est appliquer son inverse sur la version actuelle : si la même ligne a changé depuis, Git s'arrête sur un conflit, comme pour une fusion. <code>git status</code> dit comment terminer.", "<code>git revert &lt;hash&gt;</code> ; dans <code>js/livraison.js</code>, gardez <code>60</code> <strong>et</strong> le nouveau commentaire sur une seule ligne, supprimez les marqueurs, puis <code>git add js/livraison.js</code> et <code>git revert --continue</code>."],
+             "ticket": {"from": "nadia", "body": "Marc avait relevé le seuil de livraison gratuite (commit « Seuil de livraison relevé »), sans l'accord de la direction : on revient à l'ancien seuil. Annule ce commit proprement, comme pour la TVA. Attention, il a retouché la même ligne ensuite pour préciser le commentaire : cette précision-là, on la garde."},
+             "desc": "Un nouveau commit de <code>~/archives-site</code> annule « Seuil de livraison relevé » : le seuil de <code>js/livraison.js</code> retrouve sa valeur d'avant ce commit, avec le commentaire précisé ensuite par Marc ; l'historique est intact et aucun marqueur de conflit ne subsiste.",
+             "hints": ["Annuler un vieux commit, c'est appliquer son inverse sur la version actuelle : si la même ligne a changé depuis, Git s'arrête sur un conflit, comme pour une fusion. <code>git status</code> dit comment terminer.", "<code>git revert &lt;hash&gt;</code> ; dans <code>js/livraison.js</code>, gardez l'ancienne valeur <strong>et</strong> le nouveau commentaire sur une seule ligne, supprimez les marqueurs, puis <code>git add js/livraison.js</code> et <code>git revert --continue</code>."],
              "checks": [
                  ('[ ! -e $H/archives-site/.git/REVERT_HEAD ]', "Une annulation (revert) est encore en cours : résolvez le conflit, git add, puis git revert --continue."),
                  ('[ "$(g $H/archives-site branch --show-current)" = main ] && g $H/archives-site merge-base --is-ancestor "$LAB_FIN" HEAD', "L'historique de main a été réécrit ou vous n'êtes plus sur main : il fallait annuler par un nouveau commit (bouton « Réinitialiser les fichiers de cette étape » pour recommencer)."),
                  ('g $H/archives-site log --format=%B "$LAB_SEUIL..HEAD" | grep -qF "This reverts commit $LAB_SEUIL"', "Aucun commit n'annule « Seuil de livraison relevé » (« This reverts commit … ») : utilisez git revert sur ce commit."),
                  ('! marqueurs $H/archives-site HEAD', "Des marqueurs de conflit (<<<<<<<, =======, >>>>>>>) ont été commités."),
-                 ('[ "$(g $H/archives-site show HEAD:js/livraison.js | grep SEUIL_LIVRAISON)" = "const SEUIL_LIVRAISON = 60; // livraison offerte à partir de ce montant (TTC)" ]', "js/livraison.js doit contenir une seule ligne de seuil : la valeur 60 d'origine avec le commentaire précisé par Marc (« à partir de ce montant (TTC) »)."),
+                 ('[ "$(g $H/archives-site show HEAD:js/livraison.js | grep SEUIL_LIVRAISON)" = "$LAB_SEUIL_LIGNE" ]', "js/livraison.js doit contenir une seule ligne de seuil : la valeur d'avant « Seuil de livraison relevé », avec le commentaire tel que Marc l'a précisé ensuite."),
              ]},
         ],
     },
@@ -385,7 +427,13 @@ livre
         "lesson": """<h3>Dépôt local, dépôt distant</h3><p>Chaque développeur a son <strong>propre dépôt complet</strong> (tout l'historique). L'équipe partage un dépôt <strong>distant</strong>, souvent sur GitHub ou GitLab ; ici il est sur le serveur, dans <code>/srv/git</code>. C'est un dépôt <em>nu</em> (<em>bare</em>) : il n'a que l'historique, pas de répertoire de travail.</p><pre>git clone &lt;url ou chemin&gt;                 # crée un dossier du nom du dépôt, dans le dossier courant<br>git clone https://github.com/org/projet   # même chose avec un dépôt en ligne<br>git remote -v                             # les distants connus ; le distant d'origine s'appelle « origin »</pre><h3>Publier ses commits</h3><pre>git add index.html<br>git commit -m "Correction d'une faute"<br>git push                                  # met à jour la branche main du dépôt origin avec vos commits<br>git log --oneline --graph --all           # origin/main : dernière position connue de main sur origin</pre><p><code>origin/main</code> n'est pas une branche sur laquelle on travaille : c'est une <strong>référence de suivi</strong>, la mémoire locale de l'état du distant, mise à jour à chaque échange (<code>push</code>, <code>fetch</code>, <code>pull</code>).</p><div class="tip">Rien ne part sur le dépôt de l'équipe tant que vous n'avez pas fait <code>git push</code>. Un commit local reste local.</div><h3>Relier un dépôt existant à un distant</h3><pre>git remote add origin &lt;url&gt;         # déclarer un distant<br>git remote set-url origin &lt;url&gt;     # corriger l'adresse d'un distant existant<br>git remote remove origin            # l'oublier<br>git push -u origin main             # publier main ; -u mémorise que main suit origin/main (upstream)<br>git branch -vv                      # quelle branche distante chaque branche locale suit</pre><p>Après un <code>push -u</code>, un simple <code>git push</code> ou <code>git pull</code> sait où aller. Sans lien de suivi, Git répond « has no upstream branch ».</p><h3>Remplacer du texte dans un fichier</h3><p>Avec <code>nano</code> (<kbd>Ctrl</kbd>+<kbd>\\</kbd> pour rechercher et remplacer) ou avec <code>sed -i 's/ancien/nouveau/' fichier</code>. Relisez ensuite <code>git diff</code> avant de commiter.</p>""",
         "setup": r'''
 depot_equipe
-emit ACCUEIL "$(trouve "Page d'accueil et feuille de style")"
+ACCUEIL=$(trouve "Page d'accueil et feuille de style")
+emit ACCUEIL "$ACCUEIL"
+# Variante de la phrase d'accroche (G3.2) : retrouvée dans le dépôt partagé, tirée au sort à sa création
+L=$($AS_ETU git --git-dir=$R show "$ACCUEIL:index.html" | sed -n 's|^  <p>\(.*\)</p>$|\1|p')
+for i in 0 1 2 3; do
+  if [ "$L" = "${ACC_FAUX[i]}" ]; then emit ACC_FAUX "${ACC_FAUX[i]}"; emit ACC_BON "${ACC_BON[i]}"; fi
+done
 # La vitrine de Julien : un dépôt local dont le distant est mal orthographié
 depot_nu vitrine
 nouveau_depot $H/vitrine
@@ -412,11 +460,11 @@ livre
             {"id": "G3.2", "points": 4, "title": "Première contribution",
              "ticket": {"from": "thomas", "body": "Honte à moi : la phrase d'accroche de la page d'accueil contient <strong>deux fautes</strong> depuis le premier jour. Tu peux les corriger et publier la correction ? Un commit à ton nom, sur <code>main</code>, et ne touche à rien d'autre."},
              "desc": "Sur la branche <code>main</code> du dépôt partagé, la phrase d'accroche d'<code>index.html</code> est correcte, le reste du fichier est inchangé, et la correction est un commit à votre nom.",
-             "hints": ["Relisez la phrase mot à mot : une faute d'orthographe, et une autre qu'un correcteur ne verrait pas. Relisez <code>git diff</code> avant de commiter.", "« Randonée » devient « randonnée » (deux n, sans majuscule) ; puis <code>git add</code>, <code>git commit</code> et <code>git push</code>."],
+             "hints": ["Relisez la phrase mot à mot : une faute d'orthographe, et une autre qu'un correcteur ne verrait pas. Relisez <code>git diff</code> avant de commiter.", "Un mot mal écrit, et une majuscule qui n'a rien à faire au milieu de la phrase ; corrigez les deux, puis <code>git add</code>, <code>git commit</code> et <code>git push</code>."],
              "checks": [
-                 ('! depot grep -q "Randonée" main -- index.html', "La faute « Randonée » est toujours dans index.html du dépôt partagé (commit, puis git push)."),
-                 ('depot show main:index.html | grep -qxF "  <p>Tout le matériel de randonnée, livré chez vous en 48 h.</p>"', "La phrase d'accroche d'index.html n'est pas encore correcte sur le dépôt partagé : il reste une faute (relisez chaque mot, majuscules comprises)."),
-                 ('[ "$(depot show "$LAB_ACCUEIL:index.html" | grep -v "<p>Tout le")" = "$(depot show main:index.html | grep -v "<p>Tout le")" ]', "Le reste d'index.html a changé : ne corrigez que la phrase d'accroche."),
+                 ('! depot show main:index.html | grep -qxF "  <p>$LAB_ACC_FAUX</p>"', "La phrase d'accroche d'index.html n'a pas changé sur le dépôt partagé (commit, puis git push)."),
+                 ('depot show main:index.html | grep -qxF "  <p>$LAB_ACC_BON</p>"', "La phrase d'accroche d'index.html n'est pas encore correcte sur le dépôt partagé : il reste une faute (relisez chaque mot, majuscules comprises), ou vous avez changé autre chose dans la phrase."),
+                 ('[ "$(depot show "$LAB_ACCUEIL:index.html" | grep -v "^  <p>")" = "$(depot show main:index.html | grep -v "^  <p>")" ]', "Le reste d'index.html a changé : ne corrigez que la phrase d'accroche."),
                  ('[ "$(depot log -1 --format=%ae main -- index.html)" = "$(gget user.email)" ]', "La correction doit être un commit à votre nom."),
              ]},
             {"id": "G3.3", "points": 5, "title": "Le dépôt de Julien ne part pas",
@@ -451,11 +499,15 @@ fi
 if [ -z "$(trouve "Titre plus grand")" ]; then
   sed -i 's/^h1 { color: #2d6a4f; }$/h1 { color: #2d6a4f; font-size: 2rem; }/' css/style.css
   commit nadia 2 "Titre plus grand"
-  n=$((RANDOM % 3 + 1))
+  # Nombre de commits publiés ensuite tiré au sort (G4.3 : le nombre à trouver diffère d'un étudiant à l'autre)
+  n=${LAB_VARIANTE_G4_3:-$((RANDOM % 6))}
   printf '<p>Service client : du lundi au vendredi, de 9 h à 18 h.</p>\n' > horaires.html
   commit lea 2 "Horaires du service client"
-  if [ $n -ge 2 ]; then printf 'User-agent: *\nAllow: /\n' > robots.txt; commit thomas 1 "Ajout du robots.txt"; fi
-  if [ $n -ge 3 ]; then printf '<p>Garantie de deux ans sur tout le matériel.</p>\n' > garanties.html; commit lea 1 "Page des garanties"; fi
+  if [ $n -ge 1 ]; then printf 'User-agent: *\nAllow: /\n' > robots.txt; commit thomas 1 "Ajout du robots.txt"; fi
+  if [ $n -ge 2 ]; then printf '<p>Garantie de deux ans sur tout le matériel.</p>\n' > garanties.html; commit lea 1 "Page des garanties"; fi
+  if [ $n -ge 3 ]; then printf '<h2>Questions fréquentes</h2>\n' > faq.html; commit thomas 1 "Page FAQ"; fi
+  if [ $n -ge 4 ]; then printf '<p>Paiement sécurisé par carte bancaire.</p>\n' > paiement.html; commit lea 1 "Page paiement sécurisé"; fi
+  if [ $n -ge 5 ]; then printf '<ul><li>Accueil</li><li>Tarifs</li></ul>\n' > plan.html; commit thomas 1 "Plan du site"; fi
 fi
 pousse main
 NADIA=$(trouve "Calcul des frais de livraison")
@@ -476,7 +528,7 @@ BASE=$(git rev-parse "$CSS^")
 git reset -q --hard "$BASE"
 git update-ref refs/remotes/origin/main "$BASE"
 ACT=$($AS_ETU git --git-dir=$R show main:css/style.css | sed -n 's/^h1 { color: \(#[0-9a-f]*\);.*/\1/p')
-COUL=$(printf '%s\n' '#1b4332' '#40916c' '#2b9348' '#1d3557' | grep -vxF -- "${ACT:-aucune}" | shuf -n 1)
+COUL=$(printf '%s\n' '#1b4332' '#40916c' '#2b9348' '#1d3557' '#264653' '#2a9d8f' '#344e41' '#3a5a40' | grep -vxF -- "${ACT:-aucune}" | shuf -n 1)
 emit COUL "$COUL"
 sed -i "s/color: #2d6a4f;/color: $COUL;/" css/style.css
 commit thomas 14 "Couleur du titre conforme à la charte"
@@ -565,13 +617,19 @@ printf '<h1>Panier</h1>\n<div id="panier"></div>\n' > panier.html
 commit julien 100 "Page panier"
 printf 'function total(lignes) {\n  return lignes.reduce((s, l) => s + l.prix, 0);\n}\n' > panier.js
 commit julien 90 "Script du panier"
-emit PJ_BASE "$(git rev-parse HEAD)"
+PJ_BASE=$(git rev-parse HEAD)
+emit PJ_BASE "$PJ_BASE"
+# Variante : deux, trois ou quatre commits du panier v2 sur main
+v=${LAB_VARIANTE_G5_5:-$((RANDOM % 3))}
 printf 'export class PanierV2 {\n  constructor() { this.lignes = []; }\n}\n' > panier-v2.js
-commit julien 3 "Panier v2 : structure"
+commit julien 4 "Panier v2 : structure"
+if [ $v -ge 1 ]; then printf '.panier-v2 { display: grid; gap: 1rem; }\n' > panier-v2.css; commit julien 3 "Panier v2 : styles"; fi
 printf 'export function afficher(p) {\n  return p.lignes.length + " article(s)";\n}\n' >> panier-v2.js
 sed -i 's|<div id="panier"></div>|<div id="panier" data-version="2"></div>|' panier.html
 commit julien 2 "Panier v2 : affichage"
+if [ $v -ge 2 ]; then printf 'import { PanierV2 } from "./panier-v2.js";\ntest("panier vide", () => expect(new PanierV2().lignes.length).toBe(0));\n' > panier-v2.test.js; commit julien 1 "Panier v2 : tests"; fi
 emit PJ_TREE "$(git rev-parse 'HEAD^{tree}')"
+emit PJ_MSGS "$(git log --format=%s "$PJ_BASE..HEAD" | tr '\n' '|')"
 livre
 # La refonte de Thomas, avec un correctif de sécurité noyé au milieu
 nouveau_depot $H/refonte
@@ -582,16 +640,21 @@ printf 'body { font-family: serif; }\n' > css/site.css
 commit thomas 200 "Site de base"
 emit RF_MAIN "$(git rev-parse HEAD)"
 git switch -q -c feature/refonte
+# Variante : message du correctif ; sa place dans la refonte est tirée au sort, et la dernière étape de la refonte
+# parle aussi du formulaire (sans toucher à js/formulaire.js)
+v=${LAB_VARIANTE_G5_6:-$((RANDOM % 4))}
+FIXMSG=("Échappement des champs du formulaire" "Formulaire : textContent au lieu de innerHTML"
+  "Correction de la faille XSS du formulaire" "Affichage sûr des messages du formulaire")
 pos=$((RANDOM % 4 + 2))
 for i in 1 2 3 4 5 6; do
   if [ $i -eq $pos ]; then
     sed -i 's/zone.innerHTML = texte;/zone.textContent = texte;/' js/formulaire.js
-    commit thomas $((150 - i)) "Échappement des champs du formulaire"
+    commit thomas $((150 - i)) "${FIXMSG[v]}"
     emit RF_FIX "$(git rev-parse HEAD)"
   else
     printf '/* refonte, étape %s */\n.bloc-%s { margin: %srem; }\n' $i $i $i >> css/site.css
     [ $i -eq 3 ] && sed -i 's/<h1>/<h1 class="titre">/' index.html
-    commit thomas $((150 - i)) "Refonte : étape $i"
+    if [ $i -eq 6 ]; then commit thomas $((150 - i)) "Refonte : styles du formulaire"; else commit thomas $((150 - i)) "Refonte : étape $i"; fi
   fi
 done
 emit RF_REF "$(git rev-parse HEAD)"
@@ -637,20 +700,20 @@ livre
                  ('[ "$(ans $H/code-promo.txt)" = "$LAB_CODE" ]', "~/code-promo.txt ne contient pas le code promo défini par Léa (le code seul, sans guillemets)."),
              ]},
             {"id": "G5.5", "points": 5, "title": "Commits sur la mauvaise branche",
-             "ticket": {"from": "julien", "body": "J'ai fait mes deux commits du panier v2 directement sur <code>main</code> dans <code>~/panier-julien</code>, au lieu d'une branche <code>feature/panier-v2</code> (rien n'est poussé). Nadia va me tuer. <code>main</code> doit revenir comme avant mes commits, et mes deux commits doivent se retrouver sur la branche, intacts."},
-             "desc": "Dans <code>~/panier-julien</code>, <code>main</code> est revenu sur « Script du panier » et <code>feature/panier-v2</code> porte les deux commits du panier v2 juste au-dessus ; le répertoire de travail est propre.",
-             "hints": ["Une branche n'est qu'une étiquette sur un commit : posez-en une nouvelle là où sont les commits de Julien, puis déplacez l'étiquette <code>main</code>.", "Sur <code>main</code> : <code>git branch feature/panier-v2</code>, puis <code>git reset --hard HEAD~2</code> ; vérifiez avec <code>git log --oneline --graph --all</code>."],
+             "ticket": {"from": "julien", "body": "J'ai fait tous mes commits du panier v2 directement sur <code>main</code> dans <code>~/panier-julien</code>, au lieu d'une branche <code>feature/panier-v2</code> (rien n'est poussé). Nadia va me tuer. <code>main</code> doit revenir comme avant mes commits, et mes commits doivent se retrouver sur la branche, intacts."},
+             "desc": "Dans <code>~/panier-julien</code>, <code>main</code> est revenu sur « Script du panier » et <code>feature/panier-v2</code> porte tous les commits du panier v2 juste au-dessus ; le répertoire de travail est propre.",
+             "hints": ["Une branche n'est qu'une étiquette sur un commit : posez-en une nouvelle là où sont les commits de Julien, puis déplacez l'étiquette <code>main</code>. Comptez bien les commits de Julien.", "Sur <code>main</code> : <code>git branch feature/panier-v2</code>, puis <code>git reset --hard &lt;hash de « Script du panier »&gt;</code> (ou <code>HEAD~n</code>, n étant le nombre de commits du panier v2) ; vérifiez avec <code>git log --oneline --graph --all</code>."],
              "checks": [
                  ('g $H/panier-julien rev-parse -q --verify refs/heads/feature/panier-v2', "Il n'y a pas de branche feature/panier-v2 dans ~/panier-julien."),
                  ('[ "$(g $H/panier-julien rev-parse "feature/panier-v2^{tree}")" = "$LAB_PJ_TREE" ]', "feature/panier-v2 ne contient pas exactement le travail de Julien (panier v2 terminé)."),
-                 ('[ "$(g $H/panier-julien log --format=%s main..feature/panier-v2 | tr "\\n" "|")" = "Panier v2 : affichage|Panier v2 : structure|" ]', "feature/panier-v2 doit porter exactement les deux commits de Julien au-dessus de main."),
+                 ('[ "$(g $H/panier-julien log --format=%s main..feature/panier-v2 | tr "\\n" "|")" = "$LAB_PJ_MSGS" ]', "feature/panier-v2 doit porter exactement les commits du panier v2 de Julien, tous, au-dessus de main."),
                  ('[ "$(g $H/panier-julien rev-parse main)" = "$LAB_PJ_BASE" ]', "main n'est pas revenu sur « Script du panier » : l'étiquette main doit reculer, pas recevoir un commit d'annulation."),
                  ('propre $H/panier-julien', "Le répertoire de travail de ~/panier-julien n'est pas propre (git status)."),
              ]},
             {"id": "G5.6", "points": 6, "title": "Juste le correctif de sécurité",
              "ticket": {"from": "nadia", "body": "Dans <code>~/refonte</code>, Thomas a glissé le correctif de la faille du formulaire au milieu de sa refonte, qui ne sera pas prête avant un mois. Mets <strong>uniquement</strong> ce correctif sur <code>main</code>, et je veux que le commit indique de quel commit il vient, pour la traçabilité. Ne touche pas à sa branche."},
              "desc": "<code>main</code> a exactement un nouveau commit : la copie du correctif du formulaire, dont le message mentionne le commit d'origine ; rien d'autre de la refonte, et <code>feature/refonte</code> est inchangée.",
-             "hints": ["Retrouvez le commit du correctif par son message, puis rejouez ce commit-là, seul, sur <code>main</code> ; une option ajoute la mention de l'origine au message.", "<code>git log --oneline feature/refonte</code>, <code>git switch main</code>, <code>git cherry-pick -x &lt;hash&gt;</code>."],
+             "hints": ["Retrouvez le commit du correctif (son message peut tromper : le fichier qu'il modifie est plus sûr), puis rejouez ce commit-là, seul, sur <code>main</code> ; une option ajoute la mention de l'origine au message.", "<code>git log --oneline feature/refonte -- js/formulaire.js</code>, <code>git switch main</code>, <code>git cherry-pick -x &lt;hash&gt;</code>."],
              "checks": [
                  ('[ "$(g $H/refonte rev-parse feature/refonte)" = "$LAB_RF_REF" ]', "feature/refonte a été modifiée : la branche de Thomas ne devait pas bouger (bouton « Réinitialiser les fichiers de cette étape » pour recommencer)."),
                  ('[ "$(g $H/refonte rev-parse main:js/formulaire.js)" = "$(g $H/refonte rev-parse "$LAB_RF_FIX:js/formulaire.js")" ]', "main ne contient pas le correctif du formulaire."),
@@ -667,21 +730,42 @@ livre
         "lesson": """<h3>D'où vient un conflit ?</h3><p>Git fusionne seul les modifications de lignes différentes. Si <strong>la même ligne</strong> (ou deux lignes voisines) a été modifiée des deux côtés, il ne peut pas choisir : la fusion s'arrête sur un <strong>conflit</strong>.</p><pre>CONFLICT (content): Merge conflict in page.html<br>Automatic merge failed; fix conflicts and then commit the result.</pre><h3>Lire les marqueurs</h3><pre>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD<br>  &lt;li&gt;version de votre branche&lt;/li&gt;<br>=======<br>  &lt;li&gt;version de la branche fusionnée&lt;/li&gt;<br>&gt;&gt;&gt;&gt;&gt;&gt;&gt; nom-de-la-branche</pre><p>Avec <code>git config --global merge.conflictStyle zdiff3</code>, Git affiche aussi, entre <code>|||||||</code> et <code>=======</code>, la version d'<strong>origine</strong> : on voit ce que chaque côté a changé.</p><h3>Résoudre</h3><ol><li><code>git status</code> liste les fichiers en conflit (<em>both modified</em>).</li><li>Éditez chaque fichier : gardez le bon contenu (souvent un mélange des deux) et <strong>supprimez les trois marqueurs</strong>.</li><li><code>git add fichier</code> marque le conflit comme résolu.</li><li><code>git commit</code> (ou <code>git merge --continue</code>) termine la fusion, avec un message déjà rempli.</li></ol><h3>Prendre une version entière</h3><p>Pour un fichier qu'on ne fusionne pas à la main (fichier généré, binaire…), on choisit un côté pour <strong>tout le fichier</strong> :</p><pre>git checkout --ours fichier     # la version de la branche courante<br>git checkout --theirs fichier   # la version de la branche fusionnée<br>git add fichier</pre><div class="tip">À ne pas confondre avec <code>git merge -X ours</code> / <code>-X theirs</code>, qui ne tranchent que les <em>zones en conflit</em> : le reste du fichier reste fusionné.</div><h3>Tout annuler</h3><pre>git merge --abort     # revient à l'état d'avant la fusion</pre><div class="tip">Avant de fusionner une branche dans <code>main</code>, mettez <code>main</code> à jour (<code>git pull</code>) : vous résolvez les conflits une fois, sur la dernière version. Et pour intégrer une branche <strong>publiée</strong>, utilisez <code>git merge origin/la-branche</code> : avec <code>pull.rebase=true</code>, un <code>git pull origin la-branche</code> rebaserait votre <code>main</code> au-dessus d'elle.</div><h3>Annuler une fusion déjà publiée</h3><p>Un commit de fusion a <strong>deux parents</strong> : le parent 1 est la branche où l'on a fusionné (en général <code>main</code>), le parent 2 la branche fusionnée. Pour l'annuler sans réécrire l'histoire, on indique à <code>revert</code> le parent de référence (<em>mainline</em>) :</p><pre>git log --oneline --graph              # repérer la fusion<br>git revert -m &lt;numéro du parent&gt; &lt;fusion&gt;</pre><p>Le nouveau commit ramène le contenu à celui du parent choisi, en gardant tout ce qui a été commité après la fusion. Attention : pour Git, les commits de la branche restent « déjà fusionnés » ; pour les réintégrer plus tard, il faudra annuler l'annulation.</p>""",
         "setup": r'''
 equipe
+# G6.1 : l'article dont Nadia (prix) et Thomas (libellé) modifient la même ligne. La variante est tirée au sort une
+# fois, puis retrouvée d'après les commits déjà publiés sur le dépôt partagé.
+TF_NADIA=("Nouveau tarif du sac 40 L" "Nouveau tarif des bâtons de marche" "Nouveau tarif de la tente 2 places" "Sac 40 L : prix revu à la baisse")
+TF_AVANT=("Sac 40 L : 79 euros" "Bâtons de marche : 35 euros" "Tente 2 places : 149 euros" "Sac 40 L : 79 euros")
+TF_PRIX=("Sac 40 L : 89 euros" "Bâtons de marche : 39 euros" "Tente 2 places : 139 euros" "Sac 40 L : 75 euros")
+TF_LIBELLE=("Sac à dos 40 L : 79 euros" "Paire de bâtons de marche : 35 euros" "Tente légère 2 places : 149 euros" "Sac de randonnée 40 L : 79 euros")
+TF_FINAL=("Sac à dos 40 L : 89 euros" "Paire de bâtons de marche : 39 euros" "Tente légère 2 places : 139 euros" "Sac de randonnée 40 L : 75 euros")
+TF_MOT=("40 L" "de marche" "2 places" "40 L")
+v=
+for i in 0 1 2 3; do
+  if [ -n "$(trouve "${TF_NADIA[i]}")" ]; then v=$i; fi
+done
+LIB=$(trouve "Libellés plus clairs sur les tarifs")
+if [ -z "$v" ] && [ -n "$LIB" ]; then
+  for i in 0 1 2 3; do
+    if $AS_ETU git --git-dir=$R show "$LIB:tarifs.html" | grep -qF "<li>${TF_LIBELLE[i]}</li>"; then v=$i; fi
+  done
+fi
+v=${v:-${LAB_VARIANTE_G6_1:-$((RANDOM % 4))}}
 # Un contrôle par commit : si l'un disparaît (push --force), la réinitialisation le republie
-if [ -z "$(trouve "Nouveau tarif du sac 40 L")" ]; then
+if [ -z "$(trouve "${TF_NADIA[v]}")" ]; then
   git switch -q -c feature/tarifs
-  sed -i 's|<li>Sac 40 L : 79 euros</li>|<li>Sac 40 L : 89 euros</li>|' tarifs.html
-  commit nadia 3 "Nouveau tarif du sac 40 L"
+  sed -i "s|<li>${TF_AVANT[v]}</li>|<li>${TF_PRIX[v]}</li>|" tarifs.html
+  commit nadia 3 "${TF_NADIA[v]}"
   pousse feature/tarifs
   git switch -q main
 fi
-if [ -z "$(trouve "Libellés plus clairs sur les tarifs")" ]; then
-  sed -i 's|<li>Sac 40 L : 79 euros</li>|<li>Sac à dos 40 L : 79 euros</li>|' tarifs.html
+if [ -z "$LIB" ]; then
+  sed -i "s|<li>${TF_AVANT[v]}</li>|<li>${TF_LIBELLE[v]}</li>|" tarifs.html
   commit thomas 2 "Libellés plus clairs sur les tarifs"
   pousse main
 fi
-emit TARIF "$(trouve "Nouveau tarif du sac 40 L")"
+emit TARIF "$(trouve "${TF_NADIA[v]}")"
 emit LIBELLE "$(trouve "Libellés plus clairs sur les tarifs")"
+emit TF_FINAL "${TF_FINAL[v]}"
+emit TF_MOT "${TF_MOT[v]}"
 J=$H/depot-julien
 nouveau_depot $J
 printf 'Planning de la semaine\nLundi : inventaire\nMardi : commandes\n' > planning.txt
@@ -695,7 +779,10 @@ commit julien 10 "Livraison le lundi"
 emit JULIEN "$(git rev-parse HEAD)"
 GIT_AUTHOR_NAME=x GIT_AUTHOR_EMAIL=x GIT_COMMITTER_NAME=x GIT_COMMITTER_EMAIL=x git merge -q version-lea >/dev/null 2>&1 || true
 livre
-# Boutique en production : une fusion publiée à annuler
+# Boutique en production : une fusion publiée à annuler. Variante : Sophie a fusionné le paiement dans main
+# (main = parent 1), ou main dans la branche du paiement avant d'avancer main dessus (main = parent 2) ; avec ou
+# sans page CGV sur main avant la fusion
+v=${LAB_VARIANTE_G6_3:-$((RANDOM % 4))}
 nouveau_depot $H/boutique-prod
 printf '<h1>Cimes & Sentiers</h1>\n<nav>Accueil | Catalogue</nav>\n<p>Bienvenue sur la boutique.</p>\n' > index.html
 commit sophie 300 "Site en production"
@@ -707,8 +794,16 @@ commit thomas 190 "Lien vers le paiement"
 git switch -q main
 printf '<p>Livraison en 48 h partout en France.</p>\n' > livraison.html
 commit lea 180 "Page livraison"
+if [ $v -ge 2 ]; then printf '<h2>Conditions générales de vente</h2>\n' > cgv.html; commit lea 175 "Conditions générales de vente"; fi
 emit PX_IDX "$(git rev-parse HEAD:index.html)"
-fusionne sophie 170 feature/paiement "Fusion du nouveau paiement"
+if [ $((v % 2)) -eq 0 ]; then
+  fusionne sophie 170 feature/paiement "Fusion du nouveau paiement"
+else
+  git switch -q feature/paiement
+  fusionne sophie 170 main "Fusion du nouveau paiement"
+  git switch -q main
+  git merge -q --ff-only feature/paiement
+fi
 emit PX_M "$(git rev-parse HEAD)"
 printf '<p>Mentions légales : Cimes & Sentiers SARL</p>\n' > mentions.html
 commit sophie 100 "Mentions légales"
@@ -746,16 +841,16 @@ emit RS_MAIN "$(git rev-parse HEAD)"
 livre
 ''',
         "exercises": [
-            {"id": "G6.1", "points": 6, "title": "Le prix du sac",
-             "ticket": {"from": "nadia", "body": "J'ai poussé une branche <code>feature/tarifs</code> avec le nouveau prix du sac 40 L. Mais Thomas a modifié la même ligne sur <code>main</code> pour clarifier le libellé… Fusionne ma branche dans <code>main</code> et publie. Il faut garder <strong>le libellé de Thomas</strong> et <strong>mon prix</strong>."},
-             "desc": "Sur le dépôt partagé, <code>main</code> contient le commit de Thomas et le commit de Nadia (sa branche fusionnée, pas réécrite), <code>tarifs.html</code> contient une seule ligne pour ce sac, exactement <code>&lt;li&gt;Sac à dos 40 L : 89 euros&lt;/li&gt;</code>, et aucun marqueur de conflit ne subsiste.",
+            {"id": "G6.1", "points": 6, "title": "Le nouveau prix",
+             "ticket": {"from": "nadia", "body": "J'ai poussé une branche <code>feature/tarifs</code> avec le nouveau prix d'un de nos articles. Mais Thomas a modifié la même ligne sur <code>main</code> pour clarifier le libellé… Fusionne ma branche dans <code>main</code> et publie. Il faut garder <strong>le libellé de Thomas</strong> et <strong>mon prix</strong>."},
+             "desc": "Sur le dépôt partagé, <code>main</code> contient le commit de Thomas et le commit de Nadia (sa branche fusionnée, pas réécrite), <code>tarifs.html</code> contient une seule ligne pour l'article concerné, avec le libellé de Thomas et le prix de Nadia, et aucun marqueur de conflit ne subsiste.",
              "hints": ["Mettez d'abord <code>main</code> à jour, puis fusionnez la branche <strong>publiée</strong> de Nadia (sans la réécrire). Le conflit se règle en choisissant le contenu ligne par ligne.", "<code>git switch main</code>, <code>git pull</code>, <code>git merge origin/feature/tarifs</code> ; dans <code>tarifs.html</code>, remplacez le bloc <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> … <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> par la bonne ligne, puis <code>git add</code>, <code>git commit</code> et <code>git push</code>."],
              "checks": [
                  ('! depot rev-parse -q --verify refs/heads/feature/tarifs || depot merge-base --is-ancestor "$LAB_TARIF" feature/tarifs', "La branche feature/tarifs de Nadia a été réécrite sur le dépôt partagé : une branche publiée se fusionne, elle ne se rebase pas."),
-                 ('depot merge-base --is-ancestor "$LAB_TARIF" main', "Le commit de Nadia (« Nouveau tarif du sac 40 L ») n'est pas dans main du dépôt partagé : fusionnez origin/feature/tarifs (une copie rebasée de son commit ne compte pas), puis poussez."),
+                 ('depot merge-base --is-ancestor "$LAB_TARIF" main', "Le commit de Nadia (son nouveau tarif) n'est pas dans main du dépôt partagé : fusionnez origin/feature/tarifs (une copie rebasée de son commit ne compte pas), puis poussez."),
                  ('depot merge-base --is-ancestor "$LAB_LIBELLE" main', "Le commit de Thomas a disparu de main : jamais de push --force sur une branche commune !"),
                  ('! marqueurs "$R" main', "Des marqueurs de conflit (<<<<<<<, =======, >>>>>>>) ont été commités."),
-                 ('depot show main:tarifs.html | grep -qxF "  <li>Sac à dos 40 L : 89 euros</li>" && [ "$(depot show main:tarifs.html | grep -c "40 L")" -eq 1 ]', "tarifs.html doit contenir une seule ligne pour ce sac : « Sac à dos 40 L : 89 euros » (le libellé de Thomas et le prix de Nadia)."),
+                 ('depot show main:tarifs.html | grep -qxF "  <li>$LAB_TF_FINAL</li>" && [ "$(depot show main:tarifs.html | grep -c -- "$LAB_TF_MOT")" -eq 1 ]', "tarifs.html doit contenir une seule ligne pour l'article en conflit, qui réunit le libellé de Thomas et le prix de Nadia (relisez les deux côtés du conflit)."),
              ]},
             {"id": "G6.2", "points": 3, "title": "Julien est coincé",
              "ticket": {"from": "julien", "body": "Au secours ! J'ai lancé une fusion dans <code>~/depot-julien</code>, et maintenant Git me parle de conflit, et il y a des chevrons partout dans mon planning. Je ne veux pas de cette fusion, je veux juste revenir comme avant !"},
@@ -768,14 +863,14 @@ livre
              ]},
             {"id": "G6.3", "points": 6, "title": "Annuler une fusion publiée",
              "ticket": {"from": "sophie", "body": "Catastrophe : le nouveau module de paiement, fusionné dans <code>main</code> de <code>~/boutique-prod</code> et déjà publié, débite les clients deux fois ! Annule <strong>toute</strong> la fusion, sans réécrire l'historique et sans perdre ce qui a été commité après (les mentions légales)."},
-             "desc": "Un nouveau commit de <code>main</code> annule la fusion « Fusion du nouveau paiement » : plus de <code>paiement.js</code>, <code>index.html</code> revient à son état d'avant la fusion, et tout le reste (page livraison, mentions légales) est conservé ; l'historique n'est pas réécrit.",
-             "hints": ["Annuler une fusion, c'est retirer ce que la branche a apporté ; mais une fusion a deux parents, et Git doit savoir lequel représente la ligne principale.", "<code>git log --oneline --graph</code> pour repérer la fusion, puis <code>git revert -m 1 &lt;hash de la fusion&gt;</code> (le parent 1 est <code>main</code>)."],
+             "desc": "Un nouveau commit de <code>main</code> annule la fusion « Fusion du nouveau paiement » : plus de <code>paiement.js</code>, <code>index.html</code> revient à son état d'avant la fusion, et tout le reste (pages ajoutées sur <code>main</code>, mentions légales) est conservé ; l'historique n'est pas réécrit.",
+             "hints": ["Annuler une fusion, c'est retirer ce que la branche a apporté ; mais une fusion a deux parents, et Git doit savoir lequel représente la ligne principale.", "<code>git log --oneline --graph</code> pour repérer la fusion, <code>git show &lt;hash de la fusion&gt;</code> pour lire ses parents dans l'ordre (ligne « Merge: »), puis <code>git revert -m &lt;numéro du parent qui était main&gt; &lt;hash de la fusion&gt;</code> : c'est le parent sans le paiement."],
              "checks": [
                  ('g $H/boutique-prod merge-base --is-ancestor "$LAB_PX_Z" main', "L'historique publié de main a été réécrit (« Mentions légales » ou la fusion ont disparu) : il fallait annuler par un nouveau commit (bouton « Réinitialiser les fichiers de cette étape » pour recommencer)."),
                  ('[ -n "$(g $H/boutique-prod log --format=%H --grep="This reverts commit $LAB_PX_M" main)" ]', "Aucun commit de main n'annule la fusion « Fusion du nouveau paiement » (git revert de la fusion elle-même)."),
                  ('r=$(g $H/boutique-prod log --format=%H --grep="This reverts commit $LAB_PX_M" main | tail -n 1); ! g $H/boutique-prod cat-file -e "$r:paiement.js"', "Le commit d'annulation garde paiement.js : c'est ce que la branche feature/paiement a apporté qui doit disparaître (quel parent de la fusion est main ?)."),
                  ('r=$(g $H/boutique-prod log --format=%H --grep="This reverts commit $LAB_PX_M" main | tail -n 1); [ "$(g $H/boutique-prod rev-parse "$r:index.html")" = "$LAB_PX_IDX" ]', "Après l'annulation, index.html n'est pas revenu à son état d'avant la fusion (lien vers le paiement)."),
-                 ('r=$(g $H/boutique-prod log --format=%H --grep="This reverts commit $LAB_PX_M" main | tail -n 1); g $H/boutique-prod cat-file -e "$r:mentions.html" && g $H/boutique-prod cat-file -e "$r:livraison.html"', "Le commit d'annulation a perdu du travail qui n'appartenait pas à la branche du paiement (page livraison ou mentions légales)."),
+                 ('r=$(g $H/boutique-prod log --format=%H --grep="This reverts commit $LAB_PX_M" main | tail -n 1); g $H/boutique-prod cat-file -e "$r:mentions.html" && g $H/boutique-prod cat-file -e "$r:livraison.html" && { ! g $H/boutique-prod cat-file -e "$LAB_PX_Z:cgv.html" 2>/dev/null || g $H/boutique-prod cat-file -e "$r:cgv.html"; }', "Le commit d'annulation a perdu du travail qui n'appartenait pas à la branche du paiement (pages ajoutées sur main ou mentions légales)."),
              ]},
             {"id": "G6.4", "points": 5, "title": "Le fichier généré",
              "ticket": {"from": "thomas", "body": "Fusionne la branche <code>maj-stock</code> dans <code>main</code> (<code>~/reserve</code>). <code>stock.json</code> est généré par l'outil de la réserve : on prend <strong>entièrement</strong> la version de la branche, les retouches à la main de Julien sur <code>main</code> ne comptent pas. Pour les autres fichiers, on garde bien le travail des deux côtés."},
@@ -842,14 +937,22 @@ emit CT_MAIN "$(git rev-parse HEAD)"
 git switch -q -c feature/contact
 printf '<form id="contact">\n  <input name="nom">\n  <textarea name="mesage"></textarea>\n</form>\n' > contact.html
 commit nadia 10 "Ajout du formulaire de contact"
-sed -i 's|  <input name="nom">|  <input name="nom">\n  <input name="email">|' contact.html
-commit nadia 9 "wip"
-sed -i 's/mesage/message/' contact.html
-commit nadia 8 "faute de frappe"
-printf 'function valider(f) {\n  return f.nom.value !== "" && f.email.value.includes("@");\n}\n' > validation.js
-commit nadia 7 "Validation des champs du formulaire"
-sed -i 's|</form>|  <button>Envoyer</button>\n</form>|' contact.html
-commit nadia 6 "oups oubli"
+# Variante : l'ordre des retouches et le fichier que chacune modifie
+c_email() { sed -i 's|  <input name="nom">|  <input name="nom">\n  <input name="email">|' contact.html; }
+c_faute() { sed -i 's/mesage/message/' contact.html; }
+c_bouton() { sed -i 's|</form>|  <button>Envoyer</button>\n</form>|' contact.html; }
+v_creer() { printf 'function valider(f) {\n  return f.nom.value !== "" && f.%s.value.includes("@");\n}\n' "${1:-email}" > validation.js; }
+v_faute() { sed -i 's/f\.emial/f.email/' validation.js; }
+v_plus() { printf 'function messageValide(f) {\n  return f.message.value.length >= 10;\n}\n' >> validation.js; }
+etape() { "$1" "${@:4}"; commit nadia $2 "$3"; }
+VAL="Validation des champs du formulaire"
+v=${LAB_VARIANTE_G7_4:-$((RANDOM % 4))}
+case $v in
+  0) etape c_email 9 "wip"; etape c_faute 8 "faute de frappe"; etape v_creer 7 "$VAL"; etape c_bouton 6 "oups oubli" ;;
+  1) etape v_creer 9 "$VAL"; etape c_email 8 "wip"; etape v_plus 7 "oups oubli"; etape c_faute 6 "faute de frappe" ;;
+  2) etape c_faute 9 "faute de frappe"; etape v_creer 8 "$VAL"; etape v_plus 7 "wip"; etape c_bouton 6 "oups oubli" ;;
+  *) etape v_creer 9 "$VAL" emial; etape c_email 8 "wip"; etape v_faute 7 "faute de frappe"; etape c_bouton 6 "oups oubli" ;;
+esac
 emit CT_TREE "$(git rev-parse 'HEAD^{tree}')"
 livre
 # Les deux commits ratés de Julien
@@ -859,11 +962,16 @@ commit julien 100 "Site"
 emit FQ_BASE "$(git rev-parse HEAD)"
 printf '<h2>Questions fréquentes</h2>\n<h3>Livraison</h3>\n<p>48 h en France métropolitaine.</p>\n' > faq.html
 N=NOTE-$RANDOM$RANDOM
-printf 'Notes de Julien (%s) : demander à Nadia comment on range des commits.\n' "$N" > notes-perso.txt
-commit julien 3 "faq"
-printf '<h3>Retours</h3>\n<p>Retours gratuits pendant 30 jours.</p>\n' >> faq.html
-echo "Penser à relire la FAQ." >> notes-perso.txt
-commit julien 2 "suite + notes"
+# Variante : deux, trois ou quatre commits ratés
+v=${LAB_VARIANTE_G7_5:-$((RANDOM % 3))}
+notes() { printf 'Notes de Julien (%s) : demander à Nadia comment on range des commits.\n' "$N" > notes-perso.txt; }
+suite() { printf '<h3>Retours</h3>\n<p>Retours gratuits pendant 30 jours.</p>\n' >> faq.html; }
+case $v in
+  0) notes; commit julien 3 "faq"; suite; echo "Penser à relire la FAQ." >> notes-perso.txt; commit julien 2 "suite + notes" ;;
+  1) commit julien 4 "faq"; notes; commit julien 3 "notes"; suite; echo "Penser à relire la FAQ." >> notes-perso.txt; commit julien 2 "suite" ;;
+  *) commit julien 5 "faq"; notes; commit julien 4 "wip"; suite; commit julien 3 "suite"
+     echo "Penser à relire la FAQ." >> notes-perso.txt; commit julien 2 "fin" ;;
+esac
 emit FQ_BLOB "$(git rev-parse HEAD:faq.html)"
 emit FQ_NOTE "$N"
 livre
@@ -925,21 +1033,21 @@ livre
             {"id": "G7.4", "points": 6, "title": "Deux commits propres",
              "ticket": {"from": "nadia", "body": "Ta branche <code>feature/contact</code> (<code>~/contact</code>, rien de poussé) a cinq commits dont « wip », « faute de frappe » et « oups oubli » : illisible en relecture. Je veux <strong>exactement deux commits</strong> : « Ajout du formulaire de contact » (tout le travail sur <code>contact.html</code>) puis « Validation des champs du formulaire » (<code>validation.js</code>). Le contenu final ne doit pas changer d'un octet."},
              "desc": "<code>feature/contact</code> a exactement deux commits au-dessus de <code>main</code> : « Ajout du formulaire de contact » (seulement <code>contact.html</code>, dans sa version finale) puis « Validation des champs du formulaire » (seulement <code>validation.js</code>), avec le même contenu final qu'avant ; <code>main</code> n'a pas bougé.",
-             "hints": ["Le rebase interactif permet de réordonner des commits (en déplaçant leurs lignes) et de fondre un commit dans le précédent sans garder son message. « oups oubli » doit rejoindre le premier commit.", "<code>git rebase -i main</code> : placez la ligne « oups oubli » juste après « faute de frappe », remplacez <code>pick</code> par <code>fixup</code> pour « wip », « faute de frappe » et « oups oubli », enregistrez et quittez."],
+             "hints": ["Le rebase interactif permet de réordonner des commits (en déplaçant leurs lignes) et de fondre un commit dans le précédent sans garder son message. Regardez d'abord quel fichier modifie chaque retouche (<code>git show --stat &lt;hash&gt;</code>) : elle doit rejoindre le commit principal de ce fichier.", "<code>git rebase -i main</code> : placez chaque retouche juste sous le commit principal du même fichier, remplacez <code>pick</code> par <code>fixup</code> pour « wip », « faute de frappe » et « oups oubli », enregistrez et quittez."],
              "checks": [
                  ('[ ! -d $H/contact/.git/rebase-merge ] && [ ! -d $H/contact/.git/rebase-apply ]', "Un rebase est encore en cours dans ~/contact (git status) : terminez-le (git rebase --continue) ou annulez-le (git rebase --abort)."),
                  ('[ "$(g $H/contact rev-parse main)" = "$LAB_CT_MAIN" ]', "main a bougé : seule la branche feature/contact devait être réorganisée."),
                  ('[ "$(g $H/contact rev-parse "feature/contact^{tree}")" = "$LAB_CT_TREE" ]', "Le contenu final de feature/contact a changé : la réorganisation ne doit rien perdre ni rien ajouter (bouton « Réinitialiser les fichiers de cette étape » pour recommencer)."),
                  ('g $H/contact merge-base --is-ancestor main feature/contact && [ "$(g $H/contact log --format=%s main..feature/contact | tr "\\n" "|")" = "Validation des champs du formulaire|Ajout du formulaire de contact|" ]', "feature/contact doit contenir exactement deux commits au-dessus de main : « Ajout du formulaire de contact » puis « Validation des champs du formulaire »."),
-                 ('[ "$(g $H/contact diff --name-only feature/contact~1 feature/contact)" = validation.js ] && [ "$(g $H/contact diff --name-only main feature/contact~1)" = contact.html ]', "Chaque commit doit avoir un seul sujet : le premier ne touche que contact.html (dans sa version finale, « oups oubli » compris), le second n'ajoute que validation.js."),
+                 ('[ "$(g $H/contact diff --name-only feature/contact~1 feature/contact)" = validation.js ] && [ "$(g $H/contact diff --name-only main feature/contact~1)" = contact.html ]', "Chaque commit doit avoir un seul sujet : le premier ne touche que contact.html (dans sa version finale, toutes ses retouches comprises), le second ne touche que validation.js (lui aussi avec ses retouches)."),
              ]},
             {"id": "G7.5", "points": 5, "title": "Défaire sans perdre",
-             "ticket": {"from": "julien", "body": "Dans <code>~/faq-julien</code>, mes deux derniers commits (pas poussés) sont ratés : messages nuls, et j'y ai mis <code>notes-perso.txt</code> par erreur. Remplace-les par <strong>un seul</strong> commit « Page FAQ » qui contient la version finale de <code>faq.html</code>. Mes notes doivent rester sur le disque, mais dans aucun commit."},
-             "desc": "Dans <code>~/faq-julien</code>, un seul commit « Page FAQ » remplace les deux commits de Julien (même parent que le premier) avec la version finale de <code>faq.html</code> et sans <code>notes-perso.txt</code> ; les notes sont toujours sur le disque, non suivies (ou ignorées).",
-             "hints": ["Il existe un moyen de reculer l'étiquette de la branche de deux commits en <strong>gardant</strong> leurs modifications dans le répertoire de travail ; ensuite, on recommite seulement ce qu'on veut.", "<code>git reset HEAD~2</code> (ou <code>--soft</code>, puis <code>git restore --staged notes-perso.txt</code>), <code>git add faq.html</code>, <code>git commit -m \"Page FAQ\"</code>. Surtout pas <code>--hard</code>."],
+             "ticket": {"from": "julien", "body": "Dans <code>~/faq-julien</code>, tous mes commits après « Site » (rien n'est poussé) sont ratés : messages nuls, et j'y ai mis <code>notes-perso.txt</code> par erreur. Remplace-les par <strong>un seul</strong> commit « Page FAQ » qui contient la version finale de <code>faq.html</code>. Mes notes doivent rester sur le disque, mais dans aucun commit."},
+             "desc": "Dans <code>~/faq-julien</code>, un seul commit « Page FAQ », juste après « Site », remplace tous les commits de Julien avec la version finale de <code>faq.html</code> et sans <code>notes-perso.txt</code> ; les notes sont toujours sur le disque, non suivies (ou ignorées).",
+             "hints": ["Il existe un moyen de reculer l'étiquette de la branche jusqu'à « Site » en <strong>gardant</strong> les modifications des commits retirés dans le répertoire de travail ; ensuite, on recommite seulement ce qu'on veut. Comptez bien les commits de Julien.", "<code>git reset &lt;hash de « Site »&gt;</code> ou <code>git reset HEAD~n</code>, n étant le nombre de commits de Julien (ou <code>--soft</code>, puis <code>git restore --staged notes-perso.txt</code>), <code>git add faq.html</code>, <code>git commit -m \"Page FAQ\"</code>. Surtout pas <code>--hard</code>."],
              "checks": [
                  ('grep -qF "$LAB_FQ_NOTE" $H/faq-julien/notes-perso.txt', "notes-perso.txt a disparu ou a perdu son contenu : Julien veut garder ses notes sur le disque (bouton « Réinitialiser les fichiers de cette étape » pour recommencer)."),
-                 ('[ "$(g $H/faq-julien rev-parse HEAD^)" = "$LAB_FQ_BASE" ]', "Il faut exactement un commit après « Site », à la place des deux commits de Julien."),
+                 ('[ "$(g $H/faq-julien rev-parse HEAD^)" = "$LAB_FQ_BASE" ]', "Il faut exactement un commit après « Site », à la place de tous les commits de Julien."),
                  ('[ "$(g $H/faq-julien log -1 --format=%s)" = "Page FAQ" ]', "Le message du commit doit être « Page FAQ »."),
                  ('[ "$(g $H/faq-julien rev-parse HEAD:faq.html)" = "$LAB_FQ_BLOB" ]', "faq.html du commit n'est pas la version finale de Julien."),
                  ('! g $H/faq-julien cat-file -e HEAD:notes-perso.txt', "notes-perso.txt est encore dans le commit."),
@@ -1006,7 +1114,18 @@ commit julien 40 "Chiffres de l'année"
 printf '\n## Conclusion\n\nUne très belle année.\n' >> rapport.md
 commit julien 30 "Conclusion"
 emit PERDU "$(git rev-parse HEAD)"
-git reset -q --hard HEAD~2
+# Variante : ce que Julien a fait après avoir perdu ses commits (la conclusion n'est pas toujours HEAD@{1})
+v=${LAB_VARIANTE_G8_3:-$((RANDOM % 4))}
+case $v in
+  0) git reset -q --hard HEAD~2 ;;
+  1) git reset -q --hard HEAD~2
+     printf '\n## Introduction\n\nÀ rédiger.\n' >> rapport.md; commit julien 20 "Introduction"
+     printf "\n## Remerciements\n\nMerci à toute l'équipe.\n" >> rapport.md; commit julien 10 "Remerciements" ;;
+  2) git reset -q --hard HEAD~1; git reset -q --hard HEAD~1 ;;
+  *) git reset -q --hard HEAD~2; git switch -q -c essai
+     printf '\n<!-- essai de mise en page -->\n' >> rapport.md; commit julien 20 "Essai de mise en page"
+     git switch -q main ;;
+esac
 livre
 # Mise en production : Julien a déjà posé (et publié) une étiquette légère v1.0 sur un vieux commit
 equipe
@@ -1042,7 +1161,7 @@ emit PREP "$(trouve "Préparation de la mise en production")"
                  ('[ "$(g $B rev-parse -q --verify "v1.0^{commit}")" = "$(depot rev-parse "v1.0^{commit}")" ]', "Dans ~/boutique, l'étiquette v1.0 ne désigne pas le même commit que sur le dépôt partagé (un fetch ne remplace jamais une étiquette existante)."),
              ]},
             {"id": "G8.3", "points": 4, "title": "Le rapport disparu",
-             "ticket": {"from": "julien", "body": "Catastrophe : j'ai tapé une commande trouvée sur Internet (<code>git reset --hard HEAD~2</code>) dans <code>~/rapport</code>, et mes deux derniers commits, dont la conclusion du rapport annuel, ont disparu ! Il faut le rendre demain… Mets-les à l'abri sur une branche <code>sauvetage</code>."},
+             "ticket": {"from": "julien", "body": "Catastrophe : j'ai tapé des commandes trouvées sur Internet (des <code>git reset --hard</code>…) dans <code>~/rapport</code>, et mes deux derniers commits, dont la conclusion du rapport annuel, ont disparu ! Il faut le rendre demain… Mets-les à l'abri sur une branche <code>sauvetage</code>."},
              "desc": "Dans <code>~/rapport</code>, une branche <code>sauvetage</code> désigne le commit « Conclusion » disparu.",
              "hints": ["Git tient un journal de toutes les positions successives de HEAD, même celles qu'aucune branche ne désigne plus.", "<code>git reflog</code>, puis <code>git branch sauvetage &lt;hash du commit Conclusion&gt;</code>."],
              "checks": [

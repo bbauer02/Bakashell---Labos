@@ -78,31 +78,49 @@ cd ~
 mkdir -p /home/etudiant/projets/boutique/src
 echo 'mkdir -p /home/etudiant/projets/boutique/src' > ~/doc-install.txt
 #@ 2.2
-#? La réponse se trouve dans `man ls` : on y cherche le mot size avec `/size`, puis `n` pour passer à l'occurrence suivante.
-#? `-S` trie par taille, du plus gros au plus petit ; attention à la casse, `-s` affiche la taille sans trier.
-#? L'écriture longue `--sort=size` est aussi acceptée, tout comme la lettre `S` seule.
-echo "-S" > ~/reponse-man.txt
+#? La question est tirée au sort parmi plusieurs (tri par taille, par extension, par version, ou pas de tri du tout) : la réponse d'un camarade n'est donc pas forcément la vôtre.
+#? La démarche est toujours la même : `man ls`, puis `/` suivi du mot anglais de la question (size, extension, version, sort…) et `n` pour passer à l'occurrence suivante.
+#? Les réponses possibles : `-S` (taille, du plus gros au plus petit), `-X` (extension), `-v` (version), `-U` (pas de tri) ; l'écriture longue `--sort=…` est aussi acceptée.
+#? Attention à la casse : `-s` affiche la taille sans trier, alors que `-S` trie par taille.
+cat ~/question-man.txt
+case $(cat ~/question-man.txt) in
+  *taille*) mot='sort by file size'; opt=-S ;;
+  *extension*) mot='by entry extension'; opt=-X ;;
+  *version*) mot='(version)'; opt=-v ;;
+  *) mot='do not sort'; opt=-U ;;
+esac
+man ls 2>/dev/null | grep -F -- "$mot"
+echo "$opt" > ~/reponse-man.txt
 #@ 2.3
-#? `..` remonte d'un niveau : depuis `devis`, deux remontées mènent à `clients`, où se trouve `tarifs.txt`.
+#? Marc n'a pas rangé `tarifs.txt` au même endroit chez tout le monde : il faut d'abord le trouver (`ls -R ~/partage-marc` ou `find ~/partage-marc -name tarifs.txt`).
+#? Ensuite, `..` remonte d'un niveau : depuis `devis`, on remonte jusqu'au dossier commun, puis on redescend vers le fichier (par exemple `../../tarifs.txt` s'il est dans `clients`, `../../2023/tarifs.txt` s'il est dans `clients/2023`).
 #? Le piège : un chemin qui commence par `/` ou par `~` est absolu, et c'est justement ce que Julien voulait éviter.
-#? Tout chemin relatif qui aboutit au bon fichier est accepté, par exemple `../../../clients/tarifs.txt`, mais le plus court est le plus lisible.
-#? Testez toujours avec `cd ~/partage-marc/clients/2024/devis && cat ../../tarifs.txt` avant d'écrire la réponse.
-echo "../../tarifs.txt" > ~/chemin-relatif.txt
+#? `realpath --relative-to=DOSSIER FICHIER` calcule ce chemin pour vous ; testez toujours le résultat avec `cat` depuis le dossier `devis`.
+t=$(find ~/partage-marc -name tarifs.txt)
+realpath --relative-to="$HOME/partage-marc/clients/2024/devis" "$t" > ~/chemin-relatif.txt
+cd ~/partage-marc/clients/2024/devis && cat "$(cat ~/chemin-relatif.txt)"
+cd ~
 #@ 2.4
-#? On lit le chemin de gauche à droite : chaque `..` annule le dossier précédent, donc `clients/2024/../..` ramène à `partage-marc`.
+#? Le chemin du script est tiré au sort à la mise en place : lisez-le dans `~/partage-marc/vieux-script.sh`.
+#? On le lit de gauche à droite : chaque `..` annule le dossier précédent et `.` ne change rien, donc `clients/2024/../..` ramène à `partage-marc`.
 #? Le plus sûr est de laisser le shell calculer : `cd` dans ce chemin, puis `pwd` affiche le chemin absolu réel.
 #? La réponse doit commencer par `/home/etudiant` et non par `~`, sinon ce n'est pas un chemin absolu ; une barre oblique finale est tolérée.
-cd ~/partage-marc/clients/2024/../.. && pwd > ~/chemin-absolu.txt
+cat ~/partage-marc/vieux-script.sh
+c=$(grep -oE '^cd [^ ]+' ~/partage-marc/vieux-script.sh | cut -d' ' -f2)
+cd "${c/#\~/$HOME}" && pwd > ~/chemin-absolu.txt
 cd ~
 #@ 2.5
-#? `cd` n'est pas un programme installé sur le disque mais une commande interne (builtin) du shell : c'est pourquoi `man cd` ne trouve rien.
-#? `type cd` répond « cd is a shell builtin », et `help cd` affiche la documentation des commandes internes.
-#? L'option `-P` suit la structure physique des dossiers : après un passage par un lien symbolique, on se retrouve dans le vrai dossier.
-#? Le piège était de conclure que la commande n'avait pas de documentation : `man bash` la décrit aussi, dans sa section consacrée aux commandes intégrées.
-# cd est une commande interne du shell : pas de page de manuel, mais « help cd »
-type cd > ~/cd-type.txt
-help cd | grep -- '-P'
-echo "-P" > ~/cd-option.txt
+#? La commande de la question est tirée au sort (cd, type, export ou jobs) ; toutes sont des commandes internes (builtins) du shell et non des programmes installés sur le disque : c'est pourquoi `man` ne trouve rien.
+#? `type nom` répond « nom is a shell builtin », et `help nom` affiche la documentation des commandes internes (`man bash` la décrit aussi).
+#? Les réponses : `cd -P` suit la structure physique des dossiers, `type -a` affiche toutes les définitions d'un nom, `export -n` retire l'export d'une variable, `jobs -l` ajoute le PID des tâches.
+#? Le piège était de conclure que la commande n'avait pas de documentation. Autre piège pour écrire la réponse : `echo -n > fichier` prend `-n` pour une option d'echo et n'écrit rien ; `printf '%s\n' -n > fichier` convient.
+cat ~/question-shell.txt
+c=$(grep -oE 'man [a-z]+' ~/question-shell.txt | head -n1 | cut -d' ' -f2)
+type "$c" > ~/type-commande.txt
+case $c in cd) o=-P ;; type) o=-a ;; export) o=-n ;; jobs) o=-l ;; esac
+help "$c" | grep -- "$o"
+# printf plutôt que echo : « echo -n » prendrait -n pour une option d'echo
+printf '%s\n' "$o" > ~/option-commande.txt
 #@ 2.6
 #? `ls -t` trie par date de dernière modification, la plus récente en premier ; `head -n1` ne garde que la première ligne.
 #? Le piège était de se fier aux noms : « DEFINITIF », « final-v2 » ou une date dans le nom ne disent rien de la date réelle de modification.
@@ -238,15 +256,17 @@ r=$(basename "$(readlink ~/site-v1/current)")
 cd ~/site-v1 && ln -sfn releases/$r current
 cd ~
 #@ 4.7
-#? Sans `-n`, quand la destination est un lien vers un dossier, `ln` le suit et crée le nouveau lien dans ce dossier : c'est ainsi que `releases/r2/r3` est apparu.
+#? Sans `-n`, quand la destination est un lien vers un dossier, `ln` le suit et crée le nouveau lien dans ce dossier : c'est ainsi que le lien parasite est apparu dans l'ancienne release.
 #? `ln -sfn` traite `current` comme un simple fichier et le remplace directement.
+#? Les deux releases sont tirées au sort à la mise en place : lisez la cible dans `A-DEPLOYER`, et trouvez le parasite avec `find releases -type l` plutôt que de recopier le chemin d'un camarade.
 #? Le lien parasite se supprime avec `rm` sans `-r` : c'est un lien, et `rm -r` sur un lien vers un dossier ne supprime de toute façon que le lien.
-#? `find releases -type l` permet de vérifier qu'aucun lien ne traîne plus dans les releases.
-# Sans -n, ln traite current (lien vers un dossier) comme ce dossier et crée releases/r2/r3
+# Sans -n, ln traite current (lien vers un dossier) comme ce dossier et crée le nouveau lien à l'intérieur
 cd ~/deploi
-ln -sfn releases/r3 current
-find releases -type l
-rm releases/r2/r3
+r=$(grep -oE 'r[0-9]+' A-DEPLOYER)
+ln -sfn "releases/$r" current
+p=$(find releases -type l)
+echo "$p"
+rm $p
 cd ~
 #@ 4.8
 #? Tant qu'un nom pointe vers un inode, les données existent : il suffit de retrouver ce nom de secours et d'en créer un nouveau.
@@ -271,6 +291,7 @@ readlink -f ~/raccourcis/dernier > ~/fichier-final.txt
 #? Le piège était le dossier `anciens.conf`, qui porte un nom en `.conf` sans être un fichier ; `-type f` écarte aussi les liens symboliques.
 #? Les erreurs « Permission denied » partent vers `/dev/null` grâce à `2>/dev/null`, pour ne garder que la liste.
 #? Lancez la commande sans `sudo` : la liste attendue est celle des fichiers visibles par etudiant, et root en verrait davantage.
+#? Le nombre de modules de /etc/cimes-sentiers est tiré au sort à la mise en place : votre liste est propre à votre serveur.
 find /etc -type f -name "*.conf" 2>/dev/null > ~/audit-conf.txt
 #@ 5.2
 #? `grep -r` cherche dans tout un dossier et ses sous-dossiers, et `-l` n'affiche que le nom des fichiers trouvés, avec leur chemin complet.
@@ -328,6 +349,7 @@ grep -B1 'FATAL' ~/logs-app/app.log | head -n1 > ~/cause.txt
 #? Le pipe envoie la liste produite par `ls` à `wc -l`, qui compte les lignes : quand sa sortie part dans un pipe, `ls` écrit un nom par ligne.
 #? Le piège était `ls -a` : il ajoute `.` et `..`, ce qui fausse le compte de deux ; `ls -A` (« almost all ») montre les entrées cachées sans eux.
 #? `find /etc -mindepth 1 -maxdepth 1 | wc -l` donne le même nombre, à condition de ne pas descendre dans les sous-dossiers.
+#? Des marqueurs d'audit cachés, en nombre tiré au sort, ont été déposés dans /etc : le nombre d'un camarade n'est pas le vôtre.
 ls -A /etc | wc -l > ~/nb-etc.txt
 #@ 6.2
 #? Chaque flux a son numéro : `>` (ou `1>`) redirige la sortie normale, `2>` la sortie d'erreur, et les deux redirections se combinent sur la même commande.
@@ -346,6 +368,7 @@ bavard > ~/tout.txt 2>&1
 #? `tee` écrit ce qu'il reçoit dans un fichier et le laisse passer vers la commande suivante : une seule ligne suffit pour garder la liste et la compter.
 #? `wc -l` qui lit son entrée standard n'affiche que le nombre ; avec un nom de fichier (`wc -l fichier`), il ajouterait ce nom et la réponse ne serait plus un simple nombre.
 #? Le nombre de programmes dépend de ce qui est installé : ne comparez pas le vôtre à celui d'un autre conteneur.
+#? Des outils maison, en nombre tiré au sort, ont été installés dans /usr/bin : ne comparez pas votre nombre à celui d'un autre conteneur.
 ls /usr/bin | tee ~/programmes.txt | wc -l > ~/nb-programmes.txt
 #@ 6.5
 #? `cut -d' ' -f4` isole le 4e champ (les champs sont séparés par une espace), puis `sort -u` trie et supprime les doublons en une seule étape.
@@ -357,6 +380,7 @@ cut -d' ' -f4 ~/texte/badges.txt | sort -u > ~/badgeurs.txt
 #? `find /etc -type f` ne garde que les fichiers ; sans `-type f`, les dossiers seraient comptés aussi.
 #? Les « Permission denied » passent par la sortie d'erreur : `2>/dev/null` les fait disparaître sans toucher à la sortie normale, qui seule arrive dans le pipe.
 #? Surtout pas de sudo : root voit davantage de fichiers, et la question portait sur ce que voit un utilisateur ordinaire.
+#? Des relevés d'audit, en nombre tiré au sort, ont été déposés sous /etc : le nombre d'un camarade n'est pas le vôtre.
 find /etc -type f 2>/dev/null | wc -l > ~/nb-fichiers-etc.txt
 #@ 6.7
 #? On veut compter un flux, pas un mot : certaines erreurs ne contiennent pas « ERR », et certaines lignes normales en parlent (« 0 ERR »), d'où l'échec de `grep -c ERR`.
@@ -434,6 +458,7 @@ cd ~/regex
 #? `^` ancre le motif au début de la ligne, et `[rs]` accepte un seul caractère parmi `r` et `s`.
 #? Sans l'ancre, grep garderait toutes les lignes qui contiennent un r ou un s n'importe où, c'est-à-dire presque tout le fichier.
 #? `grep -E '^(r|s)' /etc/passwd` est une variante équivalente avec une alternative.
+#? Des comptes de service, tirés au sort à la mise en place, s'ajoutent à /etc/passwd : votre résultat est propre à votre serveur.
 grep '^[rs]' /etc/passwd > rs.txt
 #@ 8.2
 #? Le motif décrit l'adresse morceau par morceau : partie locale `[a-z0-9._-]+`, un `@`, un mot de domaine, zéro ou plusieurs « point + mot » `(\.[a-z0-9-]+)*`, puis un point et au moins deux lettres.
@@ -484,6 +509,7 @@ sed -i -E 's/;9\.99$/;10.49/' tarifs.csv
 #? Le schéma classique : extraire le champ (`cut -d: -f7`), trier, compter avec `uniq -c`, puis trier à nouveau sur le nombre avec `sort -rn`.
 #? Le premier tri est indispensable : `uniq -c` ne regroupe que les lignes voisines.
 #? `awk -F: '{print $7}'` peut remplacer `cut` pour extraire le shell.
+#? Des comptes de bornes et d'impression, aux shells tirés au sort, s'ajoutent à /etc/passwd : votre décompte est propre à votre serveur.
 cut -d: -f7 /etc/passwd | sort | uniq -c | sort -rn > ~/shells-count.txt
 #@ 9.2
 #? On filtre d'abord les requêtes en erreur (`$9 >= 400`, le code HTTP est le 9e champ), puis on applique le « top » classique à l'IP.
@@ -616,7 +642,7 @@ sudo -l -U stagiaire
 #? `pgrep -x` donne le PID d'un processus d'après son nom exact, et `ps -o user= -p PID` affiche uniquement son propriétaire, sans ligne d'en-tête.
 #? Avec `ps aux | grep rogue-worker`, attention à ne pas confondre la vraie ligne avec celle de la commande grep elle-même.
 #? Le fichier ne doit contenir qu'une ligne de deux mots, le PID puis l'utilisateur : aucune phrase ni colonne supplémentaire.
-#? Le PID change à chaque démarrage du processus : celui de votre environnement est forcément différent de celui d'un camarade.
+#? Le PID change à chaque démarrage du processus, et le compte qui l'a lancé est tiré au sort à la mise en place : ne recopiez ni l'un ni l'autre chez un camarade.
 p=$(pgrep -x rogue-worker)
 echo "$p $(ps -o user= -p "$p")" > ~/rogue.txt
 #@ 11.3
@@ -634,22 +660,30 @@ sleep 1
 #? Les redirections vers /dev/null du corrigé servent seulement au banc de test ; contrôlez le résultat avec `ps -o pid,ni,cmd -C sleep`.
 nice -n 10 sleep 1000 > /dev/null 2>&1 &
 #@ 11.5
-#? Par convention, beaucoup de services interprètent le signal HUP comme « relis ta configuration » : c'est exactement ce que fait lab-service, sans s'arrêter.
-#? Le piège est un `kill` sans option : TERM arrêterait le service, alors que la vérification exige que le même processus tourne toujours.
-#? Le service appartient à root, d'où le `sudo` ; `sudo kill -1 PID` ou `sudo pkill -HUP -x lab-service` sont des écritures équivalentes.
-sudo kill -HUP "$(pgrep -x lab-service)"
+#? Par convention, beaucoup de services traitent HUP comme « relis ta configuration », mais ce n'est qu'une convention : lab-service documente son propre signal (`lab-service --aide`), HUP, USR1 ou USR2 selon les serveurs.
+#? Le piège est d'envoyer un signal que le service n'intercepte pas : TERM, mais aussi HUP ou USR1 quand ce n'est pas le sien, l'arrêteraient, alors que la vérification exige que le même processus tourne toujours.
+#? Le service appartient à root, d'où le `sudo` ; `sudo pkill -USR1 -x lab-service` est une écriture équivalente quand le signal est USR1.
+# On lit d'abord dans la documentation du service le signal qu'il intercepte
+lab-service --aide
+sig=$(lab-service --aide | grep -oE 'signal (HUP|USR1|USR2)' | cut -d' ' -f2)
+sudo kill -"$sig" "$(pgrep -x lab-service)"
 sleep 2
 #@ 11.6
-#? Si un processus revient avec un nouveau PID, c'est qu'un parent le relance : la colonne PPID de `ps` (ou `pstree -p`) permet de remonter jusqu'à lui.
-#? Il faut arrêter le parent en premier, puis l'enfant : dans l'ordre inverse, le parent relance mineur deux secondes plus tard.
-#? Le nom du parent (veille-suivi de quatre chiffres) est tiré au sort par la mise en place : le vôtre diffère sans doute de celui d'un camarade.
-#? Les deux processus appartiennent à intrus, d'où le `sudo` devant chaque `kill`.
-# mineur est relancé par son parent : on arrête d'abord le parent, puis l'enfant
+#? Si un processus revient avec un nouveau PID, c'est que quelque chose le relance : la colonne PPID de `ps` (ou `pstree -p`) permet de remonter jusqu'au responsable.
+#? Selon les serveurs, mineur est relancé par son parent, par une chaîne de deux processus (le parent est lui-même relancé par un grand-parent) ou par une boucle anonyme qui s'appelle simplement `bash` : il faut remonter la chaîne jusqu'en haut plutôt que de chercher un nom.
+#? On arrête tous les processus de la chaîne, puis mineur : si l'on épargne un maillon, il relance les autres deux secondes plus tard.
+#? Tous appartiennent à intrus, d'où le `sudo` ; les noms (veille-…, relais-…) sont tirés au sort, ne recopiez pas ceux d'un camarade.
+# On remonte les parents de mineur tant qu'ils appartiennent à intrus, puis on arrête toute la chaîne
 m=$(pgrep -x mineur | head -n1)
-pp=$(ps -o ppid= -p "$m" | tr -d ' ')
-ps -o pid,ppid,user,cmd -p "$m,$pp"
-sudo kill "$pp"
-sudo kill "$(pgrep -x mineur)"
+chaine=""
+p=$(ps -o ppid= -p "$m" | tr -d ' ')
+while [ "$p" -gt 1 ] && [ "$(ps -o user= -p "$p")" = intrus ]; do
+    ps -o pid,ppid,user,args -p "$p"
+    chaine="$chaine $p"
+    p=$(ps -o ppid= -p "$p" | tr -d ' ')
+done
+sudo kill $chaine
+sudo kill $(pgrep -x mineur)
 sleep 1
 #@ 11.7
 #? Le signal STOP gèle un processus sans le terminer, et le signal CONT le fait repartir exactement là où il en était : `kill -CONT PID` pour la reprise du soir.
@@ -703,15 +737,25 @@ sudo mkdir /home/parents-only
 sudo chgrp parents /home/parents-only
 sudo chmod 2770 /home/parents-only
 #@ 12.5
-#? Marc avait mis `HOME_MODE 0755` dans /etc/login.defs : chaque nouveau dossier personnel était donc lisible par tout le monde, invite compris.
-#? Il faut corriger les deux aspects : le réglage pour les futurs comptes, et un `chmod 750` sur les dossiers déjà créés, car `useradd` n'applique HOME_MODE qu'à la création.
-#? Le piège est de ne corriger qu'un des deux : soit les dossiers existants restent ouverts, soit le prochain compte créé le sera de nouveau.
+#? Les nouveaux dossiers personnels sont créés en 755, lisibles par tout le monde. Selon les serveurs, Marc s'y est pris de trois façons : `HOME_MODE 0755` dans /etc/login.defs, HOME_MODE mis en commentaire (useradd applique alors la UMASK 022, donc 755), ou une « surcouche » /usr/local/sbin/useradd qui ouvre chaque dossier après coup.
+#? La démarche vaut pour tous les cas : `grep -n HOME_MODE /etc/login.defs`, puis `sudo sh -c 'command -v useradd'` pour savoir quel useradd lance sudo (/usr/local/sbin passe avant /usr/sbin dans son PATH).
+#? Il faut ensuite corriger les deux aspects : la cause pour les futurs comptes, et un `chmod 750` sur les dossiers déjà créés, car `useradd` n'applique HOME_MODE qu'à la création.
+#? Le piège est de ne corriger qu'un des deux, ou de recopier la correction d'un camarade : sa cause n'est pas forcément la vôtre, et la vérification crée un vrai compte pour tester.
 #? `HOME_MODE 0700` convient également : la vérification exige seulement qu'aucun droit ne soit donné aux « autres ».
 sudo useradd -m -s /bin/bash invite
-# Les dossiers de la famille ont été créés en 755 : Marc avait changé HOME_MODE
+# Les dossiers de la famille ont été créés en 755 : qu'est-ce qui fixe les droits des nouveaux dossiers ?
 ls -l /home
-grep HOME_MODE /etc/login.defs
-sudo sed -i 's/^HOME_MODE.*/HOME_MODE\t0750/' /etc/login.defs
+grep -n 'HOME_MODE\|^UMASK' /etc/login.defs
+u=$(sudo sh -c 'command -v useradd')
+echo "sudo useradd lance : $u"
+# Une surcouche de useradd placée avant le vrai : on la retire
+if [ "$u" != /usr/sbin/useradd ]; then sudo cat "$u"; sudo rm -f "$u"; fi
+# HOME_MODE absent, en commentaire ou trop ouvert : on le fixe à 0750
+if grep -qE '^#?HOME_MODE' /etc/login.defs; then
+    sudo sed -i -E 's/^#?HOME_MODE.*/HOME_MODE\t0750/' /etc/login.defs
+else
+    echo 'HOME_MODE 0750' | sudo tee -a /etc/login.defs > /dev/null
+fi
 for u in papa maman fils fille invite; do sudo chmod 750 /home/$u; done
 #@ 12.6
 #? Pour atteindre un dossier, il faut le droit `x` sur chaque dossier du chemin, alors que `r` ne sert qu'à lister son contenu.
@@ -765,13 +809,19 @@ dpkg -c /srv/paquets/cs-outils_*_all.deb
 dpkg -c /srv/paquets/cs-outils_*_all.deb | grep -oE '\./usr/bin/[^ ]+' | sed 's/^\.//' > ~/contenu-deb.txt
 sudo dpkg -i /srv/paquets/cs-outils_*_all.deb > /dev/null
 #@ 13.6
-#? `dpkg -I` montre que cs-rapport exige `cs-base (>= 1.2)` ; contrairement à apt, dpkg ne va jamais chercher les dépendances lui-même.
-#? Le piège est de prendre le premier fichier cs-base venu : la version 1.0 ne satisfait pas la dépendance, il faut la 1.3.
+#? `dpkg -I` affiche la ligne `Depends` de cs-rapport : le paquet exigé et sa version minimale, tirés au sort à la mise en place (cs-base ou cs-commun, 1.2 ou 2.0…) ; contrairement à apt, dpkg ne va jamais chercher les dépendances lui-même.
+#? Le piège est de prendre le premier fichier venu, ou celui qu'a installé un camarade : il faut le bon paquet, dans une version au moins égale au minimum exigé (`dpkg-deb -f fichier Version` lit la version d'un .deb).
 #? Installer les deux fichiers dans la même commande `dpkg -i` permet à dpkg de les configurer ensemble.
-#? Variante valable : installer d'abord cs-base 1.3, puis réinstaller cs-rapport ou terminer sa configuration avec `sudo dpkg --configure -a`.
+#? Variante valable : installer d'abord la dépendance, puis réinstaller cs-rapport ou terminer sa configuration avec `sudo dpkg --configure -a`.
 dpkg -I /srv/paquets/cs-rapport_2.0_all.deb | grep Depends
-# cs-base 1.0 ne suffit pas (>= 1.2 exigé) : on installe la 1.3 en même temps
-sudo dpkg -i /srv/paquets/cs-base_1.3_all.deb /srv/paquets/cs-rapport_2.0_all.deb > /dev/null
+# « paquet (>= version) » : on cherche parmi les .deb livrés une version suffisante de ce paquet
+dep=$(dpkg-deb -f /srv/paquets/cs-rapport_2.0_all.deb Depends)
+nom=${dep%% *}
+min=$(echo "$dep" | grep -oE '[0-9][0-9.]*')
+for f in /srv/paquets/"$nom"_*_all.deb; do
+    dpkg --compare-versions "$(dpkg-deb -f "$f" Version)" ge "$min" && bon=$f
+done
+sudo dpkg -i "$bon" /srv/paquets/cs-rapport_2.0_all.deb > /dev/null
 #@ 13.7
 #? `apt purge` désinstalle le programme et supprime aussi ses fichiers de configuration, comme /etc/cs-ancien.conf.
 #? Le piège est `apt remove` : le paquet reste alors dans `dpkg -l` avec l'état `rc`, programme retiré mais configuration conservée.
@@ -797,10 +847,12 @@ sudo dpkg -i /srv/paquets/cs-supervision_1.0_all.deb > /dev/null
 ''',
     14: r'''
 #@ 14.1
-#? `df -T /` ajoute une colonne Type : sur la deuxième ligne, c'est le type du système de fichiers monté sur la racine.
-#? Le piège est de répondre « ext4 » par habitude : dans un conteneur, la racine est souvent d'un autre type, d'où l'intérêt de lire la valeur sur la machine.
-#? `findmnt -n -o FSTYPE /` donne la même information, sans en-tête.
-df -T / | awk 'NR==2{print $2}' > ~/fs-racine.txt
+#? Le point de montage à relever est tiré au sort (/, /dev/shm, /proc ou /dev/pts) : lisez-le dans `~/inventaire-montage.txt`, la réponse d'un camarade ne vaut pas forcément pour vous.
+#? `df -T point` ajoute une colonne Type : sur la deuxième ligne, c'est le type du système de fichiers monté à cet endroit.
+#? Le piège est de répondre « ext4 » par habitude : la racine d'un conteneur est souvent en overlay, /proc est un système de fichiers virtuel (proc), /dev/shm un tmpfs en mémoire.
+#? `findmnt -n -o FSTYPE point` donne la même information, sans en-tête.
+p=$(grep -oE '/[^ ]*$' ~/inventaire-montage.txt)
+df -T "$p" | awk 'NR==2{print $2}' > ~/fs-type.txt
 #@ 14.2
 #? `du -s` affiche l'espace total occupé par chaque dossier, en blocs de 1 Kio ; `sort -n` les classe et `tail -1` garde le plus gros.
 #? Le piège est de trier des tailles lisibles comme `12M` et `900K` avec `sort -n`, qui ignore les unités : utilisez `du -sh … | sort -h` si vous préférez l'affichage lisible.
@@ -869,12 +921,17 @@ echo 'export PATH="$PATH:$HOME/outils"' >> ~/.bashrc
 grep -n "alias ll" ~/.bashrc
 echo "alias ll='ls -lah'" >> ~/.bashrc
 #@ 15.4
-#? CIBLE est définie dans ~/.bashrc sans `export` : le shell la connaît, mais le script, qui est un programme à part, ne la reçoit pas.
-#? Ajouter `export` devant la définition corrige le problème à la source ; une ligne `export CIBLE` placée après la définition est une variante valable.
-#? Le piège est de modifier lancer.sh : le script est identique sur tous les serveurs, et la vérification contrôle qu'il n'a pas changé.
-#? La valeur de CIBLE est tirée au sort : gardez celle de votre .bashrc et ouvrez un nouveau terminal pour tester.
-# CIBLE est définie sans export : les programmes lancés depuis le shell ne la reçoivent pas
+#? Un script est un programme à part : il ne reçoit que les variables exportées. `bash -c 'echo $CIBLE'` le montre tout de suite, puis `grep -n -e CIBLE -e BASH_ENV ~/.bashrc` montre pourquoi.
+#? La cause est tirée au sort : CIBLE définie sans `export` (on ajoute `export` devant), exportée puis « désexportée » plus loin par un `export -n CIBLE` (on supprime cette ligne), ou exportée mais supprimée par le fichier que `BASH_ENV` fait lire à chaque script (on retire BASH_ENV ou le `unset`).
+#? Le piège est de recopier la correction d'un camarade : un `sed` qui ajoute `export` ne sert à rien si la variable est déjà exportée puis retirée plus loin.
+#? Ne modifiez pas lancer.sh : le script est identique sur tous les serveurs, et la vérification contrôle qu'il n'a pas changé ; la valeur de CIBLE est propre à votre .bashrc, testez dans un nouveau terminal.
+grep -n -e CIBLE -e BASH_ENV ~/.bashrc
+# Définie sans export : on l'exporte
 sed -i 's/^CIBLE=/export CIBLE=/' ~/.bashrc
+# Exportée puis retirée de l'environnement plus loin : on supprime ce retrait
+sed -i '/^export -n CIBLE/d' ~/.bashrc
+# BASH_ENV fait lire aux scripts un fichier qui supprime CIBLE : on retire cette ligne
+sed -i '/^export BASH_ENV=/d' ~/.bashrc
 #@ 15.5
 #? Le shell cherche les commandes dans les dossiers du PATH, dans l'ordre : un dossier ajouté en tête du PATH de julien fournit un faux sudo qui récolte son mot de passe.
 #? Le piège est d'enquêter dans votre propre environnement : il faut interroger un shell interactif de julien, par exemple `sudo -iu julien` puis `type -a sudo`.
@@ -935,9 +992,9 @@ cd ~ && zip -qr backup.zip archive-test
 #@ 16.6
 #? tar sait extraire un seul membre, à condition de le désigner par son chemin exact tel qu'il est stocké dans l'archive : on le cherche d'abord avec `tar -tzf … | grep`.
 #? Le piège est le fichier voisin `tarifs-2026-brouillon.csv` : un simple `grep tarifs-2026` renvoie les deux, d'où le motif ancré `/tarifs-2026\.csv$`.
-#? tar recrée l'arborescence `compta/2026/referentiels/` dans ~/restauration ; c'est accepté, car seul compte le fait qu'il n'y ait qu'un seul fichier, et que ce soit le bon.
+#? tar recrée l'arborescence du membre (par exemple `compta/2026/referentiels/`) dans ~/restauration ; c'est accepté, car seul compte le fait qu'il n'y ait qu'un seul fichier, et que ce soit le bon.
 #? Variantes valables : ajouter `--strip-components=3` pour déposer le fichier directement dans ~/restauration, ou utiliser `-O` avec une redirection vers `~/restauration/tarifs-2026.csv`.
-#? Le contenu des tarifs est généré au hasard, mais le chemin du fichier dans l'archive est le même pour tout le monde.
+#? L'arborescence de la sauvegarde est tirée au sort à la mise en place : la commande exacte d'un camarade échouerait chez vous (« Not found in archive »), il faut lire le chemin dans votre archive.
 # Le membre s'extrait par son chemin exact dans l'archive (attention au brouillon au nom voisin)
 m=$(tar -tzf /srv/sauvegardes/compta-2026-09-28.tar.gz | grep '/tarifs-2026\.csv$')
 mkdir -p ~/restauration
@@ -1092,13 +1149,14 @@ EOF
 #? Utilisez un chemin absolu vers tick.log : cron ne lance pas la tâche dans votre dossier courant.
 (crontab -l 2>/dev/null; echo '* * * * * date >> /home/etudiant/tick.log') | crontab -
 #@ 18.5
-#? Dans une ligne de crontab, un `%` non échappé marque la fin de la commande : la suite est envoyée sur son entrée standard, et `date +` reçoit un format tronqué.
+#? Dans une ligne de crontab, un `%` non échappé marque la fin de la commande : la suite est envoyée sur son entrée standard, et la commande reçoit un format tronqué.
 #? `grep CRON /var/log/syslog` montre la commande réellement lancée par cron, coupée au premier `%`.
-#? La solution consiste à écrire `\%` dans la crontab ; le corrigé le fait avec sed, mais `crontab -e` est tout aussi valable.
+#? La commande de Julien est tirée au sort (`date +%H:%M`, `date '+%H:%M'`, `date +%R`, ou un `printf` qui contient plusieurs `%`) : il faut échapper chaque `%` de la ligne, en écrivant `\%` ; `crontab -e` est tout aussi valable que le sed du corrigé.
 #? Dans le corrigé, `\\%` est doublé parce que l'antislash doit survivre au passage dans sed : c'est bien `\%` qui arrive dans la crontab.
-# cron coupe la commande au premier % (la suite devient l'entrée standard de la commande) : on écrit \%
+# cron coupe la commande au premier % (la suite devient l'entrée standard de la commande) : on écrit \% partout sur la ligne
 grep CRON /var/log/syslog | tail -n 3
-crontab -l | sed 's/date +%H:%M/date +\\%H:\\%M/' | crontab -
+crontab -l | grep heure.log
+crontab -l | sed '/heure\.log/ s/%/\\%/g' | crontab -
 #@ 18.6
 #? cron lance les tâches avec `/bin/sh` et un environnement minimal : il ne lit pas ~/.bashrc, donc ni la variable PROJET ni votre PATH étendu ne sont connus.
 #? On peut définir des variables en tête de crontab : `PROJET=linux-lab` et un PATH complet qui inclut ~/outils, où se trouve `bonjour`.
@@ -1109,14 +1167,22 @@ crontab -l | sed 's/date +%H:%M/date +\\%H:\\%M/' | crontab -
 #@ 18.7
 #? Sans serveur de messagerie, cron jette la sortie des tâches : avant de réparer, il faut la capturer avec `>> /var/log/export-compta.log 2>&1`.
 #? L'ordre des redirections compte : d'abord la sortie standard vers le journal, puis `2>&1` pour que les erreurs suivent le même chemin.
-#? La vérification exige que le journal contienne l'erreur « introuvable » : il faut donc laisser cron s'exécuter une fois avant de corriger.
-#? L'erreur indique qu'il manque le dossier /srv/compta/exports ; une fois créé, la tâche écrit « export OK » dans le journal.
+#? La vérification exige que le journal contienne l'erreur de la tâche : il faut donc laisser cron s'exécuter une fois avant de corriger.
+#? La cause est tirée au sort, et seule l'erreur capturée la donne : dossier d'export absent (on le crée), fichier ordinaire à la place de ce dossier (on le remplace par un dossier), configuration absente (on la recrée à partir du modèle indiqué) ou outil non exécutable (`chmod 755`).
+#? Le piège est d'appliquer la correction d'un camarade sans lire son propre journal : un `mkdir` ne sert à rien si c'est la configuration qui manque.
+#? Une fois la cause corrigée, la tâche écrit « export OK » dans le journal à l'exécution suivante.
 # D'abord voir ce que dit la tâche : sortie et erreurs ajoutées à un journal
 printf '# Export de la comptabilité (toutes les minutes pour le lab)\n* * * * * root /usr/local/sbin/export-compta >> /var/log/export-compta.log 2>&1\n' | sudo tee /etc/cron.d/export-compta > /dev/null
-for i in $(seq 90); do sudo grep -q introuvable /var/log/export-compta.log 2>/dev/null && break; sleep 1; done
+for i in $(seq 90); do sudo grep -q ERREUR /var/log/export-compta.log 2>/dev/null && break; sleep 1; done
 sudo cat /var/log/export-compta.log
-# L'erreur indique le dossier manquant : on le crée
-sudo mkdir -p /srv/compta/exports
+# On corrige la cause qu'indique l'erreur
+err=$(sudo grep ERREUR /var/log/export-compta.log | tail -n1)
+case $err in
+    *"pas un dossier"*) sudo rm -f /srv/compta/exports; sudo mkdir -p /srv/compta/exports ;;
+    *configuration*) sudo cp /usr/share/doc/export-compta/export-compta.conf.exemple /etc/export-compta.conf ;;
+    *exécutable*) sudo chmod 755 /usr/local/lib/export-compta/horodatage ;;
+    *dossier*introuvable*) sudo mkdir -p /srv/compta/exports ;;
+esac
 #@ 18.8
 #? `flock` pose un verrou sur un fichier avant de lancer la commande : tant que la première synchronisation tourne, le verrou reste pris.
 #? L'option `-n` est essentielle : sans elle, la seconde exécution attendrait la libération du verrou au lieu d'abandonner, et les tâches continueraient de s'empiler.
@@ -1285,17 +1351,20 @@ sudo zgrep -h '^2026-03-14 .*\[ERROR\]' /var/log/boutique/shop.log* | wc -l > ~/
 printf '/var/log/caisse/caisse.log {\n    daily\n    rotate 5\n    missingok\n    postrotate\n        kill -HUP "$(cat /run/journal-caisse.pid)"\n    endscript\n}\n' | sudo tee /etc/logrotate.d/caisse > /dev/null
 sudo kill -HUP "$(cat /run/journal-caisse.pid)"
 #@ 20.9
-#? rsyslog range les messages selon des règles `facility.niveau destination` : `local0.*` envoie tous les niveaux de local0 vers /var/log/paiement.log.
+#? rsyslog range les messages selon des règles `facility.niveau destination` : `local3.*`, par exemple, envoie tous les niveaux de local3 vers /var/log/paiement.log.
+#? La facility du module est tirée au sort à la mise en place : lisez-la dans /etc/paiement/module.conf. La règle d'un camarade ne capterait pas vos messages, et une règle qui attrape toutes les facilities est refusée (seuls les messages du module sont attendus).
 #? La règle se place dans un fichier dont le nom se termine par `.conf` dans /etc/rsyslog.d ; un autre nom serait ignoré.
 #? Un simple signal HUP ne relit pas les règles : il faut redémarrer rsyslogd, ce que l'on fait ici avec `pkill` puis `rsyslogd`, faute de systemd dans le conteneur.
-#? On teste enfin avec `logger -p local0.info -t paiement "essai"`, puis on lit /var/log/paiement.log.
-echo 'local0.*    /var/log/paiement.log' | sudo tee /etc/rsyslog.d/30-paiement.conf > /dev/null
+#? On teste enfin avec `logger -p FACILITY.info -t paiement "essai"`, puis on lit /var/log/paiement.log.
+cat /etc/paiement/module.conf
+f=$(sed -n 's/^SYSLOG_FACILITY=//p' /etc/paiement/module.conf)
+echo "$f.*    /var/log/paiement.log" | sudo tee /etc/rsyslog.d/30-paiement.conf > /dev/null
 # Pas de systemd dans ce conteneur : on arrête puis on relance rsyslogd (HUP ne relit pas les règles)
 sudo pkill -x rsyslogd
 while pgrep -x rsyslogd > /dev/null; do sleep 0.2; done
 sudo rsyslogd
 sleep 1
-logger -p local0.info -t paiement "essai"
+logger -p "$f.info" -t paiement "essai"
 ''',
     21: r'''
 #@ 21.1
@@ -1318,24 +1387,30 @@ ip route | awk '/^default/ {print $3}' > ~/passerelle.txt
 # Le programme mystère écoute sur 0.0.0.0 ; les ports en 127.0.0.x ne sont joignables que localement
 ss -tln | awk '$4 ~ /^0\.0\.0\.0:/ {split($4, a, ":"); print a[2]}' | head -1 > ~/port-mystere.txt
 #@ 21.4
-#? Quand un nom figure deux fois dans /etc/hosts, les programmes reçoivent les deux adresses et utilisent en général la première : ici, l'ancienne 10.20.30.40.
-#? `getent hosts serveur-local` montre ce que le système résout réellement ; il faut supprimer la ligne périmée, pas ajouter une troisième ligne.
+#? `getent hosts serveur-local` montre ce que le système résout réellement, et `grep -n serveur-loca /etc/hosts` toutes les lignes en cause : une ancienne adresse (tirée au sort) qui porte aussi ce nom, parfois comme deuxième nom d'une ligne.
+#? Quand un nom figure sur plusieurs lignes, les programmes reçoivent toutes les adresses et utilisent en général la première. Selon les serveurs, la ligne de Thomas est en plus mise en commentaire, ou comporte une faute de frappe dans le nom (serveur-locale) : elle n'est alors jamais prise en compte.
+#? La correction qui vaut dans tous les cas : ne garder qu'une ligne pour ce nom, `192.168.1.100   serveur-local`, sans ajouter une énième ligne par-dessus les autres.
 #? Piège propre au conteneur : `sed -i` échoue sur ce fichier fourni par Docker (« Device or resource busy ») ; `sudo nano /etc/hosts` fonctionne, tout comme la copie par-dessus avec `sudo cp` utilisée ici.
 getent hosts serveur-local
-# serveur-local figure deux fois : on retire la ligne périmée (sed -i échoue sur ce fichier monté par Docker)
-grep -v '^10\.20\.30\.40' /etc/hosts > /tmp/hosts.new && sudo cp /tmp/hosts.new /etc/hosts
+grep -n 'serveur-loca' /etc/hosts
+# On retire toutes les lignes en cause (périmée, commentée ou mal orthographiée), puis on remet la bonne
+grep -v 'serveur-loca' /etc/hosts > /tmp/hosts.new
+echo '192.168.1.100   serveur-local' >> /tmp/hosts.new
+sudo cp /tmp/hosts.new /etc/hosts
 #@ 21.5
 #? Les serveurs de /etc/resolv.conf sont interrogés dans l'ordre : un premier serveur injoignable fait attendre chaque résolution plusieurs secondes.
-#? 192.0.2.53 appartient à la plage 192.0.2.0/24, réservée à la documentation et jamais routée : c'est lui qu'il faut retirer, en gardant l'autre ligne `nameserver`.
+#? Le serveur ajouté par Marc est tiré au sort dans les plages 192.0.2.0/24, 198.51.100.0/24 ou 203.0.113.0/24, réservées à la documentation et jamais routées : c'est lui qu'il faut noter et retirer, en gardant l'autre ligne `nameserver`.
+#? Le piège est de recopier l'adresse d'un camarade : lisez votre propre /etc/resolv.conf.
 #? Comme pour /etc/hosts, `sed -i` échoue sur ce fichier dans le conteneur : `sudo nano /etc/resolv.conf` est la méthode la plus simple.
-#? L'adresse du bon serveur DNS vient de la configuration Docker de votre machine : elle peut différer de celle de la correction.
-# Le premier serveur (192.0.2.53, plage de documentation) ne peut pas répondre
-awk '/^nameserver/ && $2 != "192.0.2.53" {print $2; exit}' /etc/resolv.conf > ~/dns.txt
-grep -v '192\.0\.2\.53' /etc/resolv.conf > /tmp/resolv.new && sudo cp /tmp/resolv.new /etc/resolv.conf
+cat /etc/resolv.conf
+# Le premier serveur appartient à une plage de documentation : il ne peut pas répondre
+mort=$(awk '/^nameserver/ {print $2}' /etc/resolv.conf | grep -E '^(192\.0\.2|198\.51\.100|203\.0\.113)\.' | head -n1)
+echo "$mort" > ~/dns-injoignable.txt
+grep -vx "nameserver $mort" /etc/resolv.conf > /tmp/resolv.new && sudo cp /tmp/resolv.new /etc/resolv.conf
 #@ 21.6
 #? Dans ce conteneur, `ss -p` ne montre que les processus de root ; en revanche `ss -tlne` indique l'uid propriétaire de chaque socket, que `getent passwd` traduit en nom.
-#? `ps -u intrus -o pid,args` révèle ensuite le programme qui écoute sur 8081 : vieux-proxy, lancé par intrus.
-#? Piège classique : oublier `sudo` pour le `kill`, alors que le processus appartient à un autre compte ; `sudo pkill -x vieux-proxy` fonctionne aussi.
+#? `ps -u compte -o pid,args` révèle ensuite le programme qui écoute sur 8081 ; son nom et son propriétaire sont tirés au sort à la mise en place, la réponse d'un camarade ne vaut donc pas pour vous.
+#? Piège classique : oublier `sudo` pour le `kill`, alors que le processus appartient à un autre compte ; `sudo pkill -x nom-du-programme` fonctionne aussi.
 #? Relancer `appli-caisse` à la fin confirme que le port est bien libéré.
 # ss -p ne voit pas les processus des autres comptes dans ce conteneur : ss -e donne l'uid du socket
 uid=$(ss -Htlne 'sport = :8081' | grep -o 'uid:[0-9]*' | head -n1 | cut -d: -f2)
@@ -1347,12 +1422,16 @@ sudo kill "$pid"
 sleep 0.5
 appli-caisse
 #@ 21.7
-#? Un service lié à 127.0.0.1 n'accepte que les connexions venant de la boucle locale : l'adresse de eth0 obtient donc « connection refused ».
-#? Il suffit de passer `BIND` à `0.0.0.0` (toutes les interfaces) dans /etc/mini-web.conf ; indiquer l'adresse de eth0 est également accepté.
-#? Piège classique : modifier la configuration sans redémarrer le service ; `sudo mini-web-ctl restart` lui fait relire le fichier.
-# mini-web n'écoute que sur la boucle locale : on l'ouvre sur toutes les interfaces
+#? Un service lié à 127.0.0.1 n'accepte que les connexions venant de la boucle locale : l'adresse de eth0 obtient donc « connection refused » (`ss -tln | grep 8088` le montre).
+#? Reste à trouver où cette adresse est fixée : l'en-tête de /usr/local/sbin/mini-web indique qu'il lit /etc/mini-web.conf, puis /etc/mini-web.d/*.conf, puis /etc/default/mini-web. Selon les serveurs, c'est BIND dans le fichier principal, une surcharge dans mini-web.d ou MINIWEB_BIND dans /etc/default.
+#? `grep -rn BIND` sur ces trois emplacements montre la valeur qui l'emporte (la dernière lue) ; on la passe à `0.0.0.0` (toutes les interfaces), ou à l'adresse de eth0.
+#? Piège classique : corriger le fichier principal alors qu'une surcharge lue ensuite remet 127.0.0.1, ou oublier de redémarrer le service (`sudo mini-web-ctl restart`).
+# mini-web n'écoute que sur la boucle locale : où cette adresse est-elle fixée ?
 ss -tln | grep 8088
-sudo sed -i 's/^BIND=.*/BIND=0.0.0.0/' /etc/mini-web.conf
+sudo grep -rnE '^(MINIWEB_)?BIND=' /etc/mini-web.conf /etc/mini-web.d /etc/default/mini-web 2>/dev/null
+for f in $(sudo grep -rlE '^(MINIWEB_)?BIND=' /etc/mini-web.conf /etc/mini-web.d /etc/default/mini-web 2>/dev/null); do
+    sudo sed -i -E 's/^(MINIWEB_)?BIND=.*/\1BIND=0.0.0.0/' "$f"
+done
 sudo mini-web-ctl restart
 #@ 21.8
 #? `nc -z` tente une connexion TCP sans rien envoyer : son code de retour indique si quelqu'un accepte les connexions sur ce port.
@@ -1407,12 +1486,20 @@ ssh-keygen -q -t ed25519 -N '' -C integration-continue -f ~/.ssh/ci_key
 echo "command=\"/usr/local/bin/deploy-only\",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding $(cat ~/.ssh/ci_key.pub)" | ssh deploy@localhost 'cat >> ~/.ssh/authorized_keys'
 ssh -i ~/.ssh/ci_key -o IdentitiesOnly=yes deploy@localhost whoami
 #@ 22.7
-#? Le message « UNPROTECTED PRIVATE KEY FILE » l'explique : le client ssh refuse une clé privée lisible par d'autres que vous, puis se rabat sur le mot de passe.
-#? `chmod 600` (ou `chmod 400`) sur la clé suffit.
-#? Piège classique : régénérer une clé ou modifier le compte sauvegarde ; c'est la clé fournie, telle quelle, qui doit fonctionner.
-# « UNPROTECTED PRIVATE KEY FILE » : le client refuse une clé privée lisible par d'autres
-chmod 600 ~/cles/sauvegarde_key
-ssh -i ~/cles/sauvegarde_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new sauvegarde@localhost true
+#? Quand ssh ne peut pas se servir d'une clé, il le dit dès les premières lignes, puis se rabat sur le mot de passe : tout est dans le message. La cause est tirée au sort à la mise en place.
+#? « UNPROTECTED PRIVATE KEY FILE » : le client refuse une clé privée lisible par d'autres que vous, `chmod 600` (ou 400) suffit.
+#? « Load key … : Permission denied » : la clé appartient à root et vous ne pouvez pas la lire ; `sudo chown etudiant: fichier` vous la rend.
+#? « Load key … : error in libcrypto » (ou « invalid format ») : le fichier a été abîmé en passant par Windows ; `cat -A` montre des `^M` en fin de ligne, que `sed -i 's/\r$//'` supprime.
+#? Piège classique : régénérer une clé ou modifier le compte sauvegarde ; c'est la clé fournie qui doit fonctionner.
+k=~/cles/sauvegarde_key
+ls -l "$k"
+# Une clé qui appartient à un autre compte : on la reprend
+[ "$(stat -c %U "$k")" = "$(whoami)" ] || sudo chown "$(whoami):" "$k"
+# Des fins de ligne Windows : on les retire
+grep -q $'\r' "$k" && sed -i 's/\r$//' "$k"
+# Une clé privée ne doit être lisible que par son propriétaire
+chmod 600 "$k"
+ssh -i "$k" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new sauvegarde@localhost true
 #@ 22.5
 #? `PasswordAuthentication no` et `PermitRootLogin no` dans /etc/ssh/sshd_config ; le sed traite aussi les lignes commentées par défaut (#PasswordAuthentication…).
 #? Toujours `sudo sshd -t` avant de recharger : une erreur de syntaxe empêcherait le service de redémarrer ; `sudo sshd -T` montre la configuration effective.
@@ -1439,7 +1526,7 @@ sleep 1
 #? `sudo find / -perm -4000 -type f 2>/dev/null` liste tous les fichiers portant le bit SUID ; sudo permet de fouiller partout et `2>/dev/null` jette les erreurs restantes.
 #? `dpkg -S chemin` indique le paquet qui a installé un fichier ; un fichier SUID qu'aucun paquet ne revendique mérite une enquête.
 #? Piège classique : sous Ubuntu, dpkg connaît certains fichiers sous leur ancien chemin (/bin/mount plutôt que /usr/bin/mount) ; sans le second essai, on accuse à tort des binaires légitimes.
-#? Les deux suspects sont lecteur-root et pam-diag : ~/suid-suspects.txt doit contenir exactement ceux-là.
+#? Les deux suspects (leurs noms et leurs emplacements) sont tirés au sort à la mise en place : seule la vérification par dpkg de votre propre liste les révèle, la liste d'un camarade ne vaut pas pour vous.
 sudo find / -perm -4000 -type f 2>/dev/null > ~/suid-files.txt
 # Un binaire légitime appartient à un paquet ; dpkg connaît parfois l'ancien chemin (/bin/… plutôt que /usr/bin/…)
 : > ~/suid-suspects.txt
@@ -1449,10 +1536,12 @@ done
 cat ~/suid-suspects.txt
 #@ 23.2
 #? `chmod u-s` retire le bit SUID sans toucher au fichier : l'auditeur peut ainsi examiner les programmes, que le ticket interdisait de supprimer.
-#? lecteur-root est une copie de cat et pam-diag une copie de find : en SUID root, ils permettaient de lire n'importe quel fichier, et même de lancer des commandes en root avec `find -exec`.
-#? Relancer `lecteur-root /etc/shadow` en simple utilisateur doit maintenant échouer avec « Permission denied ».
-/usr/local/bin/lecteur-root /etc/shadow | head -n 2
+#? L'un des suspects est une copie de cat, l'autre une copie de find, cp ou tail : en SUID root, ils permettaient de lire ou de copier n'importe quel fichier, et même de lancer des commandes en root avec `find -exec`.
+#? On traite chaque ligne de l'inventaire de l'exercice précédent : c'est lui, et non la liste d'un camarade, qui désigne vos suspects.
+#? Pour savoir quel programme se cache derrière chaque nom, `--version` suffit ; relancer ensuite la copie de cat sur /etc/shadow en simple utilisateur doit échouer avec « Permission denied ».
+ls -l $(cat ~/suid-suspects.txt)
 sudo chmod u-s $(cat ~/suid-suspects.txt)
+for f in $(cat ~/suid-suspects.txt); do "$f" --version 2>/dev/null | head -n 1; done
 #@ 23.3
 #? `find /etc -type f -perm -o+w` trouve les fichiers que « les autres » peuvent modifier : ici /etc/app-secret.conf.
 #? `chown root:root` puis `chmod 600` : seul root peut désormais le lire et le modifier.
@@ -1464,14 +1553,15 @@ sudo chmod 600 "$f"
 # Le mot de passe a pu être lu par n'importe qui : on le remplace
 sudo sed -i "s/^db_password=.*/db_password=$(head -c 12 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')/" "$f"
 #@ 23.4
-#? Un compte d'UID 0 est root, quel que soit son nom : `awk -F: '$3 == 0 {print $1}' /etc/passwd` les liste tous.
-#? `userdel` refuse ici, car des processus tournent avec l'UID 0 ; on neutralise donc toor : mot de passe verrouillé (`passwd -l`) et shell `/usr/sbin/nologin` (ou `/bin/false`).
-#? Faire expirer le compte avec `chage -E 0 toor` est accepté à la place du verrouillage du mot de passe, mais il faut quand même retirer le shell.
-#? Ne tentez surtout pas `userdel -r toor` : son dossier personnel est /root.
+#? Un compte d'UID 0 est root, quel que soit son nom : `awk -F: '$3 == 0 {print $1}' /etc/passwd` les liste tous. Le nom du faux root est tiré au sort à la mise en place (toor, sysmaint…) : seule cette recherche le révèle.
+#? `userdel` refuse ici, car des processus tournent avec l'UID 0 ; on neutralise donc le compte : mot de passe verrouillé (`passwd -l`) et shell `/usr/sbin/nologin` (ou `/bin/false`).
+#? Faire expirer le compte avec `chage -E 0 nom` est accepté à la place du verrouillage du mot de passe, mais il faut quand même retirer le shell.
+#? Ne tentez surtout pas `userdel -r` sur ce compte : son dossier personnel est /root.
 awk -F: '$3 == 0 {print $1}' /etc/passwd > ~/uid-zero.txt
-# userdel refuse (des processus tournent en UID 0) : on neutralise le compte
-sudo passwd -l toor
-sudo usermod -s /usr/sbin/nologin toor
+# userdel refuse (des processus tournent en UID 0) : on neutralise le compte qui n'est pas root
+faux=$(awk -F: '$3 == 0 && $1 != "root" {print $1}' /etc/passwd)
+sudo passwd -l "$faux"
+sudo usermod -s /usr/sbin/nologin "$faux"
 #@ 23.5
 #? `chage -E 0` fait expirer le compte : plus aucune connexion n'est possible, par mot de passe comme par clé SSH, sans rien supprimer ; `usermod -e 1` a le même effet.
 #? Piège classique : `passwd -l` ne verrouille que le mot de passe (la clé SSH fonctionne encore), et un shell nologin n'empêche pas un tunnel avec `ssh -N`.
@@ -1486,17 +1576,19 @@ sudo chage -E 0 securise
 # Le bit sticky : dans un dossier ouvert à tous, chacun ne supprime que ses fichiers
 sudo chmod +t /srv/depot
 #@ 23.7
-#? La umask retire des droits à la création : `umask 000` dans /etc/profile.d/zz-confort.sh créait des fichiers en 666, modifiables par tous.
-#? `grep -rn umask /etc/profile /etc/profile.d /etc/bash.bashrc` retrouve le coupable ; on supprime cette seule ligne, ou on la remplace par `umask 022`.
-#? Piège classique : supprimer tout le fichier, ce qui ferait perdre HISTTIMEFORMAT et l'alias, ou ne corriger que son propre ~/.bashrc, ce qui laisse les autres comptes exposés.
+#? La umask retire des droits à la création : un `umask 000` exécuté à chaque ouverture de session créait des fichiers en 666, modifiables par tous.
+#? Marc a rangé ses réglages de confort à un endroit tiré au sort : /etc/profile.d/, /etc/profile ou /etc/bash.bashrc. `grep -rn umask /etc/profile /etc/profile.d /etc/bash.bashrc` retrouve le coupable chez vous.
+#? On supprime cette seule ligne, ou on la remplace par `umask 022`. Piège classique : supprimer tout le bloc, ce qui ferait perdre HISTTIMEFORMAT et l'alias, ou ne corriger que son propre ~/.bashrc, ce qui laisse les autres comptes exposés.
 #? La nouvelle umask ne s'applique qu'aux sessions ouvertes après la correction.
 grep -rn umask /etc/profile /etc/profile.d /etc/bash.bashrc
-sudo sed -i '/^umask 000/d' /etc/profile.d/zz-confort.sh
+for f in $(grep -rlE '^\s*umask\s+0+\s*$' /etc/profile /etc/profile.d /etc/bash.bashrc); do
+    sudo sed -i -E '/^\s*umask\s+0+\s*$/d' "$f"
+done
 #@ 23.8
 #? Une tâche root ne doit exécuter qu'un fichier que seul root peut modifier : le fichier lui-même, mais aussi chacun de ses dossiers, puisqu'on peut remplacer un fichier dans un dossier où l'on a le droit d'écrire.
-#? `namei -l chemin` affiche les droits de chaque élément du chemin : purge-cache.sh est modifiable par tous (777), et rotation-exports.sh est remplaçable car /srv/outils est modifiable par le groupe equipe.
-#? Piège classique : signaler stats-ventes, qui est sain, ou oublier le cas du dossier ; la liste doit être exacte.
-#? La correction garde les scripts exécutables (`chmod 755`, `chmod g-w` sur le dossier) : un `chmod 644` casserait la tâche, et déplacer le script est interdit.
+#? `namei -l chemin` affiche le propriétaire et les droits de chaque élément du chemin. Trois défauts sont possibles, répartis au hasard entre les scripts : un fichier modifiable par tous (777), un dossier modifiable par un groupe (on peut y remplacer le script), ou un fichier qui appartient à un autre compte que root.
+#? Piège classique : recopier la liste d'un camarade, signaler un script sain, ou oublier le cas du dossier ; la liste doit être exacte.
+#? La correction garde les scripts exécutables (`chown root:root`, `chmod go-w` sur le fichier ou le dossier en cause) : un `chmod 644` casserait la tâche, et déplacer le script est interdit.
 # Pour chaque script lancé en root : le fichier et chacun de ses dossiers doivent appartenir à root, sans écriture pour le groupe ni les autres
 : > ~/cron-risque.txt
 for p in $(grep -hvE '^\s*(#|$)' /etc/cron.d/* | awk '$6 == "root" && $7 ~ /^\// {print $7}' | sort -u); do
@@ -1509,12 +1601,21 @@ for p in $(grep -hvE '^\s*(#|$)' /etc/cron.d/* | awk '$6 == "root" && $7 ~ /^\//
     [ $risque = 1 ] && echo "$p" >> ~/cron-risque.txt
 done
 cat ~/cron-risque.txt
-sudo chmod 755 /opt/scripts/purge-cache.sh
-sudo chmod g-w /srv/outils
+# Correction : chaque élément du chemin qui n'appartient pas à root ou qui est modifiable par le groupe ou les autres
+for p in $(cat ~/cron-risque.txt); do
+    d=$p
+    while [ "$d" != / ]; do
+        if [ -n "$(find "$d" -maxdepth 0 \( ! -user root -o -perm /022 \))" ]; then
+            sudo chown root "$d"
+            sudo chmod go-w "$d"
+        fi
+        d=$(dirname "$d")
+    done
+done
 #@ 23.9
 #? C'est la clé elle-même, la longue suite de caractères, qui donne l'accès ; le commentaire en fin de ligne s'écrit librement et ne prouve rien.
 #? On relève donc la clé de marc@portable dans /root/.ssh/authorized_keys, puis on la cherche dans tous les authorized_keys du système (`sudo find / -xdev -name authorized_keys`).
-#? Piège classique : ne supprimer que la ligne commentée marc@portable ; la même clé se cache chez deploy et sauvegarde sous d'autres commentaires.
+#? Piège classique : ne supprimer que la ligne commentée marc@portable ; la même clé se cache chez deux autres comptes, sous d'autres commentaires. Ces comptes sont tirés au sort à la mise en place : seule la recherche de la clé dans tous les fichiers les révèle.
 #? Le sed utilise `#` comme délimiteur parce qu'une clé peut contenir des « / » ; supprimer des fichiers entiers couperait votre propre accès à deploy.
 #? La clé de Marc est générée à la mise en place : sa valeur exacte diffère d'une machine à l'autre.
 # C'est la clé elle-même qu'on cherche, pas son commentaire
@@ -1526,15 +1627,20 @@ ssh deploy@localhost true
 ''',
     24: r'''
 #@ 24.1
-#? Trois problèmes se cachent l'un derrière l'autre : fichier non exécutable, shebang `#!/bin/bsh` inexistant et fins de ligne Windows (CRLF).
-#? `cat -A` révèle les `^M` (le caractère \r) ; `sed -i 's/\r$//'` les supprime, et `dos2unix` fait de même lorsqu'il est installé.
-#? `#!/bin/bash`, `#!/bin/sh` ou `#!/usr/bin/env bash` sont acceptés comme shebang ; `chmod +x` rend le script exécutable.
-#? Piège classique : lancer `bash deploy.sh`, qui masque le shebang et les droits ; il faut que `~/depannage/deploy.sh` fonctionne seul.
-# Trois problèmes : fins de ligne Windows (CRLF), shebang « /bin/bsh », fichier non exécutable
+#? Plusieurs problèmes se cachent l'un derrière l'autre, tirés au sort parmi ce que Windows fait subir à un script : fichier non exécutable, fins de ligne Windows (CRLF), shebang erroné (`#!/bin/bsh`), fichier enregistré en UTF-16, ou marque d'ordre des octets (BOM) UTF-8 collée devant le shebang.
+#? `file deploy.sh` annonce l'encodage et les fins de ligne ; `cat -A` révèle les `^M` (le caractère \r) et les octets placés avant `#!`.
+#? Remèdes : `iconv -f UTF-16 -t UTF-8` pour l'UTF-16, `sed -i '1s/^\xEF\xBB\xBF//'` pour le BOM, `sed -i 's/\r$//'` (ou `dos2unix`) pour les fins de ligne, un shebang valide (`#!/bin/bash`, `#!/bin/sh` ou `#!/usr/bin/env bash`) et `chmod +x`.
+#? Piège classique : recopier les commandes d'un camarade (un `sed` sur un fichier UTF-16 le massacre) ou lancer `bash deploy.sh`, qui masque le shebang et les droits ; il faut que `~/depannage/deploy.sh` fonctionne seul.
 f=~/depannage/deploy.sh
-sed -i 's/\r$//' "$f"
-sed -i '1s|.*|#!/bin/bash|' "$f"
+file "$f"
+# Enregistré en UTF-16 : on le convertit en UTF-8
+case $(file -b "$f") in *UTF-16*) iconv -f UTF-16 -t UTF-8 "$f" > /tmp/deploy.sh && cat /tmp/deploy.sh > "$f" ;; esac
+# BOM UTF-8 en tête et fins de ligne Windows (CRLF)
+sed -i '1s/^\xEF\xBB\xBF//; s/\r$//' "$f"
+# Un shebang qui désigne un interpréteur inexistant
+head -n1 "$f" | grep -qxE '#!/bin/(ba)?sh' || sed -i '1s|.*|#!/bin/bash|' "$f"
 chmod +x "$f"
+cat -A "$f"
 #@ 24.2
 #? `sudo find /var/log -type f -size +10M` (ou `du -ah /var/log | sort -h | tail`) désigne le journal énorme.
 #? Piège classique : le supprimer ; l'application le garde ouvert, l'espace n'est donc pas libéré et elle continue d'écrire dans un fichier invisible.
@@ -1545,52 +1651,88 @@ echo "$big" > ~/gros-log.txt
 # On vide le fichier sans le supprimer : l'application le garde ouvert
 sudo truncate -s 0 "$big"
 #@ 24.3
-#? Avec StrictModes (activé par défaut), sshd ignore authorized_keys si ce fichier, ~/.ssh ou le dossier personnel sont modifiables par le groupe ou par les autres.
-#? `sudo tail /var/log/auth.log` donne la raison du refus, et `namei -l /home/ops/.ssh/authorized_keys` montre les droits de chaque élément.
-#? Correction : dossier personnel sans écriture pour le groupe et les autres (755 ou plus strict), .ssh en 700, authorized_keys en 600, le tout appartenant à ops.
-#? Piège classique : désactiver StrictModes ; le symptôme disparaît, mais n'importe qui pourrait alors ajouter sa clé.
-# StrictModes : ni le dossier personnel, ni .ssh, ni authorized_keys ne doivent être modifiables par d'autres
+#? La cause du refus est tirée au sort ; ssh et sshd la donnent toujours : `ssh -v` côté client, `sudo tail /var/log/auth.log` côté serveur. C'est la démarche qui compte, la correction d'un camarade ne vaut pas forcément pour vous.
+#? « Authentication refused: bad ownership or modes » : avec StrictModes (activé par défaut), sshd ignore authorized_keys si ce fichier, ~/.ssh ou le dossier personnel sont modifiables par le groupe ou par les autres ; `namei -l` montre les droits de chaque élément (dossier personnel sans écriture pour les autres, .ssh en 700, authorized_keys en 600, le tout à ops).
+#? « … but not from a permitted host » : une option `from="…"` placée devant la clé dans authorized_keys la réserve à d'autres adresses ; on retire cette option (ou on y ajoute 127.0.0.1).
+#? « account has expired » : `sudo chage -l ops` le confirme, `sudo chage -E -1 ops` annule l'expiration. « This account is currently not available » : le shell de ops est nologin, `sudo usermod -s /bin/bash ops` lui rend un vrai shell.
+#? Piège classique : désactiver StrictModes ou supprimer la clé ; le symptôme disparaît parfois, mais la garde est baissée.
+ssh -v -i ~/depannage/cle_ops -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new ops@localhost true 2>&1 | tail -n 3
 sudo tail -n 5 /var/log/auth.log
-sudo chmod 755 /home/ops
+# Droits : ni le dossier personnel, ni .ssh, ni authorized_keys ne doivent être modifiables par d'autres
+namei -l /home/ops/.ssh/authorized_keys
+sudo chmod go-w /home/ops
 sudo chown -R ops:ops /home/ops/.ssh
 sudo chmod 700 /home/ops/.ssh
 sudo chmod 600 /home/ops/.ssh/authorized_keys
+# Une clé réservée à d'autres adresses : on retire l'option from="…"
+sudo grep -q '^from=' /home/ops/.ssh/authorized_keys && sudo sed -i -E 's/^from="[^"]*" //' /home/ops/.ssh/authorized_keys
+# Un compte expiré : on annule l'expiration
+sudo chage -l ops
+[ -z "$(sudo getent shadow ops | cut -d: -f8)" ] || sudo chage -E -1 ops
+# Un shell qui refuse toute session : on lui rend bash
+getent passwd ops | cut -d: -f7 | grep -qE '(nologin|false)$' && sudo usermod -s /bin/bash ops
+ssh -i ~/depannage/cle_ops -o IdentitiesOnly=yes -o BatchMode=yes ops@localhost true && echo "connexion rétablie"
 #@ 24.4
-#? Quatre erreurs : cron ignore les fichiers de /etc/cron.d dont le nom contient un point, la ligne n'a pas de 6e champ utilisateur, le script est appelé sans chemin absolu, et il n'est pas exécutable.
-#? cron utilise un PATH minimal (/usr/bin:/bin) : un chemin comme `rapport-cron.sh` n'y est pas trouvé, d'où le chemin complet /usr/local/bin/rapport-cron.sh.
-#? Renommer le fichier avec `sudo mv` puis corriger sa ligne est tout aussi valable que le recréer.
-#? `grep CRON /var/log/syslog` montre ce que cron exécute réellement ; il faut ensuite attendre au moins deux exécutions.
-# Quatre erreurs : nom de fichier avec un point (ignoré), champ utilisateur absent, chemin relatif (PATH de cron), script non exécutable
-sudo rm /etc/cron.d/rapport.cron
+#? Les erreurs de Marc sont tirées au sort parmi les pièges de l'étape cron ; `grep CRON /var/log/syslog` montre ce que cron exécute réellement, et les fichiers qu'il refuse avec la raison (WRONG FILE OWNER, INSECURE MODE, Missing newline before EOF).
+#? Côté fichier : cron ignore ceux dont le nom contient un point, ceux qui n'appartiennent pas à root ou sont modifiables par le groupe ou les autres, et une dernière ligne sans retour à la ligne ; chaque ligne a besoin du 6e champ utilisateur et du chemin absolu du script (cron n'a qu'un PATH minimal).
+#? Côté script : lancez-le vous-même avec sudo pour voir l'erreur (une fois réparé, ce passage manuel ajoute une ligne au journal : attendez ensuite deux exécutions de cron). Il doit être exécutable, et son shebang doit désigner un interpréteur qui existe : un `#!/bin/bsh`, ou un `#!/bin/bash` suivi d'un \r invisible (fins de ligne Windows, « bad interpreter »), le rendent inutilisable.
+#? Réécrire proprement le fichier de la tâche (ici avec `sudo tee`) règle d'un coup les défauts du fichier ; il faut ensuite attendre au moins deux exécutions.
+# Le fichier de Marc est refusé ou mal écrit : on le remplace par une tâche propre (nom sans point, root, 644, retour à la ligne)
+grep CRON /var/log/syslog | tail -n 5
+ls -l /etc/cron.d
+for f in $(sudo grep -l rapport-cron /etc/cron.d/*); do sudo rm "$f"; done
 echo '* * * * * root /usr/local/bin/rapport-cron.sh' | sudo tee /etc/cron.d/rapport > /dev/null
-sudo chmod +x /usr/local/bin/rapport-cron.sh
+# Le script : fins de ligne Windows, shebang, droit d'exécution
+s=/usr/local/bin/rapport-cron.sh
+sudo sed -i 's/\r$//' "$s"
+head -n1 "$s" | grep -qx '#!/bin/bash' || sudo sed -i '1s|.*|#!/bin/bash|' "$s"
+sudo chmod 755 "$s"
+head -n1 "$s" | cat -A
 #@ 24.5
-#? On lit chaque message de `--check`, on corrige, on relance : c'est la méthode « une hypothèse, une correction ».
-#? Premier message : PORT doit être un nombre, on écrit donc `PORT=8080` dans /etc/mon-service.conf.
-#? Ensuite, le dossier des journaux doit exister et appartenir à monsvc : `sudo mkdir -p` puis `sudo chown monsvc: /var/log/mon-service`.
+#? On lit chaque message de `--check`, on corrige, on relance : c'est la méthode « une hypothèse, une correction ». Les erreurs de configuration sont tirées au sort, d'où la boucle du corrigé, qui réagit au message obtenu.
+#? « configuration illisible » : le fichier n'est lisible que par root, `chmod 644` suffit (il ne contient pas de secret). « PORT=… invalide » : il faut un nombre entre 1024 et 65535, ici `PORT=8080`.
+#? « LOG_DIR=… n'existe pas » ou « ne peut pas écrire » : le dossier doit être /var/log/mon-service (attention aux fautes de frappe dans LOG_DIR), exister et appartenir à monsvc.
+#? Un message qui paraît absurde (un port ou un dossier qui semble correct) trahit souvent des fins de ligne Windows : `sudo cat -A /etc/mon-service.conf` montre les `^M`, `sed -i 's/\r$//'` les retire.
 #? Piège classique : `chmod 777` sur le dossier ou changer LOG_DIR ; les journaux doivent rester dans /var/log/mon-service, sans être modifiables par les autres.
-sudo -u monsvc mon-service --check
-sudo sed -i 's/^PORT=.*/PORT=8080/' /etc/mon-service.conf
-sudo mkdir -p /var/log/mon-service
-sudo chown monsvc: /var/log/mon-service
+C=/etc/mon-service.conf
+sudo cat -A "$C"
+for essai in 1 2 3 4 5; do
+    msg=$(sudo -u monsvc mon-service --check 2>&1) && break
+    echo "$msg"
+    case $msg in
+        *illisible*) sudo chmod 644 "$C" ;;
+        *PORT=*) sudo sed -i 's/\r$//' "$C"; sudo sed -i 's/^PORT=.*/PORT=8080/' "$C" ;;
+        *"n'existe pas"*) sudo sed -i 's/\r$//' "$C"; sudo sed -i 's|^LOG_DIR=.*|LOG_DIR=/var/log/mon-service|' "$C"
+                          sudo mkdir -p /var/log/mon-service; sudo chown monsvc: /var/log/mon-service ;;
+        *"ne peut pas écrire"*) sudo chown monsvc: /var/log/mon-service ;;
+    esac
+done
+sudo chmod 755 /var/log/mon-service
 sudo -u monsvc mon-service --check
 #@ 24.6
-#? Pour atteindre un fichier, il faut pouvoir traverser chaque dossier du chemin (droit x) ; `namei -l` montre que /srv/app, en 700, bloque webapp.
-#? Sur un dossier, x sans r permet de le traverser sans le lister : `chmod 711 /srv/app` (ou `chmod o+x /srv/app`) suffit.
-#? Piège classique : `chmod 755` laisse lister /srv/app, et un `chmod -R` ouvrirait les secrets ; /srv/app/secrets, en 700, reste protégé.
-# Il faut pouvoir traverser /srv/app (x) sans pouvoir le lister (r)
+#? Pour atteindre un fichier, il faut pouvoir traverser chaque dossier du chemin (droit x) ; `namei -l` montre lequel bloque webapp, et ce n'est pas le même chez tout le monde : /srv/app, ou /srv/app/public (fermé aux autres, ou lisible mais pas traversable).
+#? Sur un dossier, x sans r permet de le traverser sans le lister : on ajoute donc seulement le droit x des autres (`chmod o+x`) sur chaque dossier du chemin qui ne l'a pas.
+#? Piège classique : `chmod 755` sur /srv/app laisse lister son contenu, et un `chmod -R` ouvrirait les secrets ; /srv/app/secrets, en 700, reste protégé.
+# Chaque dossier du chemin doit être traversable (x) par les autres, sans rien ouvrir de plus
 namei -l /srv/app/public/index.html
-sudo chmod 711 /srv/app
+for d in /srv/app /srv/app/public; do
+    [ -n "$(find "$d" -maxdepth 0 ! -perm -o=x 2>/dev/null)" ] && sudo chmod o+x "$d"
+done
+namei -l /srv/app/public/index.html
 #@ 24.7
-#? sshd_config commence par `Include /etc/ssh/sshd_config.d/*.conf` : ces fichiers sont lus en premier, et pour cette option la première valeur lue l'emporte.
-#? `sudo sshd -T | grep -i passwordauthentication` montre la configuration effective ; `grep -ri` sur sshd_config.d/ trouve le fichier de l'hébergeur.
-#? Supprimer ce fichier, ou y écrire `PasswordAuthentication no`, sont deux corrections valables ; ensuite `sudo sshd -t` et `sudo service ssh reload`.
-#? Piège classique : retoucher sshd_config, qui dit déjà `no` et n'est donc pas en cause.
-# Un fichier inclus en tête de sshd_config réactive les mots de passe : la première valeur lue l'emporte
-sudo sshd -T | grep -i passwordauthentication
-grep -n Include /etc/ssh/sshd_config
-grep -ri passwordauthentication /etc/ssh/sshd_config.d/
-sudo rm /etc/ssh/sshd_config.d/50-cloud-init.conf
+#? L'hébergeur a rouvert les mots de passe d'une façon tirée au sort ; `sudo sshd -T` (configuration effective) et `sudo sshd -T -C user=deploy,host=localhost,addr=127.0.0.1` (pour une connexion précise) permettent de la trouver.
+#? sshd_config commence par `Include /etc/ssh/sshd_config.d/*.conf` : ces fichiers, quel que soit leur nom, sont lus en premier, et la première valeur lue l'emporte ; `grep -ri` sur sshd_config.d/ trouve celui de l'hébergeur.
+#? Un bloc `Match Address 127.0.0.1` en fin de sshd_config ne change rien à `sshd -T` sans `-C`, mais rouvre les mots de passe pour les connexions locales.
+#? `KbdInteractiveAuthentication yes` demande aussi le mot de passe (par PAM) : `PasswordAuthentication no` ne suffit pas, il faut la remettre à `no`.
+#? Supprimer le réglage fautif (ou le passer à `no`) est la correction ; ensuite `sudo sshd -t` et `sudo service ssh reload`. Piège classique : retoucher la ligne `PasswordAuthentication no` de sshd_config, qui n'est pas en cause.
+sudo sshd -T | grep -iE 'passwordauthentication|kbdinteractive'
+sudo sshd -T -C user=deploy,host=localhost,addr=127.0.0.1 | grep -iE 'passwordauthentication|kbdinteractive'
+grep -n -e Include -e '^Match' /etc/ssh/sshd_config
+sudo grep -rniE 'passwordauthentication|kbdinteractiveauthentication' /etc/ssh/sshd_config.d/
+# Les fichiers inclus qui rouvrent un mode d'authentification par mot de passe : on les retire
+for f in $(sudo grep -rliE '^\s*(PasswordAuthentication|KbdInteractiveAuthentication)\s+yes' /etc/ssh/sshd_config.d/); do sudo rm "$f"; done
+# Un bloc Match qui rouvre les mots de passe : on le referme
+sudo sed -i -E '/^\s*Match /,$ s/^(\s*PasswordAuthentication)\s+yes/\1 no/I' /etc/ssh/sshd_config
 sudo sshd -t
 sudo service ssh reload
 sleep 1

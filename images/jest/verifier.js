@@ -24,6 +24,16 @@
  *   config  --expr EXPR                      la configuration Jest de l'étudiant (variable c, et
  *                                            where = « package.json » ou « jest.config.js »)
  *   workflow fichier                         workflow GitHub Actions attendu au jour 10
+ *   variante CLE VALEUR [--force] [fichier...]
+ *                                            enregistre la variante de l'étudiant pour CLE (déjà
+ *                                            tirée : conservée ; fichiers déjà livrés : variante 0)
+ *
+ * Variantes (variantes.json) : certaines données métier (tarifs, seuils, codes promo, délais…)
+ * changent d'un étudiant à l'autre, pour qu'un fichier de tests copié chez un voisin échoue.
+ * Les fichiers privés (référence, fichiers livrés, tests cachés, mutants) contiennent des
+ * marqueurs {{NOM}}, remplacés par les valeurs de la variante de l'étudiant. Toute commande
+ * accepte --variantes CLE=N,CLE=N (valeurs enregistrées par la plateforme), prioritaires sur
+ * le fichier d'état écrit à la mise en place.
  */
 const fs = require('fs');
 const path = require('path');
@@ -38,6 +48,12 @@ const MUTANTS = JSON.parse(fs.readFileSync(path.join(PRIVATE, 'mutants.json'), '
 const ATTEMPTS = '/var/lib/lab/jest-tentatives.json';
 // À partir de cette tentative ratée, kill décrit un défaut non détecté
 const HINT_AFTER = 3;
+const VARIANTES = JSON.parse(fs.readFileSync(path.join(PRIVATE, 'variantes.json'), 'utf8'));
+// Variantes tirées pour l'étudiant : dans son dossier personnel (conservé quand le conteneur est
+// recréé), mais à root et illisible pour lui
+const VARIANTES_ETAT = '/home/etudiant/.lab-variantes.json';
+// Variantes transmises par la plateforme (--variantes) : prioritaires sur le fichier d'état
+const imposees = {};
 
 // ─── Utilitaires ──────────────────────────────────────────────────────────
 
@@ -82,6 +98,61 @@ function mutantSet(id) {
   const set = MUTANTS[id];
   if (!set) throw new Error(`Jeu de mutants inconnu : ${id}`);
   return set;
+}
+
+// ─── Variantes ────────────────────────────────────────────────────────────
+
+/** Variantes enregistrées à la mise en place (fichier ignoré s'il n'appartient pas à root). */
+function lireEtat() {
+  const st = fs.lstatSync(VARIANTES_ETAT, { throwIfNoEntry: false });
+  if (!st || !st.isFile() || st.uid !== 0 || (st.mode & 0o022)) return {};
+  try { return JSON.parse(fs.readFileSync(VARIANTES_ETAT, 'utf8')); } catch (e) { return {}; }
+}
+
+function ecrireEtat(etat) {
+  fs.writeFileSync(VARIANTES_ETAT, JSON.stringify(etat));
+  fs.chownSync(VARIANTES_ETAT, 0, 0);
+  fs.chmodSync(VARIANTES_ETAT, 0o600);
+}
+
+function numeroValide(cle, v) {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n < VARIANTES[cle].valeurs.length ? n : null;
+}
+
+let valeursCache = null;
+
+/** Valeurs des marqueurs {{NOM}} pour cet étudiant (variante 0 pour une clé jamais tirée). */
+function valeurs() {
+  if (valeursCache) return valeursCache;
+  const etat = { ...lireEtat(), ...imposees };
+  valeursCache = {};
+  for (const [cle, def] of Object.entries(VARIANTES)) {
+    const n = numeroValide(cle, etat[cle]);
+    Object.assign(valeursCache, def.valeurs[n === null ? 0 : n]);
+  }
+  return valeursCache;
+}
+
+function rendre(texte) {
+  const v = valeurs();
+  return String(texte).replace(/\{\{(\w+)\}\}/g, (m, nom) => {
+    if (!(nom in v)) throw new Error(`Marqueur de variante inconnu : ${nom}`);
+    return String(v[nom]);
+  });
+}
+
+function rendreFichier(file) {
+  const code = fs.readFileSync(file, 'utf8');
+  if (code.includes('{{')) fs.writeFileSync(file, rendre(code));
+}
+
+function rendreArbre(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, e.name);
+    if (e.isDirectory()) rendreArbre(abs);
+    else if (e.isFile()) rendreFichier(abs);
+  }
 }
 
 /** Retire les commentaires d'un code JavaScript (les « // » précédés de « : » sont gardés : URL). */
@@ -158,7 +229,9 @@ function sandbox({ src = 'ref', tests = [], mutations = [], hiddenSets = [], pro
   const srcDir = src === 'student' ? path.join(PROJECT, 'src') : path.join(PRIVATE, 'ref', 'src');
   if (!fs.existsSync(srcDir)) fail("Le dossier src/ du projet est introuvable : ouvrez l'étape pour le recréer.");
   copyTree(srcDir, path.join(dir, 'src'), 'src');
+  // Référence : mutants appliqués sur le gabarit, puis marqueurs remplacés par la variante de l'étudiant
   for (const m of mutations) applyMutation(dir, m);
+  if (src !== 'student') rendreArbre(path.join(dir, 'src'));
   if (!projectFiles) {
     for (const t of tests) {
       copyRegular(path.join(PROJECT, t), path.join(dir, t), t);
@@ -169,6 +242,7 @@ function sandbox({ src = 'ref', tests = [], mutations = [], hiddenSets = [], pro
   }
   for (const set of hiddenSets) {
     fs.cpSync(path.join(PRIVATE, 'hidden', set), path.join(dir, '__hidden__', set), { recursive: true });
+    rendreArbre(path.join(dir, '__hidden__', set));
   }
   if (projectFiles) {
     for (const f of ['package.json', 'jest.config.js']) {
@@ -312,6 +386,7 @@ function cmdDeliver(o) {
         for (const m of mutantSet(o.set).filter((x) => x.file === rel)) applyMutation(PROJECT, m);
       }
     }
+    rendreFichier(dest);
     fs.chmodSync(dest, 0o644);
   }
   const nm = path.join(PROJECT, 'node_modules');
@@ -422,7 +497,7 @@ function cmdKill(o) {
   if (n < HINT_AFTER) {
     fail(`${head} Cherchez quelles erreurs plausibles vos tests ne verraient pas (un défaut vous sera décrit à partir de la ${HINT_AFTER}e vérification ratée).`);
   }
-  fail(`${head} Par exemple : « ${survivors[0].desc} ».`);
+  fail(`${head} Par exemple : « ${rendre(survivors[0].desc)} ».`);
 }
 
 function cmdSurvive(o) {
@@ -435,7 +510,7 @@ function cmdSurvive(o) {
     cleanup([d]);
     if (!s.ok) {
       const first = s.firstFailure ? ` Premier échec : « ${s.firstFailure.name} ».` : '';
-      fail(`Vos tests échouent sur une version CORRECTE du code (${variant.desc}) : ils exigent plus que la règle.${first}`);
+      fail(`Vos tests échouent sur une version CORRECTE du code (${rendre(variant.desc)}) : ils exigent plus que la règle.${first}`);
     }
   }
 }
@@ -472,7 +547,7 @@ function cmdReproduce(o) {
   const bugs = o.each ? set : [set[0]];
   for (const bug of bugs) {
     if (!runWith([bug])) {
-      if (o.each) fail(`Aucun de vos tests n'échoue quand seul ce bug est présent : « ${bug.desc} ». Il manque un test de non-régression.`);
+      if (o.each) fail(`Aucun de vos tests n'échoue quand seul ce bug est présent : « ${rendre(bug.desc)} ». Il manque un test de non-régression.`);
       fail('Vos tests passent sur la version boguée : ils ne reproduisent pas le bug signalé.');
     }
   }
@@ -624,9 +699,31 @@ function cmdWorkflow(o) {
   if (problems.length) fail(`Workflow incomplet : ${problems.join(' ; ')}.`);
 }
 
+/**
+ * Variante de l'étudiant pour une clé : imposée (--force), sinon celle déjà tirée ; à défaut, la variante 0
+ * si l'un des fichiers indiqués a déjà été livré (étape préparée avant l'introduction des variantes),
+ * sinon la valeur tirée par la mise en place. Affiche la variante retenue.
+ */
+function cmdVariante(o) {
+  const [cle, tirage, ...fichiers] = o._;
+  if (!VARIANTES[cle]) throw new Error(`Variante inconnue : ${cle}`);
+  const n = numeroValide(cle, tirage);
+  if (n === null) throw new Error(`Variante ${tirage} invalide pour ${cle}`);
+  const etat = lireEtat();
+  let retenue = numeroValide(cle, etat[cle]);
+  if (o.force || retenue === null) {
+    const dejaLivre = fichiers.some((f) => fs.existsSync(path.join(PROJECT, f)));
+    retenue = o.force || !dejaLivre ? n : 0;
+    etat[cle] = retenue;
+    ecrireEtat(etat);
+  }
+  console.log(retenue);
+}
+
 const COMMANDS = {
   deliver: cmdDeliver, grep: cmdGrep, pass: cmdPass, kill: cmdKill, survive: cmdSurvive, hidden: cmdHidden,
   reproduce: cmdReproduce, coverage: cmdCoverage, suite: cmdSuite, config: cmdConfig, workflow: cmdWorkflow,
+  variante: cmdVariante,
 };
 
 const [command, ...rest] = process.argv.slice(2);
@@ -635,7 +732,12 @@ if (!COMMANDS[command]) {
   process.exit(2);
 }
 try {
-  COMMANDS[command](args(rest));
+  const opts = args(rest);
+  for (const item of list(opts.variantes)) {
+    const [cle, v] = item.split('=');
+    if (VARIANTES[cle] && numeroValide(cle, v) !== null) imposees[cle] = Number(v);
+  }
+  COMMANDS[command](opts);
 } catch (e) {
   msg(`Erreur du correcteur : ${e.message}`);
   process.exit(3);

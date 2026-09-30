@@ -31,12 +31,16 @@ docker ps -a --filter label=equipe=marketing --filter status=exited --filter sta
 docker rm $(docker ps -aq --filter label=equipe=marketing --filter status=exited --filter status=created)
 #@ D1.4
 #? Docker conserve le code de sortie du processus principal : `docker ps -a` l'affiche entre parenthèses dans la colonne STATUS.
-#? 127 signifie « commande introuvable » ; au-delà de 128, le processus a été tué par un signal : 137 = 128 + 9, SIGKILL.
-#? Les tâches portent des noms tirés au sort : les vôtres diffèrent. `docker inspect -f '{{.State.ExitCode}}'` sur chaque tâche donne le même résultat que ce filtrage.
+#? 127 signifie « commande introuvable » ; au-delà de 128, le processus a été tué par un signal, dont le numéro est le code moins 128 : 137 pour SIGKILL (9), 143 pour SIGTERM (15), 130 pour SIGINT (2), 129 pour SIGHUP (1).
+#? Le signal qui a tué la tâche est tiré au sort, comme les noms des tâches : ne cherchez pas un code précis, mais le seul code supérieur à 128.
+#? Lire la colonne STATUS de `docker ps -a` suffit ; la boucle ci-dessous fait la même chose avec `docker inspect -f '{{.State.ExitCode}}'`.
 docker ps -a --filter name=tache- --format '{{.Names}} {{.Status}}'
-# 137 = 128 + 9 : tuée par SIGKILL ; 127 : commande introuvable
-docker ps -a --filter name=tache- --format '{{.Names}} {{.Status}}' | grep '(137)' | cut -d' ' -f1 > ~/tuee.txt
-docker ps -a --filter name=tache- --format '{{.Names}} {{.Status}}' | grep '(127)' | cut -d' ' -f1 > ~/introuvable.txt
+# 127 : commande introuvable ; plus de 128 : tuée par un signal (code - 128 = numéro du signal)
+for t in $(docker ps -a --filter name=tache- --format '{{.Names}}'); do
+  code=$(docker inspect -f '{{.State.ExitCode}}' "$t")
+  [ "$code" = 127 ] && echo "$t" > ~/introuvable.txt
+  [ "$code" -gt 128 ] && echo "$t" > ~/tuee.txt
+done
 #@ D1.5
 #? Pas besoin de démarrer les postes : `docker diff` liste ce qui a changé dans la couche inscriptible d'un conteneur, même arrêté (A = ajouté, C = modifié, D = supprimé).
 #? La méthode consiste à écarter le bruit commun aux trois postes (historique dans `/root`, fichiers de `/tmp`, journaux de `/var/log`) : ce qui reste est l'intrus.
@@ -59,9 +63,10 @@ docker logs paiements 2>&1 | grep -c ERREUR > ~/nb-erreurs.txt
 docker logs paiements 2>&1 | grep ERREUR | tail -1 | grep -o 'TX-[0-9a-f]*' > ~/derniere-erreur.txt
 #@ D2.2
 #? `docker stop` arrête le conteneur sans le supprimer : ses journaux restent lisibles jusqu'au `docker rm`.
-#? L'arrêt prend 10 secondes : le shell en PID 1 n'a pas de gestionnaire pour SIGTERM et l'ignore, Docker finit par envoyer SIGKILL, d'où le code 137 (vous comprendrez pourquoi au jour 7).
-#? Le piège : `docker rm -f` (tout est perdu) ou `docker pause` (un conteneur en pause tourne toujours). On lit ensuite le code avec `docker inspect -f '{{.State.ExitCode}}'`.
-# 10 s d'attente : le shell en PID 1 ignore SIGTERM, il finit tué (code 137)
+#? Le code dépend de la réaction du processus au SIGTERM envoyé par `docker stop` : 0, ou un code d'erreur choisi par le programme, s'il intercepte le signal ; 143 (128 + 15) s'il en meurt ; 137 (128 + 9) s'il l'ignore, car Docker l'abat par SIGKILL après 10 s d'attente (vous comprendrez pourquoi au jour 7).
+#? Ce comportement varie d'un environnement à l'autre : on ne devine pas le code, on le lit avec `docker inspect -f '{{.State.ExitCode}}'` (ou dans la colonne STATUS de `docker ps -a`).
+#? Le piège : `docker rm -f` (tout est perdu) ou `docker pause` (un conteneur en pause tourne toujours).
+# Arrêt immédiat, ou 10 s d'attente si le processus ignore SIGTERM (il est alors tué par SIGKILL)
 docker stop traitement-nuit
 docker inspect -f '{{.State.ExitCode}}' traitement-nuit > ~/code-sortie.txt
 #@ D2.3
@@ -100,13 +105,14 @@ docker update --memory 128m --memory-swap 128m --cpus 0.5 "$(cat ~/gourmand.txt)
 (sleep 1; printf 'CLOTURE\r'; sleep 2; printf '\020\021'; sleep 1) | script -q -c "docker attach caisse" /dev/null > /dev/null
 docker logs caisse
 #@ D2.8
-#? Un conteneur arrêté refuse `docker exec`, mais son système de fichiers existe toujours : `docker diff` montre où la facture a été écrite.
-#? `docker cp` fonctionne sur un conteneur arrêté ; la forme `conteneur:/factures/.` copie le contenu du dossier, quel que soit le nom du fichier.
-#? Le nom de la facture (`facture-mars-…`) est tiré au sort. Surtout, on ne supprime pas le conteneur : il n'y aurait plus rien à récupérer.
+#? Un conteneur arrêté refuse `docker exec`, mais son système de fichiers existe toujours : `docker diff` montre où la facture a été écrite (ligne `A`).
+#? Le dossier et le nom de la facture varient d'un environnement à l'autre : on les lit dans `docker diff`, on ne les devine pas.
+#? `docker cp` fonctionne sur un conteneur arrêté ; la forme `conteneur:/dossier/.` copierait tout le contenu du dossier. Surtout, on ne supprime pas le conteneur : il n'y aurait plus rien à récupérer.
 # Le conteneur est arrêté : pas d'exec, mais diff et cp fonctionnent
 docker diff generateur-factures
+facture=$(docker diff generateur-factures | awk '$1 == "A" && $2 ~ /facture-mars-/ {print $2}')
 mkdir -p ~/factures
-docker cp generateur-factures:/factures/. ~/factures/
+docker cp "generateur-factures:$facture" ~/factures/
 ''',
     3: r'''
 #@ D3.1
@@ -124,15 +130,25 @@ sleep 2
 #@ D3.3
 #? `docker ps --filter publish=8086` révèle le conteneur qui occupe le port ; son nom est tiré au sort, il diffère donc dans votre environnement.
 #? On ne change pas les ports d'un conteneur existant : il faut le recréer. Mais sa page n'existe que dans sa couche inscriptible, que `docker rm` détruit.
-#? D'où l'ordre : `docker diff` pour la trouver, `docker cp` pour la sauver, recréation sous le même nom avec `-p 8087:80`, puis `docker cp` pour la remettre.
+#? `docker diff` liste tout ce qui a été ajouté (A) ou modifié (C) : la page, dont l'emplacement varie d'un environnement à l'autre, et parfois la configuration de nginx qui la désigne (`/etc/nginx/conf.d/default.conf`). Tous ces fichiers sont à sauver, pas seulement `index.html`.
+#? D'où l'ordre : `docker cp` pour les sauver, recréation sous le même nom avec `-p 8087:80` (`docker create`, pour tout remettre en place avant le démarrage), `docker cp` pour les remettre, puis `docker start`.
 #? Ensuite seulement, le port 8086 est libre pour `vitrine-promo`, avec le même bind mount en lecture seule qu'au D3.2.
 nom=$(docker ps --filter publish=8086 --format '{{.Names}}')
-# La page a été déposée dans la couche inscriptible : on la sauve avant de recréer le conteneur
+# Ce qui a été déposé ou modifié dans la couche inscriptible (hors fichiers de travail de nginx : /run, /var, /tmp)
 docker diff "$nom"
-docker cp "$nom":/usr/share/nginx/html/index.html /tmp/page-flash.html
+sauvegarde=$(mktemp -d)
+for f in $(docker diff "$nom" | awk '$1 != "D" {print $2}' | grep -vE '^/(run|var|tmp)(/|$)'); do
+  # docker diff liste aussi les dossiers qui contiennent les changements : on ne garde que les fichiers
+  docker exec "$nom" test -f "$f" || continue
+  mkdir -p "$sauvegarde$(dirname "$f")"
+  docker cp "$nom:$f" "$sauvegarde$f"
+done
+find "$sauvegarde" -type f
 docker rm -f "$nom"
-docker run -d --name "$nom" -p 8087:80 nginx:alpine
-docker cp /tmp/page-flash.html "$nom":/usr/share/nginx/html/index.html
+docker create --name "$nom" -p 8087:80 nginx:alpine
+# Une archive envoyée sur « / » remet chaque fichier à sa place, en recréant les dossiers manquants
+tar -C "$sauvegarde" -cf - $(ls "$sauvegarde") | docker cp - "$nom":/
+docker start "$nom"
 docker run -d --name vitrine-promo -p 8086:80 -v ~/projet/site:/usr/share/nginx/html:ro nginx:alpine
 sleep 2
 #@ D3.4
@@ -157,15 +173,16 @@ docker run -d --name maintenance -p 8089:80 -v ~/projet/maintenance:/etc/nginx/c
 sleep 2
 #@ D3.6
 #? Le processus maître de nginx tourne en root, mais ses processus de travail, qui lisent les fichiers, tournent sous l'utilisateur nginx (uid 101) : `docker top intranet` le montre.
-#? Cet uid n'est ni le vôtre ni celui de votre groupe : il relève des droits des « autres ». Il lui faut la traversée (`x`) du dossier et la lecture (`r`) du fichier.
-#? `chmod 755` sur le dossier et `644` sur le fichier suffisent, sans recréer le conteneur ; `chmod o+rx` et `o+r` sont équivalents.
-#? Les pièges : `chmod 777` (tout le monde pourrait modifier le site) ou faire tourner les processus de travail en root.
+#? Cet uid n'est ni le vôtre ni celui de votre groupe : il relève des droits des « autres ». Il lui faut la traversée (`x`) de chaque dossier du chemin et la lecture (`r`) de chaque fichier servi.
+#? Les droits fautifs varient d'un environnement à l'autre (dossier, page d'accueil, sous-dossier `equipes/` ou sa page) : `ls -lnR` les montre tous.
+#? `chmod -R o+rX` ajoute la lecture pour les « autres » partout, et la traversée sur les seuls dossiers (le `X` majuscule), sans recréer le conteneur ; `chmod 755` sur les dossiers et `644` sur les fichiers est équivalent.
+#? Les pièges : `chmod 777` (tout le monde pourrait modifier le site), oublier un sous-dossier, ou faire tourner les processus de travail en root.
 docker logs intranet 2>&1 | tail -3
 docker top intranet
-ls -ln ~/projet/intranet
-# Les processus de travail de nginx (uid 101) relèvent des droits des « autres » : lecture et traversée
-chmod 755 ~/projet/intranet
-chmod 644 ~/projet/intranet/index.html
+ls -lnR ~/projet/intranet
+# Les processus de travail de nginx (uid 101) relèvent des droits des « autres » : lecture partout, traversée des dossiers
+chmod -R o+rX ~/projet/intranet
+ls -lnR ~/projet/intranet
 ''',
     4: r'''
 #@ D4.1
@@ -249,12 +266,16 @@ docker volume rm html-maison
 docker run -d --name vitrine-maison -p 8092:80 vitrine-maison:2
 sleep 1
 #@ D5.6
-#? Le script est bien écrit dans `/work`, mais son exécution est refusée : Docker monte les tmpfs avec l'option `noexec` par défaut, visible avec `mount`.
-#? `--tmpfs /work:exec` autorise l'exécution, tout en gardant une zone de travail en mémoire qui disparaît à l'arrêt.
-#? On ne met pas `--rm` : la vérification lit les journaux du conteneur `compilateur`, qui doit donc exister après sa fin. Et pas de volume ni de bind mount sur `/work`.
+#? La zone de travail varie d'un environnement à l'autre : lancé avec `--read-only` seul, l'outil la nomme dans son erreur, et son script (`compiler.sh`) la montre aussi.
+#? Avec un tmpfs sur ce dossier, le script y est bien écrit, mais son exécution est refusée : Docker monte les tmpfs avec l'option `noexec` par défaut, visible avec `mount`.
+#? `--tmpfs <dossier>:exec` autorise l'exécution, tout en gardant une zone de travail en mémoire qui disparaît à l'arrêt.
+#? On ne met pas `--rm` : la vérification lit les journaux du conteneur `compilateur`, qui doit donc exister après sa fin. Et pas de volume ni de bind mount sur la zone de travail.
+# Où l'outil écrit-il ? Son erreur en lecture seule, ou son script, le disent
+docker run --rm --read-only compilateur:1 || true
+travail=$(docker run --rm --entrypoint cat compilateur:1 /usr/local/bin/compiler.sh | grep -o 'mkdir -p [^ ]*' | cut -d' ' -f3)
 # Les tmpfs sont montés « noexec » par défaut
-docker run --rm --read-only --tmpfs /work compilateur:1 mount | grep /work || true
-docker run --name compilateur --read-only --tmpfs /work:exec compilateur:1
+docker run --rm --read-only --tmpfs "$travail" compilateur:1 mount | grep " $travail " || true
+docker run --name compilateur --read-only --tmpfs "$travail:exec" compilateur:1
 #@ D5.7
 #? On liste d'abord : `-f dangling=true` pour les volumes inutilisés, puis le filtre de label pour repérer ceux à conserver.
 #? `docker volume prune -a` supprime les volumes nommés inutilisés, et `--filter 'label!=conserver=oui'` exclut ceux qui portent l'étiquette.
@@ -306,14 +327,22 @@ docker rm -f api
 docker run -d --name api -p 3000:3000 --restart unless-stopped boutique-api:1.0
 sleep 2
 #@ D6.4
-#? « Restarting (3) » : le programme sort avec le code 3, et `docker logs` explique qu'il ne trouve pas `/config/stock.conf`.
-#? On lui fournit le dossier de configuration par un bind mount en lecture seule ; monter le fichier seul (`-v ~/projet/synchro/stock.conf:/config/stock.conf:ro`) fonctionne aussi.
+#? « Restarting (3) » : le programme sort avec le code 3, et `docker logs` explique ce qui lui manque. Selon l'environnement, il cherche `stock.conf` dans un dossier précis, ou attend son chemin dans la variable `SYNCHRO_CONF`.
+#? On lui fournit le dossier de configuration par un bind mount en lecture seule, là où il le cherche (et la variable s'il la réclame) ; monter le fichier seul fonctionne aussi.
 #? `--restart on-failure:5` ne relance qu'en cas d'échec, 5 fois au plus ; la politique se fixe à la création, d'où la recréation du conteneur.
 #? Le contenu de `stock.conf` est tiré au sort : le message « Synchro OK » de votre environnement diffère.
-# « Restarting (3) » : le programme sort avec le code 3, faute de configuration
+# « Restarting (3) » : le programme sort avec le code 3, faute de configuration ; son message dit ce qu'il attend
 docker logs synchro 2>&1 | tail -2
+erreur=$(docker logs synchro 2>&1 | tail -1)
 docker rm -f synchro
-docker run -d --name synchro --restart on-failure:5 -v ~/projet/synchro:/config:ro synchro-stock:1.0
+if echo "$erreur" | grep -q SYNCHRO_CONF; then
+  # Le chemin du fichier est attendu dans une variable d'environnement
+  docker run -d --name synchro --restart on-failure:5 -v ~/projet/synchro:/config:ro -e SYNCHRO_CONF=/config/stock.conf synchro-stock:1.0
+else
+  # Le fichier est cherché dans un dossier précis : on y monte le dossier de configuration
+  dossier=$(dirname "$(echo "$erreur" | grep -o '/[^ ]*stock\.conf')")
+  docker run -d --name synchro --restart on-failure:5 -v ~/projet/synchro:"$dossier":ro synchro-stock:1.0
+fi
 sleep 2
 #@ D6.5
 #? `HEALTHCHECK` place la vérification dans l'image : tout conteneur qui en est issu affiche son état de santé dans `docker ps`, sans option au lancement.
@@ -335,21 +364,26 @@ docker rm -f api
 docker run -d --name api -p 3000:3000 --restart unless-stopped boutique-api:1.0
 sleep 2
 #@ D6.6
-#? `docker diff bricolage-marc` révèle ce que Marc a ajouté à l'image alpine, même sur le conteneur arrêté : le script et sa configuration.
-#? `docker cp` les récupère dans le contexte de construction, et des `COPY` les replacent aux mêmes emplacements ; `docker cp` et `COPY` conservent le droit d'exécution du script.
-#? `CMD ["rapport.sh"]` suffit, car `/usr/local/bin` est dans le PATH. Surtout pas de `docker commit` : la vérification exige que `rapport:1.0` soit l'image produite par le Dockerfile.
+#? `docker diff bricolage-marc` révèle ce que Marc a ajouté à l'image alpine, même sur le conteneur arrêté : le script et sa configuration, dont les emplacements varient d'un environnement à l'autre (on écarte l'historique de `/root` et les essais de `/tmp`).
+#? `docker cp` les récupère dans le contexte de construction, et des `COPY` les replacent exactement aux mêmes emplacements : le script lit sa configuration par son chemin complet. `docker cp` et `COPY` conservent le droit d'exécution.
+#? Le `CMD` lance le script par son chemin complet, ce qui marche même s'il n'est pas dans le PATH. Surtout pas de `docker commit` : la vérification exige que `rapport:1.0` soit l'image produite par le Dockerfile.
 #? Le site et l'édition du rapport sont tirés au sort : votre rapport diffère de celui d'un camarade.
 # Ce que Marc a modifié par rapport à l'image alpine
 docker diff bricolage-marc
 cd ~/projet/rapport
-docker cp bricolage-marc:/usr/local/bin/rapport.sh .
-docker cp bricolage-marc:/etc/rapport.conf .
-cat > Dockerfile <<'EOF'
-FROM alpine
-COPY rapport.conf /etc/rapport.conf
-COPY rapport.sh /usr/local/bin/rapport.sh
-CMD ["rapport.sh"]
-EOF
+# Copie du système de fichiers du conteneur, pour distinguer les fichiers des dossiers que docker diff liste aussi
+racine=$(mktemp -d)
+docker export bricolage-marc | tar -x -C "$racine" 2>/dev/null
+echo "FROM alpine" > Dockerfile
+for f in $(docker diff bricolage-marc | awk '$1 == "A" {print $2}' | grep -vE '^/(root|tmp)/'); do
+  [ -f "$racine$f" ] || continue
+  docker cp "bricolage-marc:$f" .
+  echo "COPY $(basename "$f") $f" >> Dockerfile
+  # Le script (première ligne « #! ») devient la commande par défaut
+  head -n 1 "$racine$f" | grep -q '^#!' && commande=$f
+done
+echo "CMD [\"$commande\"]" >> Dockerfile
+cat Dockerfile
 docker build -t rapport:1.0 .
 docker run --rm rapport:1.0
 ''',
@@ -374,14 +408,21 @@ CMD ["node", "server.js"]
 EOF
 docker build -t boutique-api:1.0 .
 #@ D7.2
-#? Le PID 1 était le shell qui exécute `demarrer.sh` ; node n'était que son enfant, et un shell en PID 1 ne lui transmet pas SIGTERM : `docker stop` attendait 10 s puis tuait tout.
-#? `exec node pointeuse.js` remplace le shell par node, qui devient le PID 1, reçoit SIGTERM et enregistre les passages avant de s'arrêter.
-#? La forme exec du `CMD` ne gâche rien : on ne compte pas sur le shell pour lancer le script. Et `pointeuse.js` reste intact, comme exigé.
+#? Le PID 1 était un shell : celui qui exécute `demarrer.sh`, ou celui qu'ajoute le `CMD` (forme shell, ou `sh -c` suivi de plusieurs commandes). node n'était que son descendant (lancé au premier plan ou en arrière-plan avec `&`), et un shell en PID 1 ne lui transmet pas SIGTERM : `docker stop` attendait 10 s puis tuait tout.
+#? La cause exacte varie d'un environnement à l'autre, mais le remède est le même : aucun shell ne doit rester entre Docker et node. `docker top` le vérifie.
+#? Dans le script, `exec node pointeuse.js` remplace le shell par node, qui devient le PID 1, reçoit SIGTERM et enregistre les passages avant de s'arrêter ; le `CMD` en forme exec lance le script directement. Et `pointeuse.js` reste intact, comme exigé.
 cd ~/projet/pointeuse
-# exec : le shell est remplacé par node, qui devient le PID 1 et reçoit SIGTERM (c'est la correction essentielle)
-sed -i 's/^node pointeuse.js/exec node pointeuse.js/' demarrer.sh
-# Forme exec : on ne compte pas sur le shell pour lancer le script
-sed -i 's|^CMD ./demarrer.sh|CMD ["./demarrer.sh"]|' Dockerfile
+cat Dockerfile demarrer.sh
+# Le script prépare, puis se fait remplacer par node (exec) : node devient le PID 1 et reçoit SIGTERM
+cat > demarrer.sh <<'EOF'
+#!/bin/sh
+# Script de démarrage de la pointeuse
+echo "Préparation de la pointeuse…"
+exec node pointeuse.js
+EOF
+# Forme exec : Docker lance le script directement, sans shell supplémentaire
+sed -i '/^CMD /d' Dockerfile
+echo 'CMD ["./demarrer.sh"]' >> Dockerfile
 docker build -t pointeuse:1.0 .
 #@ D7.3
 #? `ENTRYPOINT` fixe le programme, toujours exécuté ; `CMD` donne ses arguments par défaut, remplacés par ce qui suit le nom de l'image dans `docker run`.
@@ -420,13 +461,16 @@ CMD ["node", "server.js"]
 EOF
 docker build --build-arg APP_VERSION=1.1 -t boutique-api:1.1 .
 #@ D7.5
-#? Un script `ENTRYPOINT` reçoit le `CMD`, ou les arguments de `docker run`, dans `$@` : celui de Marc les ignorait et lançait toujours le serveur.
-#? `exec "$@"` exécute la commande reçue après la préparation de la configuration, et remplace le shell : la commande devient le PID 1 et reçoit SIGTERM.
-#? Le `CMD` en forme exec fournit la commande par défaut (`node server.js`) ; les guillemets de `"$@"` préservent chaque argument tel quel.
+#? Un script `ENTRYPOINT` en forme exec reçoit le `CMD`, ou les arguments de `docker run`, dans `$@` ; en forme shell, il ne reçoit rien. Selon l'environnement, le script de Marc ignorait ses arguments, ne remplaçait pas le shell, ou l'`ENTRYPOINT` était en forme shell.
+#? Le remède couvre tous les cas : le script se termine par `exec "$@"`, qui exécute la commande reçue après la préparation de la configuration et remplace le shell (la commande devient le PID 1 et reçoit SIGTERM).
+#? `ENTRYPOINT` et `CMD` sont en forme exec ; le `CMD` fournit la commande par défaut (`node server.js`), et les guillemets de `"$@"` préservent chaque argument tel quel. On teste les deux cas : avec et sans argument.
 cd ~/projet/entree
-# Le script prépare la configuration, puis se fait REMPLACER par la commande reçue (le CMD par défaut)
-sed -i 's/^node server.js$/exec "$@"/' demarrage.sh
-echo 'CMD ["node", "server.js"]' >> Dockerfile
+cat Dockerfile demarrage.sh
+# Dernière ligne du script : il se fait REMPLACER par la commande reçue (le CMD par défaut, ou les arguments de docker run)
+sed -i '$ s/.*/exec "$@"/' demarrage.sh
+# ENTRYPOINT et CMD en forme exec : le script reçoit le CMD en arguments
+sed -i '/^ENTRYPOINT/d; /^CMD/d' Dockerfile
+printf 'ENTRYPOINT ["./demarrage.sh"]\nCMD ["node", "server.js"]\n' >> Dockerfile
 docker build -t api-entree:1.0 .
 docker run --rm -e REDIS_HOST=essai api-entree:1.0 cat /tmp/config.json
 #@ D7.6
@@ -498,30 +542,29 @@ CMD ["./reassort.sh"]
 EOF
 docker build --secret id=licence,src=$HOME/licences/reassort.txt -t outil-reassort:1.0 .
 #@ D8.5
-#? Le secret monté n'est écrit dans aucune couche… sauf si une commande le recopie : le `cp` vers `/root/.jeton` l'enregistrait dans la couche du RUN.
-#? Comme `installer.sh` accepte le chemin du jeton en argument, on lui fait lire directement `/run/secrets/jeton`.
-#? Variante valable : supprimer la copie dans le même RUN (`… && ./installer.sh && rm /root/.jeton`) ; dans un RUN suivant, le jeton resterait dans la couche précédente.
+#? Le secret monté n'est écrit dans aucune couche… sauf si une commande le recopie (`cp`, `cat … >`), avant ou après l'installation : la copie est alors enregistrée dans la couche de son RUN. La commande fautive varie d'un environnement à l'autre.
+#? Comme `installer.sh` accepte le chemin du jeton en argument, on lui fait lire directement `/run/secrets/jeton`, dans un seul RUN, sans aucune copie.
+#? Variante valable : supprimer la copie dans le même RUN (`… && ./installer.sh … && rm …`) ; dans un RUN suivant, le jeton resterait dans la couche précédente.
 cd ~/projet/outil-stock
-# Le jeton est dans une couche : le RUN le recopie dans /root/.jeton
+# Le jeton est dans une couche : un RUN le recopie quelque part
+grep -n '^RUN' Dockerfile
 docker save outil-stock:1.0 | grep -ac "$(cat ~/licences/stock.txt)" || true
-sed -i 's|cp /run/secrets/jeton /root/.jeton && ./installer.sh$|./installer.sh /run/secrets/jeton|' Dockerfile
+# Un seul RUN, qui lit le jeton là où BuildKit le monte, sans le recopier
+sed -i '/^RUN /d' Dockerfile
+sed -i '/^CMD /i RUN --mount=type=secret,id=jeton ./installer.sh /run/secrets/jeton' Dockerfile
 docker build --secret id=jeton,src=$HOME/licences/stock.txt -t outil-stock:1.0 .
 #@ D8.6
 #? Chaque RUN produit une couche : le fichier de 50 Mo créé dans un RUN reste dans cette couche, même si un RUN suivant le supprime.
 #? Créé, utilisé et supprimé dans le même RUN, le fichier brut n'est écrit dans aucune couche : l'image retombe à quelques Mo, avec exactement le même résultat.
 #? Variante : une étape de construction séparée, puis `COPY --from` du seul `resultat.txt` dans l'image finale.
+#? Les données brutes diffèrent d'un environnement à l'autre, donc le résultat aussi : on garde les commandes de Marc telles quelles, on se contente de les réunir.
 cd ~/projet/rapport-compact
 docker history rapport-compact:1.0
-cat > Dockerfile <<'EOF'
-FROM alpine
-WORKDIR /opt/rapport
-COPY compacter.sh .
 # Création, utilisation et suppression du fichier brut dans le MÊME RUN : aucune couche ne le contient
-RUN yes "Cimes & Sentiers : ventes du jour" | head -c 50000000 > /tmp/brut \
- && ./compacter.sh /tmp/brut > resultat.txt \
- && rm /tmp/brut
-CMD ["cat", "resultat.txt"]
-EOF
+commandes=$(sed -n 's/^RUN //p' Dockerfile | sed ':a;N;$!ba;s/\n/ \&\& /g')
+sed -i '/^RUN /d' Dockerfile
+sed -i "/^CMD /i RUN $commandes" Dockerfile
+cat Dockerfile
 docker build -t rapport-compact:1.0 .
 #@ D8.7
 #? `docker save` exporte l'image complète : couches, configuration (port, commande) et tag ; à Chamonix, `docker load` la recharge telle quelle.
@@ -560,16 +603,26 @@ docker run -d --name api-sec --network reseau-front -p 3002:3000 -e REDIS_HOST=r
 docker network connect reseau-donnees api-sec
 sleep 2
 #@ D9.4
-#? Deux problèmes se cumulent : l'API cherche `redis-cache`, un nom qui n'existe pas, et Redis n'est pas sur le réseau de l'API (`nslookup` échoue).
-#? `docker network connect --alias redis-cache` branche Redis, à chaud, sur le réseau de l'API, sous le nom attendu : il n'est ni arrêté ni recréé, et garde ses compteurs.
-#? Variante acceptée : recréer `api-diag` avec le bon nom dans `REDIS_HOST`, sur un réseau qu'elle partage avec Redis. Les noms du Redis et des réseaux sont tirés au sort.
-# L'API cherche « redis-cache », un nom qui n'existe pas, sur un réseau où Redis n'est pas
+#? Deux questions à poser : l'hôte demandé par l'API (`REDIS_HOST`) désigne-t-il ce Redis, et partagent-ils un réseau ? Selon l'environnement, l'API cherche un nom qui n'existe pas (avec Redis sur un autre réseau, ou sur le même), ou une adresse IP périmée.
+#? Pour un nom : `docker network connect --alias <nom attendu>` branche Redis, à chaud, sur le réseau de l'API, sous ce nom (s'il y est déjà, on l'en débranche d'abord) ; il n'est ni arrêté ni recréé, et garde ses compteurs.
+#? Pour une adresse IP : un alias n'y peut rien, et une adresse de conteneur change à chaque redémarrage. On recrée `api-diag` en désignant Redis par son nom, sur un réseau qu'ils partagent (solution valable aussi dans les autres cas).
+#? Les noms du Redis, des réseaux et de l'hôte attendu sont tirés au sort.
 docker exec api-diag env | grep REDIS_HOST
-docker exec api-diag nslookup redis-cache || true
+hote=$(docker exec api-diag printenv REDIS_HOST)
+docker exec api-diag nslookup "$hote" || true
 cache=$(docker ps --format '{{.Names}}' | grep -E '^cache-[a-z]+-[0-9]+$')
 reseau=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' api-diag)
-# Redis rejoint le réseau de l'API, à chaud, sous le nom attendu
-docker network connect --alias redis-cache "$reseau" "$cache"
+docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$cache"
+if echo "$hote" | grep -Eq '^[0-9.]+$'; then
+  # Adresse IP périmée : Redis rejoint le réseau de l'API, et l'API est recréée avec le NOM de Redis
+  docker network connect "$reseau" "$cache"
+  docker rm -f api-diag
+  docker run -d --name api-diag --network "$reseau" -p 3003:3000 -e REDIS_HOST="$cache" api-diag:1.0
+else
+  # Nom inexistant : Redis rejoint le réseau de l'API, à chaud, sous le nom attendu
+  docker network disconnect "$reseau" "$cache" 2>/dev/null || true
+  docker network connect --alias "$hote" "$reseau" "$cache"
+fi
 sleep 1
 #@ D9.5
 #? Un alias donne un nom supplémentaire à un conteneur sur un réseau, et plusieurs conteneurs peuvent partager le même : le DNS renvoie alors toutes leurs adresses.
@@ -704,19 +757,24 @@ sed -i 's/^volumes:$/  outils:\n    image: redis:7-alpine\n    profiles: [outils
 docker compose up -d
 docker compose --profile outils run --rm -T outils redis-cli -h redis ping
 #@ D10.6
-#? Avec `- /data`, le volume est anonyme : il appartient au conteneur, et après `down`, le `up` suivant crée un nouveau conteneur avec un volume neuf, vide.
-#? Un volume nommé, déclaré dans la section `volumes:` de premier niveau, survit à `docker compose down` (sauf avec `down -v`) et est remonté au `up` suivant.
-#? Le service garde son nom `redis`, comme exigé ; les anciennes données, restées dans l'ancien volume anonyme, ne sont pas reprises automatiquement.
+#? Le volume est anonyme : déclaré dans le service sans nom (en syntaxe courte ou longue), ou créé par le `VOLUME /data` de l'image quand le service n'en déclare pas. Il appartient au conteneur : après `down`, le `up` suivant crée un nouveau conteneur avec un volume neuf, vide.
+#? Un volume nommé, déclaré dans la section `volumes:` de premier niveau, survit à `docker compose down` (sauf avec `down -v`) et est remonté au `up` suivant. Il doit être monté là où Redis écrit : le dossier de `--dir`, sinon `/data` (`redis-cli config get dir` le confirme).
+#? Le service garde son nom `redis` et sa commande, qui varie d'un environnement à l'autre ; les anciennes données, restées dans l'ancien volume anonyme, ne sont pas reprises automatiquement.
 cd ~/stock
-# Avec « - /data », chaque nouveau conteneur reçoit un volume anonyme neuf : on nomme le volume
-cat > compose.yaml <<'EOF'
+cat compose.yaml
+# Dossier où Redis écrit ses données : celui de --dir, sinon /data (dossier par défaut de l'image)
+dossier=$(grep -o -- '--dir [^ ]*' compose.yaml | cut -d' ' -f2)
+dossier=${dossier:-/data}
+commande=$(grep '^ *command:' compose.yaml)
+# Même service, même commande, mais un volume NOMMÉ sur ce dossier
+cat > compose.yaml <<EOF
 # Pile du stock (Diallo) : Redis garde les quantités en stock.
 services:
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes
+$commande
     volumes:
-      - stock:/data
+      - stock:$dossier
 
 volumes:
   stock:
@@ -725,24 +783,58 @@ docker compose up -d
 ''',
     11: r'''
 #@ D11.1
-#? Première erreur : l'image lance `serveur.js`, un fichier qui n'existe pas ; le Dockerfile doit lancer `server.js`.
-#? Deuxième erreur : dans `ports:`, l'ordre est hôte:conteneur ; l'API écoute sur 3000 dans le conteneur et doit être publiée sur 8090, d'où `"8090:3000"`.
-#? Troisième erreur : l'API lit `REDIS_HOST`, pas `REDIS_HOTE`. Chaque correction fait apparaître la suivante : `docker compose ps -a` et `docker compose logs api` à chaque étape.
-#? `--build` est indispensable pour que la correction du Dockerfile soit prise en compte.
+#? Les trois erreurs varient d'un environnement à l'autre, mais se trouvent toujours aux mêmes endroits, et `docker compose ps -a`, `docker compose logs api` et `docker compose config` les révèlent une à une.
+#? Dans le Dockerfile : l'image doit copier le code dans son dossier de travail (`COPY . .` après `WORKDIR /app`) et lancer `node server.js` en forme exec, sans `ENTRYPOINT` qui s'ajouterait devant (« Cannot find module » dit quel fichier node n'a pas trouvé).
+#? Dans `ports:`, l'ordre est hôte:conteneur : l'API doit être publiée sur 8090, vers le port où elle écoute vraiment (3000, sauf si une variable `PORT` le change : ses journaux l'annoncent), d'où `"8090:3000"`.
+#? Pour Redis : l'API lit `REDIS_HOST` (et non une autre variable), qui doit contenir un simple nom d'hôte, celui du service Redis (`cache`), sur un réseau que les deux services partagent. Le corrigé réécrit les deux fichiers ; `--build` est indispensable pour que le Dockerfile corrigé soit pris en compte.
 cd ~/incident
-sed -i 's/"3000:8090"/"8090:3000"/; s/REDIS_HOTE/REDIS_HOST/' compose.yaml
-sed -i 's/serveur\.js/server.js/' app/Dockerfile
-docker compose up -d --build
+docker compose ps -a
+docker compose logs api | tail -5
+docker compose config
+app=$(basename "$(docker compose config --format json | jq -r '.services.api.build.context')")
+# Dockerfile corrigé : tout le code dans /app, node lance server.js directement
+cat > "$app/Dockerfile" <<'EOF'
+FROM node:20-alpine
+WORKDIR /app
+COPY . .
+USER node
+EXPOSE 3000
+CMD ["node", "server.js"]
+EOF
+# compose.yaml corrigé : port 8090 de l'hôte vers le port d'écoute (3000), REDIS_HOST = nom du service Redis, réseau commun
+cat > compose.yaml <<EOF
+# Pile « incident » corrigée : l'API répond sur http://localhost:8090/visites
+services:
+  api:
+    build: ./$app
+    ports:
+      - "8090:3000"
+    environment:
+      REDIS_HOST: cache
+    depends_on:
+      - cache
+    restart: on-failure
+
+  cache:
+    image: redis:7-alpine
+EOF
+docker compose up -d --build --remove-orphans
 sleep 5
 #@ D11.2
 #? `docker image prune` supprime les images pendantes (`<none>`) inutilisées, en gardant `brouillon-marc:latest` et les images de base.
-#? Une ancienne version résiste : `prune` ne supprime jamais une image utilisée par un conteneur, même arrêté. `docker ps -a --filter ancestor=<id>` révèle `brouillon-test`.
-#? Le piège : `docker image prune -a`, qui supprimerait aussi les images de base, impossibles à retélécharger sans Internet. Variante : `docker rmi <id>` après avoir supprimé le conteneur.
+#? Des anciennes versions résistent : `prune` ne supprime jamais une image utilisée par un conteneur, même arrêté. `docker ps -a --filter ancestor=<id>` révèle, pour chacune, le ou les conteneurs d'essai qui la retiennent ; leur nombre et leurs noms varient d'un environnement à l'autre.
+#? On supprime ces conteneurs arrêtés (créés depuis `brouillon-marc`, sur une autre version que la dernière), puis on relance le ménage.
+#? Le piège : `docker image prune -a`, qui supprimerait aussi les images de base, impossibles à retélécharger sans Internet. Variante : `docker rmi <id>` après avoir supprimé les conteneurs.
 docker images -f dangling=true
 docker image prune -f
-# Une ancienne version résiste : elle est utilisée par un conteneur arrêté
+# Des anciennes versions résistent : elles sont utilisées par des conteneurs arrêtés
 for i in $(docker images -qf dangling=true); do docker ps -a --filter ancestor=$i; done
-docker rm brouillon-test
+derniere=$(docker image inspect -f '{{.Id}}' brouillon-marc:latest)
+for c in $(docker ps -aq --filter status=exited --filter status=created); do
+  case "$(docker inspect -f '{{.Config.Image}}' "$c")" in
+    brouillon-marc|brouillon-marc:*) [ "$(docker inspect -f '{{.Image}}' "$c")" = "$derniere" ] || docker rm "$c" ;;
+  esac
+done
 docker image prune -f
 #@ D11.3
 #? Code 137 = 128 + 9 : l'import a été tué par SIGKILL, et `.State.OOMKilled` vaut true : le noyau l'a tué parce qu'il dépassait sa limite mémoire de 64 Mo.

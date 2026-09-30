@@ -18,6 +18,16 @@ own() { chown -R etudiant:etudiant "$@"; }
 WORDS=(pingouin cactus volcan boussole lanterne marmotte horizon galaxie origami tambour)
 rword() { echo "${WORDS[RANDOM % ${#WORDS[@]}]}-$((RANDOM % 900 + 100))"; }
 hexa() { head -c "${1:-4}" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+# variante <exercice> <nombre> : numéro (0 à nombre - 1) de la variante de l'exercice, pour que la panne ou la
+# réponse diffère d'un étudiant à l'autre. Tirée au sort une seule fois, puis conservée avec les données du moteur
+# Docker (les fichiers livrés restent ainsi cohérents après « Réinitialiser » ou une recréation du conteneur).
+# LAB_VARIANTE_<exercice> (ex. LAB_VARIANTE_D11_1=2) force une variante : utile pour les tests.
+variante() {
+  local id=${1//./_} d=/var/lib/docker/lab-variantes f v
+  f=$d/$id; v=LAB_VARIANTE_$id; mkdir -p $d; chmod 700 $d
+  if [ -n "${!v}" ]; then v=${!v}; elif [ -s $f ]; then v=$(cat $f); else v=$((RANDOM % $2)); fi
+  echo "$v" > $f; echo "$v"
+}
 # Attend que le moteur Docker interne soit prêt (premier démarrage : chargement des images)
 for _ in $(seq 1 150); do [ -f /run/lab-ready ] && docker info >/dev/null 2>&1 && break; sleep 1; done
 docker info >/dev/null 2>&1 || { echo "Le moteur Docker ne répond pas" >&2; exit 1; }
@@ -131,18 +141,24 @@ creer() { # équipe état
 }
 creer marketing running; creer marketing running; creer marketing created; creer marketing exited 0; creer marketing exited 1
 creer compta running; creer compta exited 0; creer compta exited 2
-# D1.4 : quatre tâches de nuit, même image et même commande ; le mode est déposé dans le conteneur avant son démarrage
+# D1.4 : quatre tâches de nuit, même image et même commande ; le mode est déposé dans le conteneur avant son démarrage.
+# Variante : le signal qui tue la tâche longue (KILL, TERM, INT ou HUP : code de sortie 137, 143, 130 ou 129)
+v=$(variante D1.4 4); sig=$(echo KILL TERM INT HUP | cut -d' ' -f$((v + 1)))
 docker build -q -t taches:1 /opt/docker-lab/fabrique/taches >/dev/null
-modes="ok erreur absent long"; noms=""
+modes="ok erreur absent long"; noms=""; tuee=""
 for m in $modes; do
   n="tache-$(rword)"; while echo "$noms" | grep -qw "$n"; do n="tache-$(rword)"; done; noms="$noms $n"
   docker create --name "$n" $L taches:1 >/dev/null
   f=$(mktemp); if [ $m = erreur ]; then echo "erreur $((RANDOM % 90 + 2))" > $f; else echo $m > $f; fi
   docker cp $f "$n:/mode" >/dev/null; rm -f $f
   docker start "$n" >/dev/null
-  case $m in absent) emit INTROUVABLE "$n" ;; long) emit TUEE "$n" ;; esac
+  case $m in absent) emit INTROUVABLE "$n" ;; long) emit TUEE "$n"; tuee=$n ;; esac
 done
 sleep 2
+# Le signal tiré au sort tue le sleep de la tâche longue : le script se termine avec le code 128 + signal
+docker exec "$tuee" sh -c "kill -$sig \$(pidof sleep)" >/dev/null 2>&1 || true
+timeout 5 docker wait "$tuee" >/dev/null 2>&1 || true
+emit VARIANTE_D1_4 "$v"
 for n in $noms; do [ "$(docker inspect -f '{{.State.Running}}' $n)" = true ] && docker kill $n >/dev/null; done
 # D1.5 : trois postes identiques, arrêtés ; un fichier déposé dans l'un d'eux
 c=$((RANDOM % 3 + 1))
@@ -229,8 +245,17 @@ docker rm -f paiements traitement-nuit coffre worker-a worker-b worker-c worker-
 L="--label lab.jour=2"
 # D2.1 : un traitement qui écrit ses erreurs sur la sortie d'erreur ; les identifiants sont tirés DANS le conteneur
 docker run -d --name paiements $L alpine sh -c 'i=0; while [ $i -lt 1200 ]; do i=$((i+1)); echo "Paiement n°$i accepté"; if [ $((RANDOM % 40)) = 0 ]; then echo "ERREUR paiement n°$i : transaction TX-$(head -c 4 /dev/urandom | od -An -tx1 | tr -d " \n") refusée" >&2; fi; done; echo "Fin du traitement des paiements"' >/dev/null
-# D2.2 : un traitement qui tourne en boucle
-docker run -d --name traitement-nuit $L alpine sh -c "echo 'Démarrage du traitement de nuit'; echo 'Traitement en cours'; while true; do sleep 5; done" >/dev/null
+# D2.2 : un traitement qui tourne en boucle. Variante : sa réaction au SIGTERM de docker stop, donc son code de sortie
+# (ignoré puis SIGKILL : 137 ; tué par SIGTERM grâce à --init : 143 ; intercepté : 0, ou un code d'erreur tiré au sort)
+v=$(variante D2.2 4)
+boucle="echo 'Démarrage du traitement de nuit'; echo 'Traitement en cours'"
+case $v in
+  0) docker run -d --name traitement-nuit $L alpine sh -c "$boucle; while true; do sleep 5; done" ;;
+  1) docker run -d --name traitement-nuit $L --init alpine sh -c "$boucle; while true; do sleep 5; done" ;;
+  2) docker run -d --name traitement-nuit $L alpine sh -c "trap 'echo \"Arrêt demandé : traitement interrompu proprement\"; exit 0' TERM; $boucle; while true; do sleep 1; done" ;;
+  *) docker run -d --name traitement-nuit $L alpine sh -c "trap 'echo \"Arrêt demandé : lot en cours abandonné\"; exit $((RANDOM % 7 + 2))' TERM; $boucle; while true; do sleep 1; done" ;;
+esac >/dev/null
+emit VARIANTE_D2_2 "$v"
 # D2.3 / D2.4 : le coffre (image avec une valeur par défaut, remplacée au lancement) ; clé générée dans le conteneur
 env="preprod-$(rword)"
 t=$(mktemp -d); printf 'FROM alpine\nENV ENVIRONNEMENT=production\nUSER guest\nCMD ["sleep", "infinity"]\n' > $t/Dockerfile
@@ -248,8 +273,10 @@ for w in a b c d; do
 done
 # D2.7 : la caisse attend ses ordres sur son entrée standard ; son code n'existe que dans sa mémoire
 docker run -dit --name caisse $L alpine sh -c 'c=$(head -c 6 /dev/urandom | od -An -tx1 | tr -d " \n"); echo "Caisse ouverte (empreinte du code de clôture : $(printf %s "$c" | sha256sum | cut -c1-16))"; while read o; do case "$o" in CLOTURE) echo "Clôture : ticket $c" ;; "") ;; *) echo "Ordre inconnu : $o" ;; esac; done' >/dev/null
-# D2.8 : un générateur qui écrit une facture puis s'arrête
-docker run --name generateur-factures $L alpine sh -c 'mkdir /factures; n=$(head -c 3 /dev/urandom | od -An -tx1 | tr -d " \n"); { echo "Facture n°$n : mars"; echo "Montant : $((RANDOM % 9000 + 1000)),00 € HT"; } > /factures/facture-mars-$n.txt; echo "Facture générée"' >/dev/null
+# D2.8 : un générateur qui écrit une facture puis s'arrête. Variante : le dossier où il l'écrit
+v=$(variante D2.8 4); factures=$(echo /factures /var/spool/factures /srv/compta/sortie /home/compta/mars | cut -d' ' -f$((v + 1)))
+docker run --name generateur-factures $L alpine sh -c 'mkdir -p "$1"; n=$(head -c 3 /dev/urandom | od -An -tx1 | tr -d " \n"); { echo "Facture n°$n : mars"; echo "Montant : $((RANDOM % 9000 + 1000)),00 € HT"; } > "$1/facture-mars-$n.txt"; echo "Facture générée"' sh "$factures" >/dev/null
+emit VARIANTE_D2_8 "$v"
 docker wait paiements >/dev/null
 nb=$(docker logs paiements 2>&1 >/dev/null | grep -c ERREUR || true)
 emit NB "$nb"
@@ -260,7 +287,7 @@ emit COFFRE "$(docker inspect -f '{{.Id}} {{.State.StartedAt}}' coffre)"
 emit GOURMAND "worker-$g"
 emit WORKER "$(docker inspect -f '{{.Id}} {{.State.StartedAt}}' worker-$g)"
 emit CAISSE "$(docker inspect -f '{{.Id}} {{.State.StartedAt}}' caisse)"
-emit FACTURE "$(docker cp generateur-factures:/factures - | tar -xO | sha256sum | cut -d' ' -f1)"
+emit FACTURE "$(docker cp generateur-factures:$factures - | tar -xO | sha256sum | cut -d' ' -f1)"
 ''',
         "exercises": [
             {"id": "D2.1", "points": 4, "title": "Les erreurs invisibles",
@@ -276,7 +303,7 @@ emit FACTURE "$(docker cp generateur-factures:/factures - | tar -xO | sha256sum 
              "ticket": {"from": "sophie", "body": "Le traitement de nuit (<code>traitement-nuit</code>) ne sert plus à rien. Arrête-le, mais <strong>ne le supprime pas</strong> : l'auditeur voudra lire ses journaux. Note aussi dans <code>~/code-sortie.txt</code> le code de sortie avec lequel il s'est terminé : l'auditeur voudra savoir s'il s'est arrêté proprement."},
              "desc": "<code>traitement-nuit</code> est arrêté mais existe toujours ; <code>~/code-sortie.txt</code> contient son code de sortie.",
              "hints": ["Arrêter n'est pas supprimer. Une fois arrêté, <code>docker ps -a</code> affiche son état… et un nombre entre parenthèses.",
-                       "<code>docker stop</code>, puis le champ <code>.State.ExitCode</code> de <code>docker inspect</code>. L'arrêt a pris 10 secondes, et le code dépasse 128 : pourquoi ? Réponse au jour 7."],
+                       "<code>docker stop</code>, puis le champ <code>.State.ExitCode</code> de <code>docker inspect</code>. Le code dépend de la façon dont le processus a réagi à l'arrêt : l'arrêt a-t-il été immédiat, ou a-t-il pris 10 secondes ? Et si le code dépasse 128, pourquoi ? Réponse au jour 7."],
              "checks": [
                  ('docker inspect traitement-nuit', "traitement-nuit a été supprimé : il fallait seulement l'arrêter (bouton « Réinitialiser les fichiers de cette étape » pour recommencer)."),
                  ('[ "$(insp traitement-nuit "{{.State.Running}}")" = false ]', "traitement-nuit tourne encore (un conteneur en pause tourne toujours)."),
@@ -354,8 +381,20 @@ nettoyer D3.3
 docker rm -f vitrine-promo >/dev/null 2>&1 || true
 nom=$(rword); jeton="PROMO-$(hexa 4)"
 docker run -d --name $nom $L --label lab.exercice=D3.3 -p 8086:80 nginx:alpine >/dev/null
+for _ in $(seq 1 20); do docker exec $nom test -f /run/nginx.pid 2>/dev/null && break; sleep 0.5; done
+# Variante : où la page a été déposée ; hors de index.html, la configuration de nginx a aussi été modifiée
+v=$(variante D3.3 3)
 f=$(mktemp); printf '<h1>Vente flash</h1>\n<p>Code %s</p>\n' "$jeton" > $f; chmod 644 $f
-docker cp $f $nom:/usr/share/nginx/html/index.html >/dev/null; rm -f $f
+case $v in
+  0) docker cp $f $nom:/usr/share/nginx/html/index.html ;;
+  1) docker cp $f $nom:/usr/share/nginx/html/vente-flash.html
+     docker exec $nom sed -i '/location \/ {/,/}/ s|index .*;|index  vente-flash.html;|' /etc/nginx/conf.d/default.conf ;;
+  *) docker exec $nom mkdir -p /srv/flash; docker cp $f $nom:/srv/flash/index.html
+     docker exec $nom sed -i '/location \/ {/,/}/ s|root .*;|root   /srv/flash;|' /etc/nginx/conf.d/default.conf ;;
+esac >/dev/null
+rm -f $f
+docker exec $nom nginx -s reload >/dev/null 2>&1 || true
+emit VARIANTE_D3_3 "$v"
 emit NOM "$nom"
 emit JETON "$jeton"
 # D3.5 : un fichier de configuration monté seul, puis modifié avec sed -i (nouveau fichier, nouvel inode)
@@ -379,13 +418,27 @@ sed -i "s/$ancien/$nouveau/" $P/maintenance/default.conf
 own $P/maintenance
 docker exec maintenance nginx -s reload >/dev/null 2>&1 || true
 emit NOUVEAU "$nouveau"
-# D3.6 : des fichiers illisibles pour les processus de travail de nginx
+# D3.6 : des fichiers illisibles pour les processus de travail de nginx.
+# Variante : les droits fautifs (dossier, page d'accueil, sous-dossier equipes/ ou sa page)
 docker rm -f intranet >/dev/null 2>&1 || true
-mkdir -p $P/intranet
+v=$(variante D3.6 4)
+rm -rf $P/intranet; mkdir -p $P/intranet
 jeton_intra="INTRA-$(hexa 4)"
 printf '<h1>Intranet Cimes &amp; Sentiers</h1>\n<p>Planning des équipes : %s</p>\n' "$jeton_intra" > $P/intranet/index.html
+pages="/"
+if [ $v != 0 ]; then
+  mkdir -p $P/intranet/equipes; pages="/ /equipes/planning.html"
+  printf '<h1>Planning de la semaine</h1>\n<p>Référence : %s</p>\n' "$jeton_intra" > $P/intranet/equipes/planning.html
+fi
 own $P/intranet
-chmod 750 $P/intranet; chmod 600 $P/intranet/index.html
+case $v in
+  0) chmod 750 $P/intranet; chmod 600 $P/intranet/index.html ;;
+  1) chmod 700 $P/intranet; chmod 640 $P/intranet/index.html; chmod 755 $P/intranet/equipes; chmod 600 $P/intranet/equipes/planning.html ;;
+  2) chmod 755 $P/intranet; chmod 640 $P/intranet/index.html; chmod 700 $P/intranet/equipes; chmod 644 $P/intranet/equipes/planning.html ;;
+  *) chmod 710 $P/intranet; chmod 644 $P/intranet/index.html; chmod 750 $P/intranet/equipes; chmod 640 $P/intranet/equipes/planning.html ;;
+esac
+emit VARIANTE_D3_6 "$v"
+emit PAGES "$pages"
 docker run -d --name intranet $L -p 8091:80 -v $P/intranet:/usr/share/nginx/html:ro nginx:alpine >/dev/null
 emit INTRA "$jeton_intra"
 ''',
@@ -415,11 +468,11 @@ emit INTRA "$jeton_intra"
              "ticket": {"from": "thomas", "body": "Je veux lancer la vitrine promo (<code>vitrine-promo</code>, nginx avec <code>~/projet/site</code>) sur le port <strong>8086</strong>, et Docker me répond « port is already allocated ». Trouve qui squatte ce port et déplace-le sur <strong>8087</strong> : même nom, et surtout <strong>la même page</strong>, c'est une vente flash en cours ! Puis lance ma vitrine promo sur 8086."},
              "desc": "Le conteneur qui occupait 8086 porte toujours le même nom, publie 8087 et sert toujours sa page ; <code>vitrine-promo</code> sert <code>~/projet/site</code> sur 8086.",
              "hints": ["Qui publie ce port ? <code>docker ps</code> a une colonne PORTS, et un filtre. On ne change pas les ports d'un conteneur : il faut le recréer… et sa page, où est-elle ?",
-                       "<code>docker ps --filter publish=8086</code> ; <code>docker diff</code> montre que la page a été déposée dans sa couche inscriptible : sauvez-la (<code>docker cp</code>) avant <code>docker rm -f</code>, recréez-le avec <code>-p 8087:80</code>, puis remettez la page."],
+                       "<code>docker ps --filter publish=8086</code> ; <code>docker diff</code> montre tout ce qui a été ajouté ou modifié dans sa couche inscriptible : la page, et peut-être la configuration de nginx. Sauvez chaque fichier (<code>docker cp</code>) avant <code>docker rm -f</code>, recréez le conteneur avec <code>-p 8087:80</code>, puis remettez chaque fichier à sa place."],
              "checks": [
                  ('running "$LAB_NOM"', "Le conteneur qui occupait le port 8086 (même nom) ne tourne pas."),
                  ('docker port "$LAB_NOM" 80/tcp | grep -q ":8087$"', "Le conteneur qui occupait 8086 doit maintenant publier le port 8087."),
-                 ('http 8087 / | grep -q "$LAB_JETON"', "http://localhost:8087 ne sert plus la page de la vente flash : elle était dans la couche inscriptible de l'ancien conteneur."),
+                 ('http 8087 / | grep -q "$LAB_JETON"', "http://localhost:8087 ne sert plus la page de la vente flash : elle (et peut-être la configuration de nginx) était dans la couche inscriptible de l'ancien conteneur."),
                  ('running vitrine-promo && docker port vitrine-promo 80/tcp | grep -q ":8086$"', "vitrine-promo doit tourner et publier le port 8086."),
                  ('http 8086 / | grep -q "Cimes"', "http://localhost:8086 ne sert pas le site de la boutique (~/projet/site)."),
              ]},
@@ -450,13 +503,13 @@ echo "$r" | grep -q "$t"''', "Après remplacement du fichier default.conf (comme
              ]},
             {"id": "D3.6", "points": 5, "title": "403 alors que le fichier existe",
              "ticket": {"from": "thomas", "body": "J'ai monté <code>~/projet/intranet</code> dans le conteneur <code>intranet</code> (port 8091), et nginx répond 403 ! Les fichiers sont bien là, j'ai vérifié. Corrige, mais <strong>sans</strong> faire tourner nginx en root, et sans me mettre les droits en 777, Sophie me tuerait."},
-             "desc": "<code>http://localhost:8091</code> sert <code>~/projet/intranet/index.html</code> ; aucun fichier du dossier n'est modifiable par « les autres » ; les processus de travail de nginx ne tournent pas en root.",
-             "hints": ["<code>docker logs intranet</code> : « Permission denied ». Qui essaie de lire le fichier (<code>docker top intranet</code>), et que disent les droits (<code>ls -ln ~/projet/intranet</code>) ?",
-                       "Les processus de travail de nginx n'ont ni votre UID ni votre groupe : ils relèvent des droits des « autres ». Il leur faut la lecture (<code>r</code>) sur les fichiers et la traversée (<code>x</code>) sur le dossier : <code>chmod</code> 644 et 755. Inutile de recréer le conteneur."],
+             "desc": "<code>http://localhost:8091</code> sert toutes les pages de <code>~/projet/intranet</code> ; aucun fichier ni dossier n'est modifiable par « les autres » ; les processus de travail de nginx ne tournent pas en root.",
+             "hints": ["<code>docker logs intranet</code> : « Permission denied ». Qui essaie de lire les fichiers (<code>docker top intranet</code>), et que disent les droits (<code>ls -lnR ~/projet/intranet</code>) ?",
+                       "Les processus de travail de nginx n'ont ni votre UID ni votre groupe : ils relèvent des droits des « autres ». Il leur faut la lecture (<code>r</code>) sur chaque fichier et la traversée (<code>x</code>) sur chaque dossier du chemin, sous-dossiers compris : <code>chmod</code> 644 pour les fichiers, 755 pour les dossiers. Inutile de recréer le conteneur."],
              "checks": [
                  ('running intranet', "Le conteneur intranet ne tourne pas."),
                  ('insp intranet "{{range .Mounts}}{{.Source}} {{.Destination}}{{println}}{{end}}" | grep -qx "/home/etudiant/projet/intranet /usr/share/nginx/html"', "intranet doit toujours servir ~/projet/intranet monté sur /usr/share/nginx/html."),
-                 ('http 8091 / | grep -q "$LAB_INTRA"', "http://localhost:8091 ne sert pas l'intranet (403 ?)."),
+                 ('for p in ${LAB_PAGES:-/}; do http 8091 "$p" | grep -q "$LAB_INTRA" || { echo "MSG:page inaccessible : $p"; exit 1; }; done', "http://localhost:8091 ne sert pas toutes les pages de l'intranet (403 ?)."),
                  ('[ -z "$(find $P/intranet -perm -o+w)" ]', "Des fichiers ou dossiers de ~/projet/intranet sont modifiables par tout le monde : pas de 777 !"),
                  ('docker exec intranet ps -o user,args | grep "nginx: worker" | grep -vq "^ *root"', "Les processus de travail de nginx tournent en root : ce n'est pas la solution attendue."),
              ]},
@@ -590,9 +643,14 @@ docker run -d --name vitrine-maison $L -p 8092:80 -v html-maison:/usr/share/ngin
 docker rm -f vitrine-maison >/dev/null
 docker run -d --name vitrine-maison $L -p 8092:80 -v html-maison:/usr/share/nginx/html vitrine-maison:2 >/dev/null
 emit V2 "$j2"
-# D5.6 : un outil qui génère puis exécute un script dans /work
+# D5.6 : un outil qui génère puis exécute un script dans sa zone de travail. Variante : le dossier de cette zone
 docker rm -f compilateur >/dev/null 2>&1 || true
-docker build -q -t compilateur:1 /opt/docker-lab/fabrique/compilateur >/dev/null
+v=$(variante D5.6 4); travail=$(echo /work /build /var/tmp/compilation /opt/compilateur/travail | cut -d' ' -f$((v + 1)))
+t=$(mktemp -d); cp -r /opt/docker-lab/fabrique/compilateur/. $t/
+sed -i "s|/work|$travail|g" $t/compiler.sh
+docker build -q -t compilateur:1 $t >/dev/null; rm -rf $t
+emit VARIANTE_D5_6 "$v"
+emit TRAVAIL "$travail"
 # D5.7 : des volumes nommés, utilisés ou non, étiquetés ou non
 nettoyer D5.7
 for v in $(docker volume ls -q -f label=lab.exercice=D5.7); do docker volume rm "$v" >/dev/null 2>&1 || true; done
@@ -660,15 +718,15 @@ emit VSUPPR "$e $f"
                  ('! insp vitrine-maison "{{range .Mounts}}{{.Destination}}{{println}}{{end}}" | grep -qx /usr/share/nginx/html', "Un volume (ou un dossier) est encore monté sur /usr/share/nginx/html : la v3 aura le même problème."),
              ]},
             {"id": "D5.6", "points": 4, "title": "Permission denied dans le tmpfs",
-             "ticket": {"from": "nadia", "body": "L'outil <code>compilateur:1</code> doit, lui aussi, tourner en lecture seule. Il génère un script dans <code>/work</code>, puis l'exécute. J'ai ajouté un tmpfs sur <code>/work</code>, et maintenant j'ai « Permission denied » ! Lance un conteneur <code>compilateur</code>, en lecture seule, qui aille au bout (il affiche <code>OK-…</code>). Pas de volume : la zone de travail doit disparaître à l'arrêt."},
-             "desc": "Le conteneur <code>compilateur</code>, lancé depuis <code>compilateur:1</code> avec sa commande par défaut et un système de fichiers en lecture seule, a affiché <code>OK-…</code> ; <code>/work</code> est un tmpfs.",
-             "hints": ["Le script est bien écrit, mais son exécution est refusée. Regardez les options de montage de <code>/work</code> (<code>docker run --rm --read-only --tmpfs /work compilateur:1 mount</code>).",
-                       "Docker monte les tmpfs en <code>noexec</code> par défaut. Une option de montage, ajoutée après le chemin (<code>--tmpfs /work:…</code>), autorise l'exécution."],
+             "ticket": {"from": "nadia", "body": "L'outil <code>compilateur:1</code> doit, lui aussi, tourner en lecture seule. Il génère un script dans sa zone de travail, puis l'exécute. J'ai ajouté un tmpfs sur ce dossier, et maintenant j'ai « Permission denied » ! Lance un conteneur <code>compilateur</code>, en lecture seule, qui aille au bout (il affiche <code>OK-…</code>). Pas de volume : la zone de travail doit disparaître à l'arrêt."},
+             "desc": "Le conteneur <code>compilateur</code>, lancé depuis <code>compilateur:1</code> avec sa commande par défaut et un système de fichiers en lecture seule, a affiché <code>OK-…</code> ; sa zone de travail est un tmpfs.",
+             "hints": ["Où l'outil écrit-il ? Lancé avec <code>--read-only</code> seul, il le dit dans son erreur (on peut aussi lire son script). Avec un tmpfs sur ce dossier, le script est bien écrit, mais son exécution est refusée : regardez les options de montage (<code>docker run --rm --read-only --tmpfs &lt;dossier&gt; compilateur:1 mount</code>).",
+                       "Docker monte les tmpfs en <code>noexec</code> par défaut. Une option de montage, ajoutée après le chemin (<code>--tmpfs &lt;dossier&gt;:…</code>), autorise l'exécution."],
              "checks": [
                  ('docker inspect compilateur && [ "$(insp compilateur "{{.Config.Image}}")" = compilateur:1 ]', "Aucun conteneur compilateur créé depuis l'image compilateur:1."),
                  ('[ "$(insp compilateur "{{.HostConfig.ReadonlyRootfs}}")" = true ]', "Le conteneur compilateur doit avoir un système de fichiers en lecture seule (--read-only)."),
                  ('[ "$(insp compilateur "{{json .Config.Cmd}}{{json .Config.Entrypoint}}")" = "$(docker image inspect -f "{{json .Config.Cmd}}{{json .Config.Entrypoint}}" compilateur:1)" ]', "Le conteneur compilateur doit lancer la commande par défaut de l'image."),
-                 ('! insp compilateur "{{range .Mounts}}{{.Type}} {{.Destination}}{{println}}{{end}}" | grep -Eqx "(volume|bind) /work"', "/work ne doit pas être un volume ni un dossier de l'hôte : la zone de travail doit disparaître à l'arrêt (tmpfs)."),
+                 ('insp compilateur "{{range .Mounts}}{{.Type}} {{.Destination}}{{println}}{{end}}" | while read t d; do case "$t" in volume|bind) case "${LAB_TRAVAIL:-/work}/" in "${d%/}"/*) exit 1 ;; esac ;; esac; done',"La zone de travail ne doit pas être un volume ni un dossier de l'hôte : elle doit disparaître à l'arrêt (tmpfs)."),
                  ('docker logs compilateur 2>&1 | grep -qx "OK-$(insp compilateur "{{.Config.Hostname}}")"', "Le conteneur compilateur n'a pas affiché OK-… : lisez docker logs compilateur."),
              ]},
             {"id": "D5.7", "points": 4, "title": "Le ménage sous étiquettes",
@@ -700,31 +758,59 @@ mkdir -p $P/api/node_modules/module-lourd
 own $P/api
 emit SECRET "$secret"
 L="--label lab.jour=6"
-# D6.4 : un service qui plante en boucle, faute de configuration
+# D6.4 : un service qui plante en boucle, faute de configuration.
+# Variante : où le programme cherche sa configuration (/config, /etc/synchro, /opt/synchro/conf, ou variable SYNCHRO_CONF)
 docker rm -f synchro >/dev/null 2>&1 || true
-docker build -q -t synchro-stock:1.0 /opt/docker-lab/fabrique/synchro >/dev/null
+v=$(variante D6.4 4)
+t=$(mktemp -d); cp -r /opt/docker-lab/fabrique/synchro/. $t/
+case $v in
+  1) sed -i 's|/config/stock.conf|/etc/synchro/stock.conf|g' $t/synchro.sh ;;
+  2) sed -i 's|/config/stock.conf|/opt/synchro/conf/stock.conf|g' $t/synchro.sh ;;
+  3) cat > $t/synchro.sh <<'EOF'
+#!/bin/sh
+# Synchronisation du stock avec l'entrepôt : le chemin de sa configuration est donné par la variable SYNCHRO_CONF.
+if [ -z "$SYNCHRO_CONF" ]; then
+    echo "Erreur : variable SYNCHRO_CONF non définie (chemin du fichier de configuration)" >&2
+    exit 3
+fi
+if [ ! -f "$SYNCHRO_CONF" ]; then
+    echo "Erreur : $SYNCHRO_CONF introuvable" >&2
+    exit 3
+fi
+echo "Synchro OK : $(cat "$SYNCHRO_CONF")"
+exec sleep infinity
+EOF
+  ;;
+esac
+docker build -q -t synchro-stock:1.0 $t >/dev/null; rm -rf $t
+emit VARIANTE_D6_4 "$v"
 mkdir -p $P/synchro
 conf="entrepot=$(rword)"
 echo "$conf" > $P/synchro/stock.conf
 own $P/synchro
 docker run -d --name synchro $L --restart always synchro-stock:1.0 >/dev/null
 emit SYNCHRO "$conf"
-# D6.6 : l'outil de rapport « installé » à la main par Marc dans un conteneur
+# D6.6 : l'outil de rapport « installé » à la main par Marc dans un conteneur. Variante : l'emplacement de ses fichiers
 docker rm -f bricolage-marc >/dev/null 2>&1 || true
+v=$(variante D6.6 4)
+case $v in
+  0) conf=/etc/rapport.conf; script=/usr/local/bin/rapport.sh ;;
+  1) conf=/etc/rapport/rapport.conf; script=/usr/local/bin/rapport ;;
+  2) conf=/opt/rapport/rapport.conf; script=/opt/rapport/bin/rapport.sh ;;
+  *) conf=/usr/local/etc/rapport.env; script=/usr/bin/rapport-ventes ;;
+esac
 docker run -d --name bricolage-marc $L alpine sleep infinity >/dev/null
+docker exec bricolage-marc mkdir -p "$(dirname $conf)" "$(dirname $script)"
 t=$(mktemp -d)
-printf 'SITE=entrepot-%s\nEDITION=%s\n' "$(rword | cut -d- -f1)" "$((RANDOM % 90 + 10))" > $t/rapport.conf
-cat > $t/rapport.sh <<'EOF'
-#!/bin/sh
-. /etc/rapport.conf
-echo "Rapport des ventes ($SITE), édition $EDITION"
-EOF
-chmod 755 $t/rapport.sh
-docker cp $t/rapport.conf bricolage-marc:/etc/rapport.conf >/dev/null
-docker cp $t/rapport.sh bricolage-marc:/usr/local/bin/rapport.sh >/dev/null
+printf 'SITE=entrepot-%s\nEDITION=%s\n' "$(rword | cut -d- -f1)" "$((RANDOM % 90 + 10))" > $t/conf
+printf '#!/bin/sh\n. %s\necho "Rapport des ventes ($SITE), édition $EDITION"\n' "$conf" > $t/script
+chmod 755 $t/script
+docker cp $t/conf bricolage-marc:$conf >/dev/null
+docker cp $t/script bricolage-marc:$script >/dev/null
 rm -rf $t
-docker exec bricolage-marc sh -c 'echo "vi /etc/rapport.conf" > /root/.ash_history; echo essai > /tmp/essai.txt'
-emit RAPPORT "$(docker exec bricolage-marc rapport.sh)"
+docker exec bricolage-marc sh -c "echo 'vi $conf' > /root/.ash_history; echo essai > /tmp/essai.txt"
+emit VARIANTE_D6_6 "$v"
+emit RAPPORT "$(docker exec bricolage-marc $script)"
 docker stop -t 1 bricolage-marc >/dev/null
 mkdir -p $P/rapport
 own $P/rapport
@@ -771,7 +857,7 @@ own $P/rapport
              "ticket": {"from": "sophie", "body": "Le conteneur <code>synchro</code> (image <code>synchro-stock:1.0</code>) redémarre en permanence et remplit les journaux. Trouve pourquoi et corrige : sa configuration est prête dans <code>~/projet/synchro</code>. Et plus jamais de boucle infinie : s'il plante, 5 tentatives au maximum, puis on le laisse arrêté."},
              "desc": "<code>synchro</code> (image <code>synchro-stock:1.0</code>) tourne, a lu la configuration de <code>~/projet/synchro/stock.conf</code>, et ne redémarre qu'en cas d'échec, 5 fois au plus.",
              "hints": ["<code>docker ps</code> affiche « Restarting (3) » : que signifie ce 3 ? Lisez <code>docker logs synchro</code> : que cherche le programme, et où ?",
-                       "Fournissez le dossier de configuration par un bind mount (lecture seule), avec la politique <code>on-failure</code> et un nombre maximal de tentatives. Le conteneur est à recréer."],
+                       "Donnez au programme ce que réclament ses journaux : le dossier de configuration par un bind mount (lecture seule), là où il le cherche, et une variable d'environnement s'il en demande une. Ajoutez la politique <code>on-failure</code> avec un nombre maximal de tentatives. Le conteneur est à recréer."],
              "checks": [
                  ('[ "$(insp synchro "{{.State.Status}}")" = running ] && [ "$(insp synchro "{{.Config.Image}}")" = synchro-stock:1.0 ]', "synchro (image synchro-stock:1.0) ne tourne pas normalement : lisez docker logs synchro."),
                  ('docker logs synchro 2>/dev/null | grep -qx "Synchro OK : $LAB_SYNCHRO"', "synchro n'a pas lu la configuration de ~/projet/synchro/stock.conf."),
@@ -791,7 +877,7 @@ own $P/rapport
              "ticket": {"from": "lea", "body": "Marc a « installé » son outil de rapport à la main, dans le conteneur <code>bricolage-marc</code> (arrêté), et personne ne sait le refaire. Je veux une image <strong>reproductible</strong> <code>rapport:1.0</code>, décrite dans <code>~/projet/rapport/Dockerfile</code>, qui affiche le même rapport au lancement. Pas de <code>docker commit</code> : je veux une recette."},
              "desc": "<code>~/projet/rapport/Dockerfile</code> construit une image qui affiche, sans argument, le même rapport que l'outil de Marc ; <code>rapport:1.0</code> est l'image produite par ce Dockerfile.",
              "hints": ["Qu'a modifié Marc par rapport à l'image alpine ? Docker le liste, même sur un conteneur arrêté. Puis récupérez les fichiers utiles.",
-                       "<code>docker diff bricolage-marc</code>, <code>docker cp</code> vers <code>~/projet/rapport</code> ; puis <code>FROM alpine</code>, des <code>COPY</code> aux mêmes emplacements, et la commande par défaut."],
+                       "<code>docker diff bricolage-marc</code> (les lignes <code>A</code> hors de l'historique et de <code>/tmp</code>), <code>docker cp</code> de chaque fichier vers <code>~/projet/rapport</code> ; puis <code>FROM alpine</code>, des <code>COPY</code> aux mêmes emplacements, et la commande par défaut (chemin complet si le script n'est pas dans le PATH)."],
              "checks": [
                  ('test -f $P/rapport/Dockerfile', "~/projet/rapport/Dockerfile n'existe pas."),
                  ('docker build -q -t lab-verif-rapport $P/rapport >/dev/null', "Le Dockerfile de ~/projet/rapport ne se construit pas."),
@@ -808,6 +894,36 @@ own $P/rapport
         "setup": r'''
 images_de_base
 livrer api pointeuse export entree
+# D7.2 : variante de la raison pour laquelle node n'est pas le PID 1 (fichiers modifiés seulement s'ils sont d'origine)
+v=$(variante D7.2 3); d=$P/pointeuse; o=/opt/docker-lab/projet/pointeuse
+if cmp -s $o/demarrer.sh $d/demarrer.sh && cmp -s $o/Dockerfile $d/Dockerfile; then
+  case $v in
+    1) cat > $d/demarrer.sh <<'EOF'
+#!/bin/sh
+# Script de démarrage de la pointeuse (écrit par Marc)
+echo "Préparation de la pointeuse…"
+node pointeuse.js &
+echo "Pointeuse lancée (PID $!)"
+wait $!
+EOF
+       sed -i 's|^CMD .*|CMD ["./demarrer.sh"]|' $d/Dockerfile ;;
+    2) sed -i 's|^node pointeuse.js$|exec node pointeuse.js|' $d/demarrer.sh
+       sed -i "s|^CMD .*|CMD [\"sh\", \"-c\", \"./demarrer.sh; echo 'Pointeuse arrêtée'\"]|" $d/Dockerfile ;;
+  esac
+fi
+emit VARIANTE_D7_2 "$v"
+# D7.5 : variante des erreurs du script d'entrée et du Dockerfile (fichiers modifiés seulement s'ils sont d'origine)
+v=$(variante D7.5 4); d=$P/entree; o=/opt/docker-lab/projet/entree
+if cmp -s $o/demarrage.sh $d/demarrage.sh && cmp -s $o/Dockerfile $d/Dockerfile; then
+  case $v in
+    1) sed -i 's|^node server.js$|exec node server.js|' $d/demarrage.sh ;;
+    2) sed -i 's|^node server.js$|"$@"|' $d/demarrage.sh; echo 'CMD ["node", "server.js"]' >> $d/Dockerfile ;;
+    3) sed -i 's|^node server.js$|exec "$@"|' $d/demarrage.sh; sed -i 's|^ENTRYPOINT .*|ENTRYPOINT ./demarrage.sh|' $d/Dockerfile
+       echo 'CMD ["node", "server.js"]' >> $d/Dockerfile ;;
+  esac
+fi
+emit VARIANTE_D7_5 "$v"
+own $P
 arreter_jour 5
 arreter vitrine-pleine cache-restaure vitrine-ro vitrine-maison
 L="--label lab.jour=7"
@@ -847,7 +963,7 @@ docker run -d --name etiqueteuse $L etiqueteuse:latest >/dev/null
              "ticket": {"from": "thomas", "body": "La pointeuse de l'entrepôt (<code>~/projet/pointeuse</code>) enregistre les passages quand elle s'arrête… en théorie. En pratique, <code>docker stop</code> met 10 secondes et on perd tout : le message « Arrêt propre » n'apparaît jamais dans les logs. Trouve pourquoi, corrige <strong>sans toucher au code</strong> de <code>pointeuse.js</code>, et construis <code>pointeuse:1.0</code>."},
              "desc": "L'image <code>pointeuse:1.0</code>, construite depuis <code>~/projet/pointeuse</code> (<code>pointeuse.js</code> inchangé), a node pour PID 1 et s'arrête en moins de 3 secondes avec <code>docker stop</code>, avec le code de sortie 0 et le message « Arrêt propre ».",
              "hints": ["Construisez l'image, lancez un conteneur, puis <code>docker top</code> : quel est le processus n°1 ? Est-ce lui qui reçoit SIGTERM ? Et node, qui l'a lancé ?",
-                       "Le PID 1 est le shell qui exécute <code>demarrer.sh</code> ; il a lancé node comme enfant et ne lui transmet pas le signal. Dans un script, <code>exec</code> remplace le shell par la commande. (Et la forme exec du CMD ne gâche rien.)"],
+                       "Le PID 1 est un shell (celui du <code>CMD</code> ou celui de <code>demarrer.sh</code>) ; node n'est que son descendant, et un shell en PID 1 ne lui transmet pas le signal. Il ne doit rester aucun shell entre Docker et node : dans un script, <code>exec</code> remplace le shell par la commande, et la forme exec du <code>CMD</code> lance le programme directement."],
              "checks": [
                  ('cmp -s /opt/docker-lab/projet/pointeuse/pointeuse.js $P/pointeuse/pointeuse.js', "pointeuse.js a été modifié : la correction doit se faire sans toucher au code (version d'origine : /opt/docker-lab/projet/pointeuse/pointeuse.js)."),
                  ('docker build -q -t lab-verif-pointeuse $P/pointeuse >/dev/null', "Le Dockerfile de ~/projet/pointeuse ne se construit pas."),
@@ -878,10 +994,10 @@ docker run -d --name etiqueteuse $L etiqueteuse:latest >/dev/null
                  ('t=v$RANDOM; docker build -q --build-arg APP_VERSION=$t -t lab-verif-version-img $P/api >/dev/null && v=$(version_api lab-verif-version-img) && l=$(insp lab-verif-version-img "{{index .Config.Labels \\"org.opencontainers.image.version\\"}}"); docker rmi lab-verif-version-img >/dev/null 2>&1; echo "MSG:construit avec --build-arg APP_VERSION=$t : version $v, label $l"; [ "$v" = "$t" ] && [ "$l" = "$t" ]', "Le Dockerfile de ~/projet/api ne reprend pas la valeur passée par --build-arg APP_VERSION (dans /health et dans le label) : la version ne doit pas être écrite en dur."),
              ]},
             {"id": "D7.5", "points": 5, "title": "Un script d'entrée qui garde la main", "manual": True,
-             "ticket": {"from": "nadia", "body": "L'image de Marc <code>~/projet/entree</code> passe par un script de démarrage. Deux soucis : pour déboguer, je voudrais lancer <code>docker run --rm api-entree:1.0 cat /tmp/config.json</code>, mais ça démarre toujours le serveur ; et <code>docker stop</code> prend 10 secondes. Corrige et construis <code>api-entree:1.0</code>. Lancée sans argument, elle doit toujours démarrer l'API."},
+             "ticket": {"from": "nadia", "body": "L'image de Marc <code>~/projet/entree</code> passe par un script de démarrage, et elle ne se comporte pas comme prévu. Pour déboguer, je voudrais lancer <code>docker run --rm api-entree:1.0 cat /tmp/config.json</code> et lire la configuration préparée par le script : impossible. Et lancée sans argument, elle doit démarrer l'API, avec un <code>docker stop</code> immédiat. Corrige et construis <code>api-entree:1.0</code>."},
              "desc": "Avec <code>api-entree:1.0</code> : une commande passée à <code>docker run</code> est exécutée après la préparation de la configuration ; sans argument, l'API démarre, avec node en PID 1, et s'arrête en moins de 3 secondes.",
-             "hints": ["Un script ENTRYPOINT reçoit le CMD (ou les arguments de <code>docker run</code>) en arguments : que fait <code>demarrage.sh</code> de ses arguments ? Et qui devient le PID 1 ?",
-                       "Terminez le script par <code>exec \"$@\"</code>, et mettez la commande du serveur dans un <code>CMD</code> en forme exec, utilisé par défaut."],
+             "hints": ["Un script ENTRYPOINT reçoit le CMD (ou les arguments de <code>docker run</code>) en arguments, à condition que l'ENTRYPOINT soit en forme exec : que fait <code>demarrage.sh</code> de ses arguments ? Et qui devient le PID 1 ? Testez les deux cas : avec et sans argument.",
+                       "Terminez le script par <code>exec \"$@\"</code>, mettez la commande du serveur dans un <code>CMD</code> en forme exec, utilisé par défaut, et vérifiez que l'<code>ENTRYPOINT</code> est lui aussi en forme exec."],
              "checks": [
                  ('docker build -q -t lab-verif-entree $P/entree >/dev/null', "Le Dockerfile de ~/projet/entree ne se construit pas."),
                  ('t=$RANDOM$RANDOM; verif lab-verif-cmd; timeout -k 3 15 docker run --name lab-verif-cmd -e REDIS_HOST=verif-$t lab-verif-entree cat /tmp/config.json > /tmp/lab-cmd.out 2>&1; verif lab-verif-cmd; grep -q "verif-$t" /tmp/lab-cmd.out', "docker run <image> cat /tmp/config.json n'affiche pas la configuration générée : le script d'entrée doit préparer la configuration, PUIS exécuter la commande reçue."),
@@ -921,14 +1037,15 @@ images_de_base
 livrer catalogue prive outil-stock rapport-compact
 arreter_jour 6
 arreter api synchro
-# Licence du fournisseur de l'outil de réassort, hors du projet
+# Licence du fournisseur de l'outil de réassort, hors du projet. Licence et jeton sont conservés d'une mise en place
+# à l'autre : le cache de construction ne tient pas compte du contenu des secrets (un RUN déjà en cache garderait l'ancien)
 mkdir -p $H/licences
-licence="LIC-$(rword | tr 'a-z-' 'A-Z_')-$RANDOM$RANDOM"
-echo "$licence" > $H/licences/reassort.txt
+grep -qs '^LIC-' $H/licences/reassort.txt || echo "LIC-$(rword | tr 'a-z-' 'A-Z_')-$RANDOM$RANDOM" > $H/licences/reassort.txt
+licence=$(cat $H/licences/reassort.txt)
 chmod 600 $H/licences/reassort.txt
 # Jeton du fournisseur de l'outil de stock
-jeton="JETON-$(hexa 6)"
-echo "$jeton" > $H/licences/stock.txt
+grep -qs '^JETON-' $H/licences/stock.txt || echo "JETON-$(hexa 6)" > $H/licences/stock.txt
+jeton=$(cat $H/licences/stock.txt)
 chmod 600 $H/licences/stock.txt
 own $H/licences
 activ=$(sha256sum $H/licences/reassort.txt | cut -c1-16)
@@ -948,12 +1065,43 @@ EOF
 docker rmi -f ancienne-api:0.9 >/dev/null 2>&1 || true
 docker build -q --build-arg DB_PASSWORD="$dbpw" -t ancienne-api:0.9 $t >/dev/null
 rm -rf $t
-# D8.5 : l'outil de stock tel que Marc l'a construit (le jeton est recopié dans une couche)
+# D8.5 : l'outil de stock tel que Marc l'a construit (le jeton est recopié dans une couche).
+# Variante : la commande qui recopie le jeton. Le Dockerfile du projet n'est remplacé que s'il est encore d'origine.
+v=$(variante D8.5 4); o=/opt/docker-lab/projet/outil-stock
+case $v in
+  0) run='RUN --mount=type=secret,id=jeton cp /run/secrets/jeton /root/.jeton && ./installer.sh' ;;
+  1) run='RUN --mount=type=secret,id=jeton cat /run/secrets/jeton > /opt/stock/jeton.txt && ./installer.sh /opt/stock/jeton.txt' ;;
+  2) run='RUN --mount=type=secret,id=jeton ./installer.sh /run/secrets/jeton && cp /run/secrets/jeton /opt/stock/.jeton-sauvegarde' ;;
+  *) run=$'RUN --mount=type=secret,id=jeton cp /run/secrets/jeton /tmp/jeton\nRUN ./installer.sh /tmp/jeton && rm /tmp/jeton' ;;
+esac
+t=$(mktemp -d); cp -r $o/. $t/
+{ sed '/^RUN /,$d' $o/Dockerfile; printf '%s\n' "$run"; sed '1,/^RUN /d' $o/Dockerfile; } > $t/Dockerfile
+cmp -s $o/Dockerfile $P/outil-stock/Dockerfile && cp $t/Dockerfile $P/outil-stock/Dockerfile
 docker rmi -f outil-stock:1.0 >/dev/null 2>&1 || true
-docker build -q --secret id=jeton,src=$H/licences/stock.txt -t outil-stock:1.0 /opt/docker-lab/projet/outil-stock >/dev/null
-# D8.6 : le rapport compact tel que Marc l'a construit (plus de 50 Mo)
+docker build -q --secret id=jeton,src=$H/licences/stock.txt -t outil-stock:1.0 $t >/dev/null; rm -rf $t
+emit VARIANTE_D8_5 "$v"
+# D8.6 : le rapport compact tel que Marc l'a construit (plus de 50 Mo).
+# Variante : les données brutes (et donc le résultat). Le Dockerfile du projet n'est remplacé que s'il est encore d'origine.
+v=$(variante D8.6 4); o=/opt/docker-lab/projet/rapport-compact
+# Dockerfile déjà modifié (par exemple avant l'introduction des variantes) : ses données brutes désignent la variante
+if ! cmp -s $o/Dockerfile $P/rapport-compact/Dockerfile; then
+  i=0; for motif in "ventes du jour" "seq 1 7000000" "/donnees/" "réassort"; do
+    grep -qF "$motif" $P/rapport-compact/Dockerfile 2>/dev/null && v=$(LAB_VARIANTE_D8_6=$i variante D8.6 4); i=$((i + 1))
+  done
+fi
+case $v in
+  0) runs=$'RUN yes "Cimes & Sentiers : ventes du jour" | head -c 50000000 > /tmp/brut\nRUN ./compacter.sh /tmp/brut > resultat.txt\nRUN rm /tmp/brut' ;;
+  1) runs=$'RUN seq 1 7000000 > /tmp/ventes.txt\nRUN ./compacter.sh /tmp/ventes.txt > resultat.txt\nRUN rm /tmp/ventes.txt' ;;
+  2) runs=$'RUN mkdir /donnees && head -c 52000000 /dev/zero > /donnees/brut.dat\nRUN ./compacter.sh /donnees/brut.dat > resultat.txt\nRUN rm -rf /donnees' ;;
+  *) runs=$'RUN yes "Cimes & Sentiers : réassort de l\'entrepôt" | head -n 1200000 > /tmp/reassort.txt\nRUN ./compacter.sh /tmp/reassort.txt > resultat.txt\nRUN rm /tmp/reassort.txt' ;;
+esac
+t=$(mktemp -d); cp -r $o/. $t/
+{ sed '/^RUN /,$d' $o/Dockerfile; printf '%s\n' "$runs"; sed -n '/^CMD /,$p' $o/Dockerfile; } > $t/Dockerfile
+cmp -s $o/Dockerfile $P/rapport-compact/Dockerfile && cp $t/Dockerfile $P/rapport-compact/Dockerfile
 docker rmi -f rapport-compact:1.0 >/dev/null 2>&1 || true
-docker build -q -t rapport-compact:1.0 /opt/docker-lab/projet/rapport-compact >/dev/null
+docker build -q -t rapport-compact:1.0 $t >/dev/null; rm -rf $t
+own $P
+emit VARIANTE_D8_6 "$v"
 emit COMPACT "$(docker run --rm rapport-compact:1.0 | sha256sum | cut -c1-16)"
 emit DBPW "$dbpw"
 emit COUCHE "$mdp"
@@ -1008,7 +1156,7 @@ emit ACTIV_STOCK "$activ_stock"
             {"id": "D8.5", "points": 5, "title": "Le secret recopié", "manual": True,
              "ticket": {"from": "sophie", "body": "L'outil de stock de Marc (<code>~/projet/outil-stock</code>) utilise pourtant un secret de construction pour le jeton du fournisseur (<code>~/licences/stock.txt</code>)… et l'audit retrouve quand même le jeton dans l'image <code>outil-stock:1.0</code> ! Trouve la fuite, corrige le Dockerfile et reconstruis <code>outil-stock:1.0</code>."},
              "desc": "<code>outil-stock:1.0</code>, construite depuis <code>~/projet/outil-stock</code> avec le secret, est installée avec le jeton de <code>~/licences/stock.txt</code> ; le jeton n'apparaît ni dans ses couches ni dans son historique.",
-             "hints": ["Le secret monté n'est écrit dans aucune couche… sauf si une commande le recopie ailleurs. Relisez le RUN, et cherchez le jeton dans l'image (<code>docker save outil-stock:1.0 | grep -a JETON</code>).",
+             "hints": ["Le secret monté n'est écrit dans aucune couche… sauf si une commande le recopie ailleurs. Relisez les instructions RUN, et cherchez le jeton dans l'image (<code>docker save outil-stock:1.0 | grep -a JETON</code>).",
                        "<code>installer.sh</code> accepte le chemin du jeton en argument : faites-lui lire directement <code>/run/secrets/jeton</code>. (Supprimer la copie dans le <strong>même</strong> RUN fonctionne aussi ; dans un RUN suivant, jamais.)"],
              "checks": [
                  ('grep -q "type=secret" $P/outil-stock/Dockerfile', "Le Dockerfile de ~/projet/outil-stock doit toujours recevoir le jeton par un secret de construction."),
@@ -1019,7 +1167,7 @@ emit ACTIV_STOCK "$activ_stock"
             {"id": "D8.6", "points": 5, "title": "50 Mo pour trois lignes", "manual": True,
              "ticket": {"from": "nadia", "body": "L'image <code>rapport-compact:1.0</code> de Marc (<code>~/projet/rapport-compact</code>) affiche trois lignes… et pèse plus de 50 Mo ! Pourtant il supprime bien son fichier de travail. Ramène-la sous <strong>15 Mo</strong>, avec exactement le même résultat."},
              "desc": "Construite depuis <code>~/projet/rapport-compact</code>, <code>rapport-compact:1.0</code> pèse moins de 15 Mo et affiche le même résultat qu'avant.",
-             "hints": ["<code>docker history rapport-compact:1.0</code> : quelle couche pèse ? Que fait réellement le <code>rm</code> de la dernière instruction ?",
+             "hints": ["<code>docker history rapport-compact:1.0</code> : quelle couche pèse ? Que fait réellement la suppression de la dernière instruction ?",
                        "Un fichier créé puis supprimé <strong>dans le même RUN</strong> n'est écrit dans aucune couche. Autre solution : une étape de construction séparée, et <code>COPY --from</code> du seul résultat."],
              "checks": [
                  ('docker image inspect rapport-compact:1.0 >/dev/null', "L'image rapport-compact:1.0 n'existe pas."),
@@ -1065,14 +1213,23 @@ emit DBSTART "$(docker inspect -f '{{.State.StartedAt}}' legacy-db)"
 nettoyer D9.4
 docker rm -f api-diag >/dev/null 2>&1 || true
 for n in $(docker network ls -q --filter label=lab.exercice=D9.4); do docker network rm $n >/dev/null 2>&1 || true; done
+# Variante : 0 = nom inexistant et réseaux différents ; 1 = nom inexistant, même réseau ; 2 = adresse IP périmée, réseaux différents
+v=$(variante D9.4 3)
 ra="app-$(rword)"; rs="stock-$(rword)"; cache="cache-$(rword)"
 docker network create --label lab.exercice=D9.4 $ra >/dev/null
 docker network create --label lab.exercice=D9.4 $rs >/dev/null
-docker run -d --name $cache $L --label lab.exercice=D9.4 --network $rs redis:7-alpine redis-server --appendonly yes >/dev/null
+[ $v = 1 ] && rc=$ra || rc=$rs
+docker run -d --name $cache $L --label lab.exercice=D9.4 --network $rc redis:7-alpine redis-server --appendonly yes >/dev/null
 attendre_redis $cache
 seed=$((RANDOM % 8000 + 1000))
 docker exec $cache redis-cli set visites $seed >/dev/null
-docker run -d --name api-diag $L --label lab.exercice=D9.4 --network $ra -p 3003:3000 -e REDIS_HOST=redis-cache api-diag:1.0 >/dev/null
+if [ $v = 2 ]; then
+  hote=$(docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}' $ra | sed 's|0/.*|250|')
+else
+  hote=$(echo redis-cache cache-visites base-compteurs redis-boutique | tr ' ' '\n' | shuf -n1)
+fi
+docker run -d --name api-diag $L --label lab.exercice=D9.4 --network $ra -p 3003:3000 -e REDIS_HOST=$hote api-diag:1.0 >/dev/null
+emit VARIANTE_D9_4 "$v"
 emit CACHE "$cache"
 emit CACHE_ID "$(docker inspect -f '{{.Id}}' $cache)"
 emit SEED "$seed"
@@ -1116,10 +1273,10 @@ emit SEED "$seed"
                  ('a=$(http 3002 /visites | jq -e .visites) && b=$(http 3002 /visites | jq -e .visites) && [ "$b" -gt "$a" ]', "http://localhost:3002/visites ne compte pas les visites (api-sec est-il publié, et joint-il redis-sec par son nom ?)."),
              ]},
             {"id": "D9.4", "points": 5, "title": "Pourquoi l'API ne voit pas Redis ?",
-             "ticket": {"from": "lea", "body": "L'API <code>api-diag</code> (port 3003) répond « injoignable » sur <code>/visites</code>. Son Redis, c'est le conteneur <code>cache-…</code> : il contient les compteurs de visites de l'année, donc <strong>interdiction de le recréer ou de l'arrêter</strong>. Trouve ce qui cloche et répare, pour que l'API compte dans ce Redis-là."},
+             "ticket": {"from": "lea", "body": "L'API <code>api-diag</code> (port 3003) n'arrive pas à joindre son Redis : <code>/visites</code> répond par une erreur. Son Redis, c'est le conteneur <code>cache-…</code> : il contient les compteurs de visites de l'année, donc <strong>interdiction de le recréer ou de l'arrêter</strong>. Trouve ce qui cloche et répare, pour que l'API compte dans ce Redis-là."},
              "desc": "<code>http://localhost:3003/visites</code> compte les visites dans le Redis <code>cache-…</code> d'origine (compteur de l'année compris), qui n'a été ni recréé ni arrêté.",
-             "hints": ["Deux questions : l'API et Redis ont-ils un réseau en commun ? Le nom demandé par l'API (<code>docker exec api-diag env</code>) existe-t-il ? <code>docker exec api-diag nslookup …</code>",
-                       "Un conteneur peut rejoindre un réseau à chaud, et y recevoir un nom supplémentaire : <code>docker network connect --alias …</code>. (Recréer l'API avec une autre configuration marche aussi.)"],
+             "hints": ["Deux questions : l'API et Redis ont-ils un réseau en commun ? L'hôte demandé par l'API (<code>docker exec api-diag env</code>) désigne-t-il vraiment ce Redis ? <code>docker exec api-diag nslookup …</code>, et <code>docker inspect</code> sur les deux conteneurs.",
+                       "Un conteneur peut rejoindre un réseau à chaud, et y recevoir un nom supplémentaire : <code>docker network connect --alias …</code> (s'il y est déjà, débranchez-le d'abord, sans l'arrêter). Une adresse IP ne se corrige pas par un alias : recréez alors l'API, en désignant Redis par son nom."],
              "checks": [
                  ('running "$LAB_CACHE" && [ "$(insp "$LAB_CACHE" "{{.Id}}")" = "$LAB_CACHE_ID" ]', "Le Redis des compteurs a été recréé ou arrêté : il fallait le garder (bouton « Réinitialiser les fichiers de cette étape » pour recommencer)."),
                  ('running api-diag', "Le conteneur api-diag ne tourne pas."),
@@ -1147,21 +1304,31 @@ images_de_base
 livrer api site nginx
 arreter_jour 8
 arreter catalogue
-# D10.6 : la pile du stock de Diallo
+# D10.6 : la pile du stock de Diallo. Variante : le dossier de données de Redis et la forme du volume anonyme
+# (déclaré dans le service, en syntaxe courte ou longue, ou seulement par le VOLUME de l'image)
+stock() { # variante -> commande et volume
+  case $1 in
+    0) cmd="redis-server --appendonly yes"; vol=$'    volumes:\n      - /data' ;;
+    1) cmd="redis-server --appendonly yes --dir /data/stock"; vol=$'    volumes:\n      - /data/stock' ;;
+    2) cmd="redis-server --appendonly yes --appendfsync always"; vol="" ;;
+    *) cmd="redis-server --dir /data/quantites --appendonly yes"; vol=$'    volumes:\n      - type: volume\n        target: /data/quantites' ;;
+  esac
+}
+v=$(variante D10.6 4)
+# Fichier déjà livré (par exemple avant l'introduction des variantes) : sa commande désigne la variante
+if [ -f $H/stock/compose.yaml ]; then
+  for i in 0 1 2 3; do stock $i; grep -qxF "    command: $cmd" $H/stock/compose.yaml && v=$(LAB_VARIANTE_D10_6=$i variante D10.6 4); done
+fi
+stock $v
 mkdir -p $H/stock
 if [ ! -f $H/stock/compose.yaml ]; then
-cat > $H/stock/compose.yaml <<'EOF'
-# Pile du stock (Diallo) : Redis garde les quantités en stock.
-services:
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
-    volumes:
-      - /data
-EOF
+  { printf '# Pile du stock (Diallo) : Redis garde les quantités en stock.\nservices:\n  redis:\n    image: redis:7-alpine\n    command: %s\n' "$cmd"
+    [ -z "$vol" ] || printf '%s\n' "$vol"; } > $H/stock/compose.yaml
 fi
 own $H/stock
 (cd $H/stock && docker compose up -d >/dev/null 2>&1) || true
+emit VARIANTE_D10_6 "$v"
+emit COMMANDE "$(printf '%s' "$cmd" | jq -Rc 'split(" ")')"
 ''',
         "exercises": [
             {"id": "D10.1", "points": 6, "title": "La pile en un fichier",
@@ -1220,13 +1387,14 @@ own $H/stock
                  ("p=$(docker compose -f $P/compose.yaml --profile '*' config --format json | jq -r '.services.outils.profiles[0]'); r=$(timeout 60 docker compose -f $P/compose.yaml --profile \"$p\" run --rm -T outils redis-cli -h redis ping 2>/dev/null | tr -d '\\r'); [ \"$r\" = PONG ]", "docker compose --profile … run --rm outils redis-cli -h redis ping ne répond pas PONG."),
              ]},
             {"id": "D10.6", "points": 5, "title": "Le stock remis à zéro", "manual": True,
-             "ticket": {"from": "diallo", "body": "La pile du stock (<code>~/stock</code>) marche très bien… jusqu'à la maintenance du dimanche : Léa fait <code>docker compose down</code> puis <code>docker compose up -d</code>, et tout le stock est perdu ! Corrige <code>~/stock/compose.yaml</code> (le service doit toujours s'appeler <code>redis</code>)."},
-             "desc": "Avec <code>~/stock/compose.yaml</code>, une donnée écrite dans <code>redis</code> survit à <code>docker compose down</code> suivi de <code>docker compose up -d</code>.",
-             "hints": ["Faites l'essai : écrivez une clé, <code>down</code>, <code>up -d</code>, et comparez <code>docker volume ls</code> avant et après. Combien de volumes, et lequel est monté ?",
-                       "Un volume sans nom (<code>- /data</code>) appartient au conteneur : le prochain <code>up</code> en crée un nouveau, vide. Déclarez un volume <strong>nommé</strong> (section <code>volumes:</code> de premier niveau)."],
+             "ticket": {"from": "diallo", "body": "La pile du stock (<code>~/stock</code>) marche très bien… jusqu'à la maintenance du dimanche : Léa fait <code>docker compose down</code> puis <code>docker compose up -d</code>, et tout le stock est perdu ! Corrige <code>~/stock/compose.yaml</code> : le service doit toujours s'appeler <code>redis</code>, avec la même commande."},
+             "desc": "Avec <code>~/stock/compose.yaml</code>, une donnée écrite dans <code>redis</code> survit à <code>docker compose down</code> suivi de <code>docker compose up -d</code> ; le service <code>redis</code> garde son nom et sa commande.",
+             "hints": ["Faites l'essai : écrivez une clé, <code>down</code>, <code>up -d</code>, et comparez <code>docker volume ls</code> avant et après. Combien de volumes, et lequel est monté ? Dans quel dossier Redis écrit-il ses données (<code>docker compose exec redis redis-cli config get dir</code>) ?",
+                       "Un volume sans nom (déclaré dans le service sans nom de volume, ou par le <code>VOLUME</code> de l'image) appartient au conteneur : le prochain <code>up</code> en crée un nouveau, vide. Montez un volume <strong>nommé</strong> (section <code>volumes:</code> de premier niveau) sur le dossier où Redis écrit réellement."],
              "checks": [
                  ('compose $H/stock/compose.yaml config -q', "~/stock/compose.yaml est absent ou invalide."),
                  ('compose $H/stock/compose.yaml config --services | grep -qx redis', "Le service de ~/stock/compose.yaml doit toujours s'appeler redis."),
+                 ('[ -z "$LAB_COMMANDE" ] || [ "$(compose $H/stock/compose.yaml config --format json | jq -c .services.redis.command)" = "$LAB_COMMANDE" ]', "La commande du service redis doit rester celle de Diallo : seul le stockage des données est à corriger."),
                  ('t=v$RANDOM$RANDOM; cd $H/stock || exit 1; pret() { for i in $(seq 1 20); do docker compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG && return 0; sleep 1; done; return 1; }; docker compose up -d >/dev/null 2>&1 && pret && docker compose exec -T redis redis-cli set lab-verif "$t" >/dev/null && docker compose down >/dev/null 2>&1 && docker compose up -d >/dev/null 2>&1 && pret; r=$(docker compose exec -T redis redis-cli get lab-verif 2>/dev/null | tr -d "\\r"); docker compose exec -T redis redis-cli del lab-verif >/dev/null 2>&1; echo "MSG:valeur relue après down puis up : ${r:-aucune}"; [ "$r" = "$t" ]', "Après docker compose down puis up -d, les données du stock sont perdues."),
              ]},
         ],
@@ -1243,18 +1411,45 @@ arreter redis api legacy-web legacy-db api-sec redis-sec vitrine-a vitrine-b
 # Les ports de la pile incident doivent être libres
 for p in 3000 8090; do ids=$(docker ps -q --filter publish=$p); [ -z "$ids" ] || arreter $ids; done
 L="--label lab.jour=11"
+# D11.1 : la pile de Marc, avec trois erreurs (image, publication du port, accès à Redis) qui dépendent de la variante.
+# Les fichiers ne sont livrés que s'ils sont absents (le travail de l'étudiant est conservé).
+v=$(variante D11.1 4)
 mkdir -p $H/incident
-cp -rn /opt/docker-lab/incident/. $H/incident/
+if [ ! -f $H/incident/compose.yaml ]; then
+  app=$(echo app api backend appli | cut -d' ' -f$((v + 1)))
+  mkdir -p $H/incident/$app
+  cp -n /opt/docker-lab/incident/app/server.js /opt/docker-lab/incident/app/package.json /opt/docker-lab/incident/app/produits.json $H/incident/$app/
+  case $v in
+    0) copie='COPY . .'; lance='CMD ["node", "serveur.js"]'; port='"3000:8090"'; env='      REDIS_HOTE: cache'; reseau="" ;;
+    1) copie='COPY . /srv/app'; lance='CMD ["node", "server.js"]'; port='"8090:8080"'; env='      REDIS_HOST: redis'; reseau="" ;;
+    2) copie='COPY . .'; lance=$'ENTRYPOINT ["node"]\nCMD ["node", "server.js"]'; port='"8090:3000"'
+       env=$'      PORT: "8080"\n      REDIS_HOST: "cache:6379"'; reseau="" ;;
+    *) copie='COPY *.json ./'; lance='CMD ["node", "server.js"]'; port='"8090:80"'; env='      REDIS_HOST: cache'
+       reseau=$'    networks:\n      - donnees\n\nnetworks:\n  donnees:' ;;
+  esac
+  printf 'FROM node:20-alpine\nWORKDIR /app\n%s\nUSER node\nEXPOSE 3000\n%s\n' "$copie" "$lance" > $H/incident/$app/Dockerfile
+  { printf "# Pile « incident » déployée par Marc juste avant son départ.\n# Attendu : l'API répond sur http://localhost:8090/visites\n"
+    printf 'services:\n  api:\n    build: ./%s\n    ports:\n      - %s\n    environment:\n%s\n' "$app" "$port" "$env"
+    printf '    depends_on:\n      - cache\n    restart: on-failure\n\n  cache:\n    image: redis:7-alpine\n'
+    [ -z "$reseau" ] || printf '%s\n' "$reseau"; } > $H/incident/compose.yaml
+fi
 own $H/incident
 (cd $H/incident && docker compose up -d --build >/dev/null 2>&1) || true
-# D11.2 : trois versions de brouillon-marc ; la première est encore utilisée par un conteneur arrêté
+emit VARIANTE_D11_1 "$v"
+# D11.2 : trois versions de brouillon-marc ; d'anciennes versions sont encore utilisées par des conteneurs arrêtés.
+# Variante : la ou les versions utilisées (la première, la deuxième, ou les deux), par des conteneurs aux noms tirés au sort
+v=$(variante D11.2 3)
+nettoyer D11.2
 docker rm -f brouillon-test >/dev/null 2>&1 || true
 anciennes=""
-for v in 1 2 3; do
-  printf 'FROM alpine\nRUN echo "brouillon %s (%s)" > /version\n' "$v" "$(hexa 3)" | docker build -q -t brouillon-marc - >/dev/null
-  [ $v = 1 ] && docker create --name brouillon-test $L brouillon-marc cat /version >/dev/null
-  [ $v = 3 ] || anciennes="$anciennes $(docker image inspect -f '{{.Id}}' brouillon-marc)"
+for n in 1 2 3; do
+  printf 'FROM alpine\nRUN echo "brouillon %s (%s)" > /version\n' "$n" "$(hexa 3)" | docker build -q -t brouillon-marc - >/dev/null
+  case "$v:$n" in
+    0:1|1:2|2:1|2:2) docker create --name "essai-$(rword)" $L --label lab.exercice=D11.2 brouillon-marc cat /version >/dev/null ;;
+  esac
+  [ $n = 3 ] || anciennes="$anciennes $(docker image inspect -f '{{.Id}}' brouillon-marc)"
 done
+emit VARIANTE_D11_2 "$v"
 emit ANCIENNES "$anciennes"
 # D11.3 : un import tué par la limite mémoire
 docker rm -f import-compta >/dev/null 2>&1 || true
@@ -1274,8 +1469,8 @@ emit ETATS "$(docker inspect -f '{{.Id}}' badgeuse) $(docker inspect -f '{{.Id}}
              "ticket": {"from": "sophie", "body": "Alerte ! La pile <code>~/incident</code> déployée par Marc juste avant son départ ne fonctionne pas : l'API devrait répondre sur <code>http://localhost:8090/visites</code>. Je n'ai pas le temps de t'en dire plus, mais je parie qu'il y a <strong>plusieurs</strong> erreurs."},
              "desc": "Après correction de <code>~/incident</code> (fichiers compose et Dockerfile), <code>http://localhost:8090/visites</code> compte les visites.",
              "hints": ["Commencez par <code>docker compose ps -a</code> et <code>docker compose logs api</code> dans <code>~/incident</code>. Traitez une erreur à la fois : chaque correction fait apparaître la suivante.",
-                       "Comparez ce que la pile donne à l'API (fichier lancé, variables, ports) avec ce qu'attend <code>server.js</code> : nom du fichier, nom de la variable lue par <code>process.env</code>, port d'écoute.",
-                       "Trois erreurs : la commande de démarrage de l'image, le sens de la redirection de port, et le nom d'une variable d'environnement."],
+                       "Comparez ce que la pile donne à l'API (fichiers copiés dans l'image, commande lancée, variables, ports, réseaux) avec ce qu'attend <code>server.js</code> : emplacement du code, variables lues par <code>process.env</code> et leur format, port d'écoute réel (<code>docker compose logs api</code>).",
+                       "Trois erreurs : une dans le Dockerfile (ce que l'image copie ou lance vraiment), une dans la publication du port (<code>hôte:conteneur</code>, vers le port où l'API écoute), et une dans la façon dont l'API trouve Redis (variable, nom d'hôte ou réseau)."],
              "checks": [
                  ('http 8090 /visites | jq -e ".visites >= 1"', "http://localhost:8090/visites ne compte pas les visites."),
                  ('compose $H/incident/compose.yaml ps --status running --services | grep -qx api', "Le service api de la pile incident ne tourne pas."),
@@ -1284,7 +1479,7 @@ emit ETATS "$(docker inspect -f '{{.Id}}' badgeuse) $(docker inspect -f '{{.Id}}
              "ticket": {"from": "lea", "body": "Le disque du serveur se remplit : Marc a reconstruit plusieurs fois son image <code>brouillon-marc</code>, et les anciennes versions traînent sans nom (<code>&lt;none&gt;</code>). Supprime <strong>toutes</strong> les anciennes versions ; garde la dernière (celle qui porte le tag). Attention, les images de base (node, nginx, redis…) doivent rester : on n'a pas Internet dans la salle serveur."},
              "desc": "Plus aucune ancienne version de <code>brouillon-marc</code> ; <code>brouillon-marc:latest</code>, <code>node:20-alpine</code>, <code>nginx:alpine</code>, <code>redis:7-alpine</code> et <code>alpine</code> sont toujours présentes.",
              "hints": ["<code>docker images</code> montre les images pendantes. Après un premier ménage, pourquoi l'une d'elles résiste-t-elle ? Qui l'utilise encore ?",
-                       "<code>docker ps -a --filter ancestor=&lt;id&gt;</code> ; supprimez le conteneur de test arrêté, puis relancez le ménage des images pendantes (sans <code>-a</code> !)."],
+                       "<code>docker ps -a --filter ancestor=&lt;id&gt;</code>, pour chaque image qui résiste ; supprimez les conteneurs d'essai arrêtés qui les utilisent, puis relancez le ménage des images pendantes (sans <code>-a</code> !)."],
              "checks": [
                  ('for i in node:20-alpine nginx:alpine redis:7-alpine alpine:latest; do docker image inspect $i >/dev/null 2>&1 || exit 1; done', "Des images de base ont été supprimées ! (docker image prune -a supprime toutes les images inutilisées)"),
                  ('docker image inspect brouillon-marc:latest >/dev/null 2>&1', "La dernière version de brouillon-marc (celle qui porte le tag) a été supprimée : il fallait la garder."),

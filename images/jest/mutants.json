@@ -55,26 +55,26 @@
     {"file": "src/catalogue.js", "from": "p.libelle.toLowerCase().includes(t)", "to": "p.libelle.toLowerCase().startsWith(t)", "desc": "seul le début du libellé est comparé au terme"},
     {"file": "src/catalogue.js", "from": "String(terme).trim().toLowerCase()", "to": "String(terme).toLowerCase()", "desc": "les espaces autour du terme ne sont plus ignorés"},
     {"file": "src/catalogue.js", "from": "String(terme).trim().toLowerCase()", "to": "String(terme).trim()", "desc": "un terme saisi avec des majuscules ne trouve plus rien"},
-    {"file": "src/catalogue.js", "from": "t.length < 2", "to": "t.length < 3", "desc": "un terme de 2 caractères ne renvoie plus rien"},
+    {"file": "src/catalogue.js", "from": "t.length < {{CAT_MIN}}", "to": "t.length < {{CAT_MIN_PLUS}}", "desc": "un terme de {{CAT_MIN}} caractères ne renvoie plus rien"},
     {"file": "src/catalogue.js", "from": "produits.filter((p) => p.libelle", "to": "produits.filter((p, i) => i === 0 || p.libelle", "desc": "le premier produit du catalogue fait toujours partie des résultats"},
-    {"file": "src/catalogue.js", "from": "t.length < 2", "to": "t.length < 1", "desc": "un terme d'un seul caractère renvoie des résultats"}
+    {"file": "src/catalogue.js", "from": "t.length < {{CAT_MIN}}", "to": "t.length < {{CAT_MIN_MOINS}}", "desc": "un terme plus court que la longueur minimale renvoie des résultats"}
   ],
   "catalogue-ordre": [
     {"file": "src/catalogue.js", "from": "return produits.filter((p) => p.libelle.toLowerCase().includes(t));", "to": "return produits.filter((p) => p.libelle.toLowerCase().includes(t)).reverse();", "desc": "résultats renvoyés dans l'ordre inverse du catalogue"},
     {"file": "src/catalogue.js", "from": "return produits.filter((p) => p.libelle.toLowerCase().includes(t));", "to": "return produits.filter((p) => p.libelle.toLowerCase().includes(t)).sort((a, b) => b.prixHT - a.prixHT);", "desc": "résultats classés du plus cher au moins cher"}
   ],
   "livraison": [
-    {"file": "src/livraison.js", "from": "if (poidsKg < 1) {", "to": "if (poidsKg <= 1) {", "desc": "un colis d'1 kg pile est facturé 4,90 € au lieu de 8,90 €"},
-    {"file": "src/livraison.js", "from": "} else if (poidsKg < 5) {", "to": "} else if (poidsKg <= 5) {", "desc": "un colis de 5 kg pile est facturé 8,90 € au lieu de 14,90 €"},
-    {"file": "src/livraison.js", "from": "BE: 3,", "to": "BE: 0,", "desc": "plus de supplément pour la Belgique"},
-    {"file": "src/livraison.js", "from": "LU: 3,", "to": "LU: 0,", "desc": "plus de supplément pour le Luxembourg"},
-    {"file": "src/livraison.js", "from": "DE: 8,", "to": "DE: 3,", "desc": "supplément de 3 € au lieu de 8 € pour l'Allemagne"},
-    {"file": "src/livraison.js", "from": "ES: 8,", "to": "ES: 3,", "desc": "supplément de 3 € au lieu de 8 € pour l'Espagne"},
-    {"file": "src/livraison.js", "from": "IT: 8,", "to": "IT: 3,", "desc": "supplément de 3 € au lieu de 8 € pour l'Italie"},
-    {"file": "src/livraison.js", "from": "NL: 8,", "to": "NL: 3,", "desc": "supplément de 3 € au lieu de 8 € pour les Pays-Bas"},
-    {"file": "src/livraison.js", "from": "totalTTC >= 60", "to": "totalTTC > 60", "desc": "la livraison n'est pas offerte à 60 € pile en France"},
-    {"file": "src/livraison.js", "from": "totalTTC >= 100", "to": "totalTTC >= 60", "desc": "livraison offerte dès 60 € hors de France"},
-    {"file": "src/livraison.js", "from": "totalTTC >= 100", "to": "totalTTC > 100", "desc": "la livraison n'est pas offerte à 100 € pile hors de France"},
+    {"file": "src/livraison.js", "from": "if (poidsKg < {{LIV_L1}}) {", "to": "if (poidsKg <= {{LIV_L1}}) {", "desc": "un colis de {{LIV_L1}} kg pile est facturé {{LIV_B1_TXT}} € au lieu de {{LIV_B2_TXT}} €"},
+    {"file": "src/livraison.js", "from": "} else if (poidsKg < {{LIV_L2}}) {", "to": "} else if (poidsKg <= {{LIV_L2}}) {", "desc": "un colis de {{LIV_L2}} kg pile est facturé {{LIV_B2_TXT}} € au lieu de {{LIV_B3_TXT}} €"},
+    {"file": "src/livraison.js", "from": "BE: {{LIV_SP}},", "to": "BE: 0,", "desc": "plus de supplément pour la Belgique"},
+    {"file": "src/livraison.js", "from": "LU: {{LIV_SP}},", "to": "LU: 0,", "desc": "plus de supplément pour le Luxembourg"},
+    {"file": "src/livraison.js", "from": "DE: {{LIV_SL}},", "to": "DE: {{LIV_SP}},", "desc": "supplément de {{LIV_SP}} € au lieu de {{LIV_SL}} € pour l'Allemagne"},
+    {"file": "src/livraison.js", "from": "ES: {{LIV_SL}},", "to": "ES: {{LIV_SP}},", "desc": "supplément de {{LIV_SP}} € au lieu de {{LIV_SL}} € pour l'Espagne"},
+    {"file": "src/livraison.js", "from": "IT: {{LIV_SL}},", "to": "IT: {{LIV_SP}},", "desc": "supplément de {{LIV_SP}} € au lieu de {{LIV_SL}} € pour l'Italie"},
+    {"file": "src/livraison.js", "from": "NL: {{LIV_SL}},", "to": "NL: {{LIV_SP}},", "desc": "supplément de {{LIV_SP}} € au lieu de {{LIV_SL}} € pour les Pays-Bas"},
+    {"file": "src/livraison.js", "from": "totalTTC >= {{LIV_SFR}}", "to": "totalTTC > {{LIV_SFR}}", "desc": "la livraison n'est pas offerte à {{LIV_SFR}} € pile en France"},
+    {"file": "src/livraison.js", "from": "totalTTC >= {{LIV_SAU}}", "to": "totalTTC >= {{LIV_SFR}}", "desc": "livraison offerte dès {{LIV_SFR}} € hors de France"},
+    {"file": "src/livraison.js", "from": "totalTTC >= {{LIV_SAU}}", "to": "totalTTC > {{LIV_SAU}}", "desc": "la livraison n'est pas offerte à {{LIV_SAU}} € pile hors de France"},
     {"file": "src/livraison.js", "from": "throw new Error(`Livraison impossible vers ${pays}`);", "to": "return 0;", "desc": "un pays non desservi donne une livraison gratuite au lieu d'une erreur"},
     {"file": "src/livraison.js", "from": "poidsKg <= 0", "to": "poidsKg < 0", "desc": "un poids nul est accepté"}
   ],
@@ -92,8 +92,8 @@
     {"file": "src/codesPromo.js", "from": ".trim().toUpperCase()", "to": ".trim()", "desc": "un code saisi en minuscules est refusé"},
     {"file": "src/codesPromo.js", "from": ".trim().toUpperCase()", "to": ".toUpperCase()", "desc": "les espaces autour du code ne sont plus ignorés"},
     {"file": "src/codesPromo.js", "from": "`${entree.expire}T23:59:59.999`", "to": "`${entree.expire}T00:00:00`", "desc": "un code n'est plus valable le jour même de son expiration"},
-    {"file": "src/codesPromo.js", "from": "{4,10}", "to": "{3,10}", "desc": "un code de 3 caractères est considéré comme bien formé"},
-    {"file": "src/codesPromo.js", "from": "{4,10}", "to": "{4,11}", "desc": "un code de 11 caractères est considéré comme bien formé"},
+    {"file": "src/codesPromo.js", "from": "{{CODES_QUANT}}", "to": "{{CODES_QUANT_COURT}}", "desc": "un code de {{CODES_MIN_MOINS}} caractères est considéré comme bien formé"},
+    {"file": "src/codesPromo.js", "from": "{{CODES_QUANT}}", "to": "{{CODES_QUANT_LONG}}", "desc": "un code de {{CODES_MAX_PLUS}} caractères est considéré comme bien formé"},
     {"file": "src/codesPromo.js", "from": "[A-Z0-9]", "to": "[A-Z0-9-]", "desc": "un code contenant un tiret est considéré comme bien formé"},
     {"file": "src/codesPromo.js", "from": "remise: entree.remise }", "to": "remise: entree.remise / 100 }", "desc": "la remise est renvoyée en fraction (0.1) au lieu d'un pourcentage (10)"},
     {"file": "src/codesPromo.js", "from": "entree.restants <= 0", "to": "entree.restants < 0", "desc": "un code épuisé reste utilisable"},
@@ -167,32 +167,32 @@
     {"file": "src/commande.js", "from": "throw new Error('Service de paiement indisponible');", "to": "throw secondeErreur;", "desc": "l'erreur technique brute est renvoyée au lieu de « Service de paiement indisponible »"}
   ],
   "relance": [
-    {"file": "src/relance.js", "from": "24 * 60 * 60 * 1000", "to": "60 * 60 * 1000", "desc": "la relance part au bout d'1 h au lieu de 24 h"},
+    {"file": "src/relance.js", "from": "{{RELANCE_H}} * 60 * 60 * 1000", "to": "60 * 60 * 1000", "desc": "la relance part au bout d'1 h au lieu de {{RELANCE_H}} h"},
     {"file": "src/relance.js", "from": "annuler: () => clearTimeout(minuteur)", "to": "annuler: () => undefined", "desc": "annuler() n'empêche plus la relance"},
     {"file": "src/relance.js", "from": "if (!panier.estVide()) {", "to": "if (true) {", "desc": "un panier vidé entre-temps reçoit quand même une relance"},
     {"file": "src/relance.js", "from": "${panier.nombreArticles()} article(s)", "to": "${panier.lignes().length} article(s)", "desc": "le message compte les lignes au lieu du nombre d'articles"},
     {"file": "src/relance.js", "from": "        client.email,\n", "to": "        client.nom,\n", "desc": "la relance part sans destinataire valide"},
-    {"file": "src/relance.js", "from": "  const minuteur = setTimeout(() => {\n    if (!panier.estVide()) {\n      mailer.envoyer(\n        client.email,\n        'Votre panier vous attend',\n        `Vous avez ${panier.nombreArticles()} article(s) dans votre panier.`,\n      );\n    }\n  }, delai);\n  return { annuler: () => clearTimeout(minuteur) };", "to": "  const minuteur = setInterval(() => {\n    if (!panier.estVide()) {\n      mailer.envoyer(\n        client.email,\n        'Votre panier vous attend',\n        `Vous avez ${panier.nombreArticles()} article(s) dans votre panier.`,\n      );\n    }\n  }, delai);\n  return { annuler: () => clearInterval(minuteur) };", "desc": "la relance est renvoyée toutes les 24 h au lieu d'une seule fois"}
+    {"file": "src/relance.js", "from": "  const minuteur = setTimeout(() => {\n    if (!panier.estVide()) {\n      mailer.envoyer(\n        client.email,\n        'Votre panier vous attend',\n        `Vous avez ${panier.nombreArticles()} article(s) dans votre panier.`,\n      );\n    }\n  }, delai);\n  return { annuler: () => clearTimeout(minuteur) };", "to": "  const minuteur = setInterval(() => {\n    if (!panier.estVide()) {\n      mailer.envoyer(\n        client.email,\n        'Votre panier vous attend',\n        `Vous avez ${panier.nombreArticles()} article(s) dans votre panier.`,\n      );\n    }\n  }, delai);\n  return { annuler: () => clearInterval(minuteur) };", "desc": "la relance est renvoyée toutes les {{RELANCE_H}} h au lieu d'une seule fois"}
   ],
   "attente": [
-    {"file": "src/debit-patient.js", "from": "const pauses = [1000, 2000];", "to": "const pauses = [2000, 1000];", "desc": "on attend 2 s puis 1 s au lieu d'1 s puis 2 s"},
-    {"file": "src/debit-patient.js", "from": "const pauses = [1000, 2000];", "to": "const pauses = [1000, 1000];", "desc": "on attend 1 s avant chaque nouvelle tentative"},
+    {"file": "src/debit-patient.js", "from": "const pauses = [{{ATT_P1}}, {{ATT_P2}}];", "to": "const pauses = [{{ATT_P2}}, {{ATT_P1}}];", "desc": "on attend {{ATT_P2_TXT}} puis {{ATT_P1_TXT}} au lieu de {{ATT_P1_TXT}} puis {{ATT_P2_TXT}}"},
+    {"file": "src/debit-patient.js", "from": "const pauses = [{{ATT_P1}}, {{ATT_P2}}];", "to": "const pauses = [{{ATT_P1}}, {{ATT_P1}}];", "desc": "on attend {{ATT_P1_TXT}} avant chaque nouvelle tentative"},
     {"file": "src/debit-patient.js", "from": "      await attendre(pauses[tentative]);\n", "to": "", "desc": "les tentatives s'enchaînent sans attendre"},
     {"file": "src/debit-patient.js", "from": "tentative >= pauses.length", "to": "tentative > pauses.length", "desc": "quatre tentatives au lieu de trois"},
     {"file": "src/debit-patient.js", "from": "tentative >= pauses.length", "to": "tentative >= 1", "desc": "deux tentatives seulement au lieu de trois"},
     {"file": "src/debit-patient.js", "from": "throw new Error('Service de paiement indisponible');", "to": "throw erreur;", "desc": "l'erreur technique brute est renvoyée au lieu de « Service de paiement indisponible »"}
   ],
   "fidelite": [
-    {"file": "src/fidelite.js", "from": "points *= 2;", "to": "points *= 3;", "desc": "les clients gold gagnent trois fois plus de points au lieu de deux"},
+    {"file": "src/fidelite.js", "from": "points *= {{FID_GOLD}};", "to": "points *= {{FID_GOLD_FAUX}};", "desc": "les points des clients gold sont multipliés par {{FID_GOLD_FAUX}} au lieu de {{FID_GOLD}}"},
     {"file": "src/fidelite.js", "from": "points = Math.floor(points * 1.5);", "to": "points = Math.ceil(points * 1.5);", "desc": "arrondi supérieur au lieu d'inférieur pour les clients silver"},
-    {"file": "src/fidelite.js", "from": "const PLAFOND = 1000;", "to": "const PLAFOND = 10000;", "desc": "le plafond de 1000 points n'est plus appliqué"},
-    {"file": "src/fidelite.js", "from": "const BONUS_ANNIVERSAIRE = 100;", "to": "const BONUS_ANNIVERSAIRE = 50;", "desc": "bonus anniversaire de 50 points au lieu de 100"},
+    {"file": "src/fidelite.js", "from": "const PLAFOND = {{FID_PLAFOND}};", "to": "const PLAFOND = 100000;", "desc": "le plafond de {{FID_PLAFOND}} points n'est plus appliqué"},
+    {"file": "src/fidelite.js", "from": "const BONUS_ANNIVERSAIRE = {{FID_BONUS}};", "to": "const BONUS_ANNIVERSAIRE = {{FID_BONUS_FAUX}};", "desc": "bonus anniversaire de {{FID_BONUS_FAUX}} points au lieu de {{FID_BONUS}}"},
     {"file": "src/fidelite.js", "from": "client.statut === 'silver'", "to": "client.statut === 'argent'", "desc": "le statut silver n'est plus reconnu"},
     {"file": "src/fidelite.js", "from": "if (montantTTC <= 0) {", "to": "if (montantTTC < 0) {", "desc": "un achat de 0 € peut rapporter le bonus anniversaire"},
     {"file": "src/fidelite.js", "from": "let points = Math.floor(montantTTC);", "to": "let points = Math.round(montantTTC);", "desc": "les centimes sont arrondis à l'euro le plus proche au lieu d'être ignorés"}
   ],
   "fidelite-ordre": [
-    {"file": "src/fidelite.js", "from": "  if (client.statut === 'gold') {\n    points *= 2;\n  } else if (client.statut === 'silver') {\n    points = Math.floor(points * 1.5);\n  }\n  if (client.anniversaire && estMoisAnniversaire(client.anniversaire, client.dateAchat)) {\n    points += BONUS_ANNIVERSAIRE;\n  }\n", "to": "  if (client.anniversaire && estMoisAnniversaire(client.anniversaire, client.dateAchat)) {\n    points += BONUS_ANNIVERSAIRE;\n  }\n  if (client.statut === 'gold') {\n    points *= 2;\n  } else if (client.statut === 'silver') {\n    points = Math.floor(points * 1.5);\n  }\n", "desc": "le bonus d'anniversaire est ajouté avant d'appliquer le statut (il est donc doublé pour un client gold)"},
+    {"file": "src/fidelite.js", "from": "  if (client.statut === 'gold') {\n    points *= {{FID_GOLD}};\n  } else if (client.statut === 'silver') {\n    points = Math.floor(points * 1.5);\n  }\n  if (client.anniversaire && estMoisAnniversaire(client.anniversaire, client.dateAchat)) {\n    points += BONUS_ANNIVERSAIRE;\n  }\n", "to": "  if (client.anniversaire && estMoisAnniversaire(client.anniversaire, client.dateAchat)) {\n    points += BONUS_ANNIVERSAIRE;\n  }\n  if (client.statut === 'gold') {\n    points *= {{FID_GOLD}};\n  } else if (client.statut === 'silver') {\n    points = Math.floor(points * 1.5);\n  }\n", "desc": "le bonus d'anniversaire est ajouté avant d'appliquer le statut (il est donc multiplié lui aussi pour un client gold)"},
     {"file": "src/fidelite.js", "from": "  if (client.anniversaire && estMoisAnniversaire(client.anniversaire, client.dateAchat)) {\n    points += BONUS_ANNIVERSAIRE;\n  }\n  if (points > PLAFOND) {\n    points = PLAFOND;\n  }\n", "to": "  if (points > PLAFOND) {\n    points = PLAFOND;\n  }\n  if (client.anniversaire && estMoisAnniversaire(client.anniversaire, client.dateAchat)) {\n    points += BONUS_ANNIVERSAIRE;\n  }\n", "desc": "le plafond est appliqué avant le bonus d'anniversaire"}
   ],
   "bug-facture": [
