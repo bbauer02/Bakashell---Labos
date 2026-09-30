@@ -454,6 +454,22 @@ sed -i '/^\[admin\]/,/^\[/ s/^port=8080$/port=9090/' ~/config/services.ini
 #? Avec `/DEBUG/d`, les lignes qui parlent du mode DEBUG plus loin dans le texte auraient disparu aussi.
 #? Variante : `grep -v '^DEBUG' app.log > tmp && mv tmp app.log` ; en revanche `grep -v … app.log > app.log` vide le fichier, car le shell le tronque avant que grep ne le lise.
 sed -i '/^DEBUG/d' ~/config/app.log
+#@ 7.9
+#? vim garde les modifications en cours dans un fichier d'échange caché, `.tarifs-groupes.conf.swp` : après une session interrompue, il reste là, et vim affiche l'avertissement E325 à chaque ouverture.
+#? Tout se joue sur les dates, que l'avertissement affiche : si le fichier est plus ancien que le fichier d'échange, celui-ci contient le travail le plus récent, qu'on récupère avec `vim -r` (ou R dans l'avertissement), puis `:wq`.
+#? Si vim signale « NEWER than swap file! », le fichier a été enregistré après l'interruption : le fichier d'échange n'est qu'un vieux brouillon, et le récupérer écraserait la version enregistrée.
+#? Dans les deux cas, il faut ensuite supprimer le fichier d'échange (D dans l'avertissement, ou `rm`) ; le supprimer sans réfléchir perd les modifications quand elles n'ont jamais été enregistrées.
+#? `[ fichier -nt autre ]` compare deux dates de modification, comme le fait vim. Au clavier : `vim tarifs-groupes.conf`, lire l'avertissement, puis R ou D. La variante (brouillon à récupérer ou périmé) est tirée au sort.
+cd ~/config
+ls -a
+if [ tarifs-groupes.conf -nt .tarifs-groupes.conf.swp ]; then
+    echo "Fichier enregistré après l'interruption : le fichier d'échange est périmé"
+else
+    # Récupération sans terminal : -es exécute les commandes sans interface
+    vim -es -r tarifs-groupes.conf -c wq
+fi
+rm -f .tarifs-groupes.conf.swp
+cd ~
 ''',
     8: r'''
 cd ~/regex
@@ -778,8 +794,9 @@ find /srv/ancien-pc -type f -perm -o=r > ~/fichiers-ouverts.txt
 ''',
     13: r'''
 #@ 13.1
-#? Dans ce lab, la liste des paquets disponibles est vide au départ : `apt update` doit la télécharger avant que `apt install` puisse trouver quoi que ce soit.
+#? Dans ce lab, la liste des paquets disponibles est vide au départ : `apt update` doit la télécharger depuis le dépôt déclaré dans /etc/apt/sources.list (ici le miroir interne, depot.cimes.lan) avant que `apt install` puisse trouver quoi que ce soit.
 #? Le piège classique est de lancer directement `sudo apt install tree` et d'obtenir « Unable to locate package ».
+#? `apt search tree` ou `apt show tree`, après la mise à jour, permettent de vérifier le nom exact du paquet avant de l'installer.
 #? Le corrigé utilise `apt-get` avec des options silencieuses, pratiques dans un script ; au clavier, `sudo apt update` puis `sudo apt install tree` conviennent parfaitement.
 sudo apt-get update -qq
 sudo apt-get install -y -qq tree > /dev/null
@@ -795,14 +812,20 @@ dpkg -S "$f" | cut -d: -f1 > ~/paquet.txt
 #? `wget -O fichier URL` enregistre la page sous le nom choisi ; avec curl, l'équivalent est `curl -o fichier URL`.
 #? Le dossier de destination doit exister avant le téléchargement, d'où le `mkdir -p` : ni wget ni curl ne le créent.
 #? Le piège est d'oublier l'option de sortie : wget enregistrerait index.html dans le dossier courant, et curl afficherait la page dans le terminal.
+#? La page de l'intranet est générée à chaque visite et le serveur garde l'empreinte de ce qu'il envoie : un fichier écrit à la main, retouché, ou enregistré avec les en-têtes HTTP (`curl -i`) n'est pas accepté.
+#? `curl -o ~/telechargements/page.html http://intranet.cimes.lan/` convient tout autant.
 mkdir -p ~/telechargements
-wget -q -O ~/telechargements/page.html https://example.com
+wget -q -O ~/telechargements/page.html http://intranet.cimes.lan/
 #@ 13.4
-#? `apt install` puis `apt remove` : l'historique /var/log/apt/history.log garde la trace de l'installation, et `dpkg -s cowsay` confirme qu'il n'est plus installé.
-#? Le piège est d'oublier la désinstallation, ou de désinstaller un paquet mal orthographié : lisez bien le message d'apt.
-#? `sudo apt purge cowsay` convient aussi, puisqu'il désinstalle le programme en retirant en plus sa configuration.
+#? `apt show cowsay` montre ses dépendances (perl…) : en l'installant, apt ajoute aussi celles qui manquent, et les marque « installées automatiquement ».
+#? `apt remove cowsay` ne retire que cowsay : apt signale ensuite les paquets devenus inutiles (« no longer required »), que `apt autoremove` désinstalle.
+#? Le piège est de s'arrêter après `apt remove` : perl et les autres dépendances restent sur le serveur. Désinstaller ces paquets un par un marcherait aussi, mais autoremove sait lesquels ont été installés pour cowsay.
+#? `sudo apt purge cowsay` puis `sudo apt autoremove --purge` conviennent aussi : ils retirent en plus les fichiers de configuration. Les journaux (/var/log/apt/history.log, /var/log/dpkg.log) gardent la trace de chaque étape.
+apt show cowsay 2>/dev/null | grep '^Depends'
 sudo apt-get install -y -qq cowsay > /dev/null
+/usr/games/cowsay Bonjour
 sudo apt-get remove -y -qq cowsay > /dev/null
+sudo apt-get autoremove -y -qq > /dev/null
 #@ 13.5
 #? `dpkg -c fichier.deb` liste le contenu d'un paquet sans l'installer : on sait ainsi ce qu'il va déposer sur le système avant de lui faire confiance.
 #? La liste affiche des chemins qui commencent par `./` : le corrigé retire ce point pour obtenir un vrai chemin absolu, comme /usr/bin/….

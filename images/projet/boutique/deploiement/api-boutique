@@ -1,0 +1,56 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          api-boutique
+# Required-Start:    $remote_fs $network
+# Required-Stop:     $remote_fs $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: API de la boutique Cimes & Sentiers
+### END INIT INFO
+# Script de service de l'API (serveurs Debian sans systemd). À installer dans /etc/init.d/api-boutique.
+# Réglages : /etc/default/api-boutique (voir deploiement/LISEZMOI.md).
+NOM=api-boutique
+PIDFILE=/run/$NOM.pid
+NODE=/usr/bin/node
+[ -r /etc/default/$NOM ] && . /etc/default/$NOM
+JOURNAL=${API_JOURNAUX:-/var/log}/$NOM.log
+
+verifier() {
+    for v in API_USER API_DIR API_PORT; do
+        eval "valeur=\$$v"
+        [ -n "$valeur" ] || { echo "$NOM : $v n'est pas défini dans /etc/default/$NOM" >&2; exit 6; }
+    done
+    [ -x $NODE ] || { echo "$NOM : $NODE est introuvable (Node.js est-il installé ?)" >&2; exit 5; }
+}
+
+en_marche() { [ -f $PIDFILE ] && kill -0 "$(cat $PIDFILE)" 2>/dev/null; }
+
+case "$1" in
+    start)
+        verifier
+        en_marche && exit 0
+        PORT=$API_PORT API_DATA=$API_DATA API_JOURNAUX=$API_JOURNAUX \
+            start-stop-daemon --start --quiet --background --make-pidfile --pidfile $PIDFILE \
+            --chuid "$API_USER" --chdir "$API_DIR" --output "$JOURNAL" --exec $NODE -- server.js || exit 1
+        sleep 1
+        en_marche || { echo "$NOM : échec du démarrage (voir $JOURNAL)" >&2; rm -f $PIDFILE; exit 1; }
+        ;;
+    stop)
+        start-stop-daemon --stop --quiet --retry TERM/5/KILL/2 --pidfile $PIDFILE --remove-pidfile >/dev/null 2>&1
+        rm -f $PIDFILE
+        ;;
+    restart|force-reload)
+        "$0" stop
+        "$0" start
+        ;;
+    status)
+        if en_marche; then echo "$NOM est en marche (PID $(cat $PIDFILE))"; exit 0; fi
+        echo "$NOM est arrêté"
+        exit 3
+        ;;
+    *)
+        echo "Usage : $0 {start|stop|restart|status}" >&2
+        exit 2
+        ;;
+esac
+exit 0

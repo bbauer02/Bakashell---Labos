@@ -14,7 +14,7 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TARGET = os.path.join(ROOT, "platform", "app", "revisions_images.json")
-COURSES = ("linux", "jest", "docker", "git", "ansible")
+COURSES = ("linux", "jest", "docker", "git", "ansible", "projet")
 
 
 def revision(course: str) -> str:

@@ -1,0 +1,8 @@
+[
+  { "ref": "SAC-40L", "libelle": "Sac à dos 40 L", "prixHT": 74.9 },
+  { "ref": "GOURDE-1L", "libelle": "Gourde isotherme 1 L", "prixHT": 19.99 },
+  { "ref": "FRONTALE", "libelle": "Lampe frontale 400 lm", "prixHT": 32.5 },
+  { "ref": "BATONS", "libelle": "Bâtons de marche (paire)", "prixHT": 44 },
+  { "ref": "CARTE-IGN", "libelle": "Carte IGN au 1:25 000", "prixHT": 10.01 },
+  { "ref": "TENTE-2P", "libelle": "Tente 2 places", "prixHT": 149 }
+]

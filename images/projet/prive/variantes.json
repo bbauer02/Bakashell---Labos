@@ -1,0 +1,47 @@
+{
+  "_doc": "Bug de la mission 1, tiré au sort pour chaque étudiant (LAB_VARIANTE_P1_1). bug : mutation du code juste (src/devis.js) livrée à l'étudiant ; complice : test existant qui fige le comportement bogué (à corriger, pas à supprimer) ; tuer : versions boguées plausibles que la suite de l'étudiant doit détecter (le bug lui-même en premier) ; ticket : texte du ticket du support.",
+  "variantes": [
+    {
+      "nom": "seuil-strict",
+      "bug": {"from": "const port = produits >= SEUIL_PORT_OFFERT ? 0 : FRAIS_PORT;", "to": "const port = produits > SEUIL_PORT_OFFERT ? 0 : FRAIS_PORT;"},
+      "complice": {"zone": "COMPLICE_DEVIS", "code": "\n  test('pile au seuil, le port reste dû', () => {\n    const d = calculerDevis([{ ref: 'DUVET', quantite: 1 }], catalogue);\n    expect(d.produits).toBe({{SEUIL}});\n    expect(d.port).toBe({{FRAIS}});\n  });\n"},
+      "tuer": [
+        {"from": "const port = produits >= SEUIL_PORT_OFFERT ? 0 : FRAIS_PORT;", "to": "const port = produits > SEUIL_PORT_OFFERT ? 0 : FRAIS_PORT;", "desc": "le bug du ticket : port facturé pile au seuil"},
+        {"from": "const port = produits >= SEUIL_PORT_OFFERT ? 0 : FRAIS_PORT;", "to": "const port = produits >= SEUIL_PORT_OFFERT - 1 ? 0 : FRAIS_PORT;", "desc": "port offert dès un euro sous le seuil"}
+      ],
+      "ticket": "Ticket #{{TICKET}} — signalé par le service client\n\nUne cliente a commandé pour exactement {{SEUIL}},00 € TTC de matériel (sans remise) : le devis lui a facturé {{FRAIS_FR}} € de frais de port.\nOr nos conditions de vente sont claires : la livraison est offerte dès {{SEUIL}} € TTC d'achats, remises déduites.\n\nRéférence client : duvet léger à {{SEUIL_HT}},00 € HT, quantité 1.\n"
+    },
+    {
+      "nom": "remise-commande",
+      "bug": {"from": "return ligneDevis(article, quantite, quantite >= QUANTITE_REMISE);", "to": "return ligneDevis(article, quantite, lignes.some((l) => l.quantite >= QUANTITE_REMISE));"},
+      "complice": {"zone": "COMPLICE_DEVIS", "code": "\n  test('remise par quantité : toute la commande en profite', () => {\n    const d = calculerDevis([{ ref: 'CARTE', quantite: {{QTE}} }, { ref: 'TENTE', quantite: 1 }], catalogue);\n    expect(d.lignes[1].remise).toBe({{REMISE_TENTE}});\n  });\n"},
+      "tuer": [
+        {"from": "return ligneDevis(article, quantite, quantite >= QUANTITE_REMISE);", "to": "return ligneDevis(article, quantite, lignes.some((l) => l.quantite >= QUANTITE_REMISE));", "desc": "le bug du ticket : remise appliquée à toute la commande"},
+        {"from": "return ligneDevis(article, quantite, quantite >= QUANTITE_REMISE);", "to": "return ligneDevis(article, quantite, quantite > QUANTITE_REMISE);", "desc": "remise seulement au-delà du seuil de quantité (seuil exclu)"},
+        {"from": "return ligneDevis(article, quantite, quantite >= QUANTITE_REMISE);", "to": "return ligneDevis(article, quantite, quantite >= QUANTITE_REMISE && lignes.length === 1);", "desc": "remise perdue dès que la commande a plusieurs lignes"}
+      ],
+      "ticket": "Ticket #{{TICKET}} — signalé par la comptabilité\n\nUn club de randonnée a commandé {{QTE}} cartes IGN et une tente 2 places. La remise par quantité ({{TAUX}} %) a été appliquée à la tente aussi !\nLa règle du service commercial est pourtant simple : la remise ne concerne que la ligne de l'article commandé en nombre, les autres lignes ne changent pas.\n"
+    },
+    {
+      "nom": "seuil-avant-remise",
+      "bug": {"from": "const port = produits >= SEUIL_PORT_OFFERT ? 0 : FRAIS_PORT;", "to": "const port = brut >= SEUIL_PORT_OFFERT ? 0 : FRAIS_PORT;"},
+      "complice": {"zone": "COMPLICE_DEVIS", "code": "\n  test('port offert : le panier atteint le seuil', () => {\n    const d = calculerDevis([{ ref: 'CHAUSSETTES', quantite: {{QTE}} }], catalogue);\n    expect(d.brut).toBe({{V2_BRUT}});\n    expect(d.port).toBe(0);\n  });\n"},
+      "tuer": [
+        {"from": "const port = produits >= SEUIL_PORT_OFFERT ? 0 : FRAIS_PORT;", "to": "const port = brut >= SEUIL_PORT_OFFERT ? 0 : FRAIS_PORT;", "desc": "le bug du ticket : seuil comparé au montant avant remise"},
+        {"from": "const port = produits >= SEUIL_PORT_OFFERT ? 0 : FRAIS_PORT;", "to": "const port = produits > SEUIL_PORT_OFFERT ? 0 : FRAIS_PORT;", "desc": "port facturé pile au seuil (seuil exclu)"}
+      ],
+      "ticket": "Ticket #{{TICKET}} — signalé par la comptabilité\n\nUn client a commandé {{QTE}} paires de chaussettes de randonnée ({{V2_HT_FR}} € HT la paire) : {{V2_BRUT_FR}} € TTC avant remise, {{V2_NET_FR}} € après la remise par quantité… et le devis lui a offert les frais de port.\nLe seuil de livraison offerte ({{SEUIL}} € TTC) s'apprécie remises déduites : ce client devait payer {{FRAIS_FR}} € de port.\n"
+    },
+    {
+      "nom": "arrondi-unitaire",
+      "bug": {"from": "return arrondi(prixHT * (1 + TVA));", "to": "return prixHT * (1 + TVA);"},
+      "complice": {"zone": "COMPLICE_PRIX", "code": "\n  test('prix unitaire TTC de la frontale', () => {\n    expect(prixUnitaireTTC(19.99)).toBeCloseTo(23.988, 3);\n  });\n"},
+      "tuer": [
+        {"from": "return arrondi(prixHT * (1 + TVA));", "to": "return prixHT * (1 + TVA);", "desc": "le bug du ticket : prix unitaire TTC non arrondi"},
+        {"from": "return Math.round(Number((montant * 100).toFixed(6))) / 100;", "to": "return Math.floor(Number((montant * 100).toFixed(6))) / 100;", "desc": "troncature au lieu d'un arrondi"},
+        {"from": "return Math.round(Number((montant * 100).toFixed(6))) / 100;", "to": "return Math.ceil(Number((montant * 100).toFixed(6))) / 100;", "desc": "arrondi toujours vers le haut"}
+      ],
+      "ticket": "Ticket #{{TICKET}} — signalé par la comptabilité\n\nSur le devis d'un client, la ligne « 3 × GOURDE-1L » (19,99 € HT, soit 23,99 € TTC l'unité d'après notre catalogue papier) vaut 71,96 € avant remise, au lieu de 3 × 23,99 € = 71,97 €.\nUn centime, mais la comptabilité rapproche chaque facture de ses lignes : le prix unitaire TTC est arrondi au centime AVANT d'être multiplié par la quantité.\n"
+    }
+  ]
+}

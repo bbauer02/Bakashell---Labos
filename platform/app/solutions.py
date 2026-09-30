@@ -13,8 +13,10 @@ from .courses.docker import solutions as docker
 from .courses.git import solutions as git
 from .courses.jest import solutions as jest
 from .courses.linux import solutions as linux
+from .courses.projet import solutions as projet
 
-SCRIPTS = {"linux": linux.SOLUTIONS, "jest": jest.SOLUTIONS, "docker": docker.SOLUTIONS, "git": git.SOLUTIONS, "ansible": ansible.SOLUTIONS}
+SCRIPTS = {"linux": linux.SOLUTIONS, "jest": jest.SOLUTIONS, "docker": docker.SOLUTIONS, "git": git.SOLUTIONS, "ansible": ansible.SOLUTIONS,
+           "projet": projet.SOLUTIONS}
 
 _MARKER = re.compile(r"^#@\s*(\S+)\s*$")
 

@@ -1,0 +1,4 @@
+# Dépôts de paquets utilisés par apt.
+# Les serveurs de Cimes & Sentiers n'accèdent pas directement à Internet : ils passent par le miroir
+# interne de l'entreprise. Dépôt de formation non signé, d'où l'option [trusted=yes].
+deb [trusted=yes] http://depot.cimes.lan/ubuntu jammy main

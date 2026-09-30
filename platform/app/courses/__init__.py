@@ -2,7 +2,7 @@
 
 Chaque parcours a son image Docker, son conteneur par étudiant, son catalogue d'étapes et
 sa version (un changement de version archive la progression du parcours et recrée les
-conteneurs). Les identifiants d'exercices sont uniques entre parcours (« 4.2 », « J4.2 », « D4.2 », « G4.2 », « A4.2 »).
+conteneurs). Les identifiants d'exercices sont uniques entre parcours (« 4.2 », « J4.2 », « D4.2 », « G4.2 », « A4.2 », « P4.2 »).
 """
 import importlib
 import importlib.util
@@ -13,6 +13,7 @@ from .docker import catalogue as docker_catalogue
 from .git import catalogue as git_catalogue
 from .jest import catalogue as jest_catalogue
 from .linux import catalogue as linux_catalogue
+from .projet import catalogue as projet_catalogue
 from ..scenario import CHARACTERS
 
 COURSES = {
@@ -134,6 +135,32 @@ COURSES = {
         "cpu_quota": 100000,
         "pids_limit": 2048,
         # Les serveurs gérés (web1, web2, db1, web3) tournent dans un moteur Docker propre à l'étudiant
+        "docker_in_docker": os.environ.get("DOCKER_LAB_RUNTIME", "sysbox-runc"),
+    },
+    "projet": {
+        "key": "projet",
+        "title": "Projet final : de l'incident à la production",
+        "short": "Projet final",
+        "summary": "Épreuve notée de synthèse, sur l'API de la boutique : reproduire et corriger un bug (Jest), livrer la correction en équipe (Git), conteneuriser l'API (Docker), la déployer sur deux serveurs (Ansible), puis réparer un incident en production (Linux). Sans indice ni correction.",
+        "level": "Synthèse (tous les parcours)",
+        "duration": "4 à 6 h",
+        "exam": True,
+        "steps": projet_catalogue.STEPS,
+        "version": projet_catalogue.EXERCISES_VERSION,
+        "meta_key": "exercises_version:projet",
+        "id_glob": "P*",
+        "image": os.environ.get("PROJET_LAB_IMAGE", "projet-lab"),
+        "container_prefix": "lab-projet-",
+        "setup_prelude": projet_catalogue.SETUP_PRELUDE,
+        "check_prelude": projet_catalogue.CHECK_PRELUDE,
+        "mentor": projet_catalogue.MENTOR,
+        "editor_root": "/home/etudiant",
+        "auto_validate": True,
+        "check_timeout": 300,
+        "mem_limit": "1536m",
+        "cpu_quota": 100000,
+        "pids_limit": 2048,
+        # Serveurs gérés (web1, web2, web3) et serveur de construction ci1 : moteur Docker propre à l'étudiant
         "docker_in_docker": os.environ.get("DOCKER_LAB_RUNTIME", "sysbox-runc"),
     },
 }

@@ -3,7 +3,12 @@ services:
     build: ./platform
     container_name: linux-lab-platform
     ports:
-      - "8080:8080"
+      # Derrière le reverse proxy HTTPS : PLATFORM_BIND=127.0.0.1 (port 8080 fermé à l'extérieur)
+      - "${PLATFORM_BIND:-0.0.0.0}:8080:8080"
+    networks:
+      - default
+      # Réseau partagé avec le reverse proxy HTTPS (Caddy) : docker network create --subnet 172.30.0.0/24 web-proxy
+      - web-proxy
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - platform-data:/data
@@ -15,7 +20,8 @@ services:
       - DOCKER_LAB_IMAGE=docker-lab
       - GIT_LAB_IMAGE=git-lab
       - ANSIBLE_LAB_IMAGE=ansible-lab
-      # Parcours Docker : chaque étudiant a son propre moteur Docker.
+      - PROJET_LAB_IMAGE=projet-lab
+      # Parcours Docker, Ansible et projet final : chaque étudiant a son propre moteur Docker.
       # sysbox-runc (recommandé, nécessite Sysbox sur l'hôte) ou privileged (machine dédiée / développement)
       - DOCKER_LAB_RUNTIME=${DOCKER_LAB_RUNTIME:-sysbox-runc}
       - LAB_NETWORK=linux-lab-students
@@ -53,6 +59,8 @@ services:
         condition: service_completed_successfully
       ansible-image:
         condition: service_completed_successfully
+      projet-image:
+        condition: service_completed_successfully
 
   # Ce service construit seulement l'image des conteneurs étudiants (parcours Linux), puis s'arrête
   lab-image:
@@ -83,6 +91,16 @@ services:
     build: ./images/ansible
     image: ansible-lab
     entrypoint: ["echo", "Ansible lab image built"]
+
+  # Idem pour l'image du projet final (poste de contrôle Ansible + Git, Node et Jest + serveur de construction Docker)
+  projet-image:
+    build: ./images/projet
+    image: projet-lab
+    entrypoint: ["echo", "Projet lab image built"]
+
+networks:
+  web-proxy:
+    external: true
 
 volumes:
   platform-data:

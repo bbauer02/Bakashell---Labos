@@ -10,7 +10,7 @@ Usage (depuis la racine du dépôt, images construites avec
 `docker build -t linux-lab ./images/linux`, `docker build -t jest-lab ./images/jest`, etc.) :
     python platform/tests/run_lab_tests.py              # toutes les étapes du parcours Linux
     python platform/tests/run_lab_tests.py --course jest
-    python platform/tests/run_lab_tests.py --skip 13    # sans l'étape qui a besoin d'Internet
+    python platform/tests/run_lab_tests.py --skip 13    # sans l'étape 13
     python platform/tests/run_lab_tests.py --only 1-5   # jusqu'à l'étape 5
     python platform/tests/run_lab_tests.py --keep       # garde le conteneur pour inspection
 

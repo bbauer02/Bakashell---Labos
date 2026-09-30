@@ -50,6 +50,7 @@ jobs:
           - { course: docker, dir: images/docker, image: docker-lab }
           - { course: git, dir: images/git, image: git-lab }
           - { course: ansible, dir: images/ansible, image: ansible-lab }
+          - { course: projet, dir: images/projet, image: projet-lab }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

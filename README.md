@@ -1,7 +1,7 @@
 # Linux CLI Lab
 
 Plateforme d'apprentissage (BTS SIO / DevOps) : chaque étudiant dispose, dans son navigateur, d'un conteneur
-personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq parcours :
+personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq parcours et une épreuve de synthèse :
 
 | Parcours | URL | Contenu |
 |---|---|---|
@@ -10,6 +10,7 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 | **Docker : conteneuriser la boutique** | `/lab/docker` | 11 journées, 65 exercices, 280 points — un moteur Docker par étudiant + éditeur |
 | **Git : travailler en équipe** | `/lab/git` | 9 journées, 40 exercices, 178 points — terminal + dépôt partagé de l'équipe |
 | **Ansible : automatiser l'infrastructure** | `/lab/ansible` | 10 journées, 39 exercices, 188 points — poste de contrôle + vrais serveurs joignables en SSH + éditeur |
+| **Projet final** (épreuve notée) | `/lab/projet` | 5 missions, 20 exercices, 100 points — les cinq parcours enchaînés sur l'API de la boutique, sans indice ni correction |
 
 ## Organisation : catalogue et classes
 
@@ -43,7 +44,7 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 |---|---|
 | `platform/` | Application FastAPI : comptes, sessions, terminal WebSocket (xterm.js), éditeur (Monaco), validation, tableau de bord |
 | `platform/app/courses/__init__.py` | Registre des parcours (image, ressources, catalogue, version) |
-| `platform/app/courses/<parcours>/` | Un dossier par parcours (`linux`, `jest`, `docker`, `git`, `ansible`) : `catalogue.py` (cours, mises en place, exercices, vérifications, indices), `memo.py` (fiches du mémo), `solutions.py` (corrigés) |
+| `platform/app/courses/<parcours>/` | Un dossier par parcours (`linux`, `jest`, `docker`, `git`, `ansible`, `projet`) : `catalogue.py` (cours, mises en place, exercices, vérifications, indices), `memo.py` (fiches du mémo), `solutions.py` (corrigés) |
 | `platform/app/memo.py` | Mémo des commandes : déblocage des fiches selon la progression |
 | `platform/app/solutions.py` | Découpage des corrigés (un script par étape, un repère `#@ <exercice>` par exercice), visibles par les admins |
 | `platform/app/scenario.py` | Entreprise fictive et personnages communs aux parcours |
@@ -55,12 +56,13 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 | `images/docker/` | Image `docker-lab` : moteur Docker complet (docker:dind), images de base préchargées, projet de la boutique |
 | `images/git/` | Image `git-lab` : Git, invite qui affiche la branche courante, dépôt partagé de l'équipe dans `/srv/git` |
 | `images/ansible/` | Image `ansible-lab` : poste de contrôle (ansible-core) + moteur Docker interne qui fait tourner les serveurs gérés (Debian + SSH) et le dépôt APT interne |
+| `images/projet/` | Image `projet-lab` (projet final) : poste de contrôle du parcours Ansible + Git, Node et Jest, serveurs Debian, serveur de construction Docker `ci1`, modèle du projet, tests cachés et correcteur (`correcteur.js`) |
 | `platform/tests/` | Banc de test des parcours (`run_lab_tests.py`) et tests unitaires de la plateforme (`test_platform.py`) |
 | `.github/workflows/ci.yml` | Intégration continue : tests unitaires, image de la plateforme, banc de test de chaque parcours |
 | `docs/tutoriel/step-*/` | Tutoriel texte d'origine (historique, non utilisé par la plateforme) |
 
 Chaque étudiant a un conteneur **par parcours** (`lab-student-<id>`, `lab-jest-<id>`, `lab-docker-<id>`,
-`lab-git-<id>`, `lab-ansible-<id>`), créé à sa première visite. Un conteneur arrêté pour inactivité redémarre à la visite suivante, avec
+`lab-git-<id>`, `lab-ansible-<id>`, `lab-projet-<id>`), créé à sa première visite. Un conteneur arrêté pour inactivité redémarre à la visite suivante, avec
 un message qui prévient l'étudiant ; son travail est conservé.
 
 Fonctionnement d'une étape :
@@ -97,7 +99,7 @@ sans clé `ticket` s'affiche au format classique.
 Chaque étape mêle des exercices d'application et des exercices de diagnostic ou d'enquête (pièges classiques,
 pannes à réparer), avec des données tirées au sort à chaque mise en place. Les fiches du mémo ne donnent jamais
 la réponse d'un exercice, et les messages d'échec ne révèlent pas la valeur attendue. L'étape 13 comporte des
-exercices faisables sans Internet (paquets `.deb` locaux).
+entièrement faisable sans Internet (miroir APT interne dans l'image).
 
 ## Parcours Jest
 
@@ -175,9 +177,44 @@ moteur : pour lui, ce sont des serveurs distants. Un dépôt APT interne (`depot
 sans Internet. Les vérifications observent le résultat réel sur les serveurs (pages HTTP, Redis, comptes) et, pour
 les exercices `manual`, rejouent les playbooks de l'étudiant pour contrôler qu'un second passage ne change rien.
 
+## Projet final
+
+Épreuve notée de synthèse (parcours marqué `"exam": True` : aucun indice, aucune correction montrée aux étudiants ; les
+comptes admin voient le corrigé). Cinq missions sur un même projet, l'API de la boutique (`~/boutique`, clone du dépôt
+partagé `/srv/git/boutique.git`), avec les tickets de l'élève dans `~/tickets` :
+
+1. **Jest — le bug du devis** : un bug du calcul des devis, tiré au sort parmi quatre (seuil de port offert exclu, remise
+   étendue à toute la commande, seuil comparé avant remise, prix unitaire non arrondi), avec des règles métier propres à
+   chaque élève (seuil, frais de port, remise). Test de reproduction jugé sur le code corrigé et sur le code bogué,
+   correction validée par des tests cachés, suite complète verte sans test supprimé ni désactivé (un test existant fige
+   le bug), et mutation : la suite doit détecter les erreurs voisines du bug.
+2. **Git — livrer la correction** : branche `correctif-<ticket>`, commits à son identité qui citent le ticket,
+   intégration du commit publié entre-temps par Thomas (conflit probable dans `CHANGELOG.md`), version corrective et
+   étiquette annotée sur le dépôt partagé, sans réécrire l'historique.
+3. **Docker — l'image de l'API** : Dockerfile sur `node:24-alpine`, exécuté sans root, sans Git, tests ni Jest dans
+   l'image, cache de `npm ci`, HEALTHCHECK, image `boutique-api:<version>`. L'élève utilise le moteur du serveur de
+   construction `ci1` (`DOCKER_HOST=tcp://ci1:2375`) : il n'a accès ni au moteur qui héberge les serveurs, ni aux
+   fichiers privés du correcteur.
+4. **Ansible — déployer** : rôle `api` et playbook `deploiement.yml` pour web1 et web2 (Node du dépôt APT interne,
+   compte système, script de service fourni dans le dépôt, modèle, handler, service activé). Les vérifications
+   réinstallent les serveurs avant de rejouer le playbook, surchargent `api_port`, modifient le code d'un serveur à la
+   main, redémarrent web2.
+5. **Linux — incident en production** sur web3 (SSH, sudo) : deux causes tirées au sort, l'une parmi disque plein
+   (partition des journaux de 8 Mo), droits d'un fichier de données ou réglage erroné, l'autre parmi le port pris par la
+   maquette de Julien ou par une ancienne version lancée en root (toutes deux relancées au démarrage). Vérifié : l'API
+   revient sous son service, rien d'autre n'est cassé (données, journaux d'accès, droits, vitrine nginx, comptes, code,
+   réglages), la réparation tient après un redémarrage, et le rapport nomme les éléments en cause.
+
+Chaque mise en place prépare ce dont sa mission a besoin (dépôt partagé, clone, serveurs, accès SSH) : une mission se
+commence même si la précédente n'est pas terminée, et aucune vérification ne dépend de la réussite d'une autre. Les
+données sont tirées une fois pour toutes (volume du moteur Docker de l'élève) ; `LAB_VARIANTE_P1_1` (0 à 3) et
+`LAB_VARIANTE_P5_1` (0 à 5, précisée par `LAB_VARIANTE_P5_1_A`) les imposent pour les tests. Tout est intégré à l'image
+(images Docker, paquets Debian, Jest) : l'épreuve se déroule sans Internet. La mission 5 est rejouée après un
+redémarrage du conteneur (partition des journaux en mémoire) : l'incident est alors recréé.
+
 ### Sysbox (serveur Linux)
 
-Dans les parcours Docker et Ansible, chaque étudiant fait tourner son propre moteur Docker dans son conteneur. Pour que ce soit sûr, le conteneur
+Dans les parcours Docker et Ansible et le projet final, chaque étudiant fait tourner son propre moteur Docker dans son conteneur. Pour que ce soit sûr, le conteneur
 utilise le runtime **Sysbox** (conteneur non privilégié, espaces de noms utilisateur) :
 
 ```bash
@@ -187,13 +224,15 @@ sudo apt-get install ./sysbox-ce_<version>.linux_amd64.deb   # redémarre le dé
 docker info | grep -i runtimes                                # doit mentionner sysbox-runc
 ```
 
-`DOCKER_LAB_RUNTIME=sysbox-runc` (valeur par défaut) active ce mode, pour les deux parcours. `DOCKER_LAB_RUNTIME=privileged` lance à la place
+`DOCKER_LAB_RUNTIME=sysbox-runc` (valeur par défaut) active ce mode, pour ces trois parcours. `DOCKER_LAB_RUNTIME=privileged` lance à la place
 des conteneurs **privilégiés** (Docker-in-Docker classique) : un étudiant malveillant pourrait alors prendre le
 contrôle de l'hôte. À réserver au développement (Docker Desktop, où Sysbox n'existe pas) ou à une VM dédiée.
 
 Chaque étudiant dispose d'un volume `lab-docker-<id>-docker` pour son moteur (environ 300 Mo au départ, plus ses
 propres images) : prévoir 1 Go de disque par étudiant. De même pour Ansible (volume `lab-ansible-<id>-docker`, qui contient les
-serveurs de l'étudiant).
+serveurs de l'étudiant) et pour le projet final (volume `lab-projet-<id>-docker` : serveurs, serveur de construction `ci1`
+et ses images, environ 1,5 Go). Dans le projet final, `ci1` est un conteneur privilégié **à l'intérieur** du conteneur
+Sysbox de l'étudiant (Docker dans Docker dans Docker) : à valider sur le serveur Sysbox avant l'épreuve.
 
 ## Déploiement
 
@@ -219,9 +258,10 @@ Variables utiles (voir `.env.example`) :
 Isolation des étudiants : réseau `linux-lab-students` sans communication entre conteneurs ; parcours Linux :
 256 Mo de RAM, 50 % d'un CPU, 256 processus, sshd limité à `localhost` ; parcours Jest : 1 Go, 1 CPU, 512 processus ;
 parcours Docker : 1,5 Go, 1 CPU, 2048 processus, runtime Sysbox ; parcours Git : 256 Mo, 50 % d'un CPU,
-256 processus ; parcours Ansible : 1,5 Go, 1 CPU, 2048 processus, runtime Sysbox.
+256 processus ; parcours Ansible : 1,5 Go, 1 CPU, 2048 processus, runtime Sysbox ; projet final : 1,5 Go, 1 CPU, 2048 processus,
+runtime Sysbox.
 
-Accès Internet depuis les conteneurs : nécessaire uniquement pour l'étape 13 du parcours Linux. xterm.js et l'éditeur
+Accès Internet depuis les conteneurs : inutile, tous les parcours fonctionnent hors ligne. xterm.js et l'éditeur
 Monaco sont installés dans l'image de la plateforme et servis par elle : en salle, les navigateurs n'ont pas besoin
 d'Internet.
 
@@ -248,7 +288,7 @@ progression de ce parcours est archivée dans la table `progress_archive`, jamai
 
 ## Modifier ou ajouter des exercices
 
-Catalogues : `platform/app/courses/<parcours>/catalogue.py` (`linux`, `jest`, `docker`, `git`, `ansible`),
+Catalogues : `platform/app/courses/<parcours>/catalogue.py` (`linux`, `jest`, `docker`, `git`, `ansible`, `projet`),
 format documenté en tête
 de fichier ; corrigés correspondants dans `solutions.py` du même dossier. Dans
 chaque script d'étape, une ligne `#@ <exercice>` ouvre la correction de cet exercice : c'est ce découpage que voient
@@ -257,13 +297,14 @@ de référence est dans `images/jest/ref/`, les fichiers livrés aux étudiants 
 `images/jest/mutants.json` et les tests cachés dans `images/jest/hidden/`. Puis :
 
 ```bash
-docker build -t linux-lab ./images/linux && docker build -t jest-lab ./images/jest && docker build -t docker-lab ./images/docker && docker build -t git-lab ./images/git && docker build -t ansible-lab ./images/ansible
+docker build -t linux-lab ./images/linux && docker build -t jest-lab ./images/jest && docker build -t docker-lab ./images/docker && docker build -t git-lab ./images/git && docker build -t ansible-lab ./images/ansible && docker build -t projet-lab ./images/projet
 python platform/tests/run_lab_tests.py                  # parcours Linux (~8 min, dont cron)
-python platform/tests/run_lab_tests.py --only 1-8 --skip 13
+python platform/tests/run_lab_tests.py --only 1-8
 python platform/tests/run_lab_tests.py --course jest    # parcours Jest (~3,5 min)
 python platform/tests/run_lab_tests.py --course docker  # parcours Docker (~7 min, conteneur privilégié par défaut)
 python platform/tests/run_lab_tests.py --course git     # parcours Git (~30 s)
 python platform/tests/run_lab_tests.py --course ansible # parcours Ansible (~17 min, conteneur privilégié par défaut)
+python platform/tests/run_lab_tests.py --course projet  # projet final (~5 min, conteneur privilégié par défaut)
 ```
 
 Le banc vérifie, pour chaque étape jouée dans l'ordre du parcours, qu'**aucun exercice ne passe avant d'être
@@ -278,7 +319,7 @@ python -m pytest platform/tests
 ```
 
 Sur GitHub, la CI (`.github/workflows/ci.yml`) lance à chaque push les tests unitaires, construit l'image de la
-plateforme et passe le banc de test des cinq parcours.
+plateforme et passe le banc de test de chaque parcours.
 
 Si les identifiants d'exercices d'un parcours changent de sens, incrémentez son `EXERCISES_VERSION` : au
 démarrage, la progression de ce parcours est archivée dans la table `progress_archive` et les conteneurs

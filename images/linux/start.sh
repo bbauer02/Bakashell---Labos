@@ -13,5 +13,7 @@ mkdir -p /run/sshd
 /usr/sbin/sshd
 rsyslogd
 cron
+# Miroir APT interne et intranet (sans Internet)
+/opt/linux-lab/depot/demarrer.sh
 
 exec sleep infinity

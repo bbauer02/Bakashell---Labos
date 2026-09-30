@@ -307,7 +307,7 @@ QUIZ = {
          "explain": "<code>uniq -c</code> préfixe chaque ligne distincte par son nombre d'occurrences (l'entrée ayant été triée)."},
     ],
 
-    # ─── Édition de texte en terminal ────────────────────────────────────
+    # ─── Jour 7 — Édition de texte en terminal ───────────────────────────
     7: [
         {"q": "Vous ouvrez un fichier avec vim et tapez directement une phrase : des lignes disparaissent et le curseur saute partout. Pourquoi ?",
          "choices": ["Le fichier est ouvert en lecture seule",
@@ -353,9 +353,16 @@ QUIZ = {
          "choices": ["<kbd>Ctrl+K</kbd>", "<kbd>o</kbd>", "<kbd>u</kbd>", "<code>:w</code>"],
          "answer": 2,
          "explain": "<kbd>u</kbd> annule la dernière modification. <kbd>o</kbd> ouvrirait une nouvelle ligne vide et <code>:w</code> enregistrerait la suppression."},
+        {"q": "En ouvrant <code>notes.txt</code>, vim affiche <code>E325: ATTENTION</code>, un fichier d'échange <code>.notes.txt.swp</code> et la mention <code>NEWER than swap file!</code>. Qu'en conclure ?",
+         "choices": ["Le fichier d'échange contient des modifications plus récentes : il faut les récupérer",
+                     "Le fichier a été enregistré après la création du fichier d'échange, qui est sans doute périmé",
+                     "Le fichier est corrompu : il faut le restaurer depuis le fichier d'échange",
+                     "Une autre session vim est forcément en train de modifier le fichier"],
+         "answer": 1,
+         "explain": "vim compare les dates : le fichier est plus récent que son fichier d'échange. Récupérer ce dernier (<code>vim -r</code>) écraserait la version enregistrée ; on vérifie, puis on supprime le <code>.swp</code>."},
     ],
 
-    # ─── Expressions régulières ──────────────────────────────────────────
+    # ─── Jour 8 — Expressions régulières ─────────────────────────────────
     8: [
         {"q": "Pourquoi <code>grep '^[0-9]{5}$' codes.txt</code> ne trouve-t-il aucun code postal, alors que le fichier en contient ?",
          "choices": ["Parce que <code>^</code> et <code>$</code> ne peuvent pas s'utiliser ensemble",
@@ -400,7 +407,7 @@ QUIZ = {
          "explain": "<code>$</code> ancre le motif en fin de ligne : la ligne doit se terminer par « log », quel que soit ce qui précède."},
     ],
 
-    # ─── Filtrage et traitement de texte ─────────────────────────────────
+    # ─── Jour 9 — Filtrage et traitement de texte ────────────────────────
     9: [
         {"q": "Pourquoi écrit-on <code>sort f | uniq -c</code> plutôt que <code>uniq -c f</code> pour compter les lignes identiques ?",
          "choices": ["Parce que uniq ne regroupe que des lignes consécutives",
@@ -445,7 +452,7 @@ QUIZ = {
          "explain": "<code>~</code> teste une regex sur le champ. <code>== \"srv\"</code> exige un champ égal à srv, et <code>/srv/</code> seul cherche dans toute la ligne."},
     ],
 
-    # ─── Utilisateurs, groupes et permissions ────────────────────────────
+    # ─── Jour 10 — Utilisateurs, groupes et permissions ──────────────────
     10: [
         {"q": "Quels droits donne <code>chmod 640 f</code> ?",
          "choices": ["<code>rw-r--r--</code>", "<code>r--rw----</code>", "<code>rwxr-----</code>", "<code>rw-r-----</code>"],
@@ -496,7 +503,7 @@ QUIZ = {
          "explain": "Changer le propriétaire d'un fichier est réservé à root : il faut <code>sudo chown</code>."},
     ],
 
-    # ─── Super-utilisateur et processus ──────────────────────────────────
+    # ─── Jour 11 — Super-utilisateur et processus ────────────────────────
     11: [
         {"q": "Pourquoi réserver <code>kill -9</code> aux cas désespérés ?",
          "choices": ["Parce qu'il redémarre le serveur si le processus appartient à root",
@@ -547,7 +554,7 @@ QUIZ = {
          "explain": "<code>fg</code> ramène une tâche au premier plan, <code>bg</code> relance en arrière-plan une tâche arrêtée, <code>jobs</code> les liste."},
     ],
 
-    # ─── Cas pratique : système familial ─────────────────────────────────
+    # ─── Jour 12 — Cas pratique : système familial ───────────────────────
     12: [
         {"q": "<code>/home/famille</code> est en <code>drwxrwx---</code>, propriétaire root, groupe famille. invite n'est pas membre de famille. Que donne <code>ls /home/famille</code> pour invite ?",
          "choices": ["La liste des fichiers, sans pouvoir les ouvrir",
@@ -604,7 +611,7 @@ QUIZ = {
          "explain": "Les autres ont <code>r-x</code> : ils listent et traversent le dossier. D'où l'importance des droits des dossiers personnels."},
     ],
 
-    # ─── Installer des programmes ────────────────────────────────────────
+    # ─── Jour 13 — Installer des programmes ──────────────────────────────
     13: [
         {"q": "Après <code>sudo apt remove monoutil</code>, <code>dpkg -l monoutil</code> affiche l'état <code>rc</code>. Que signifie-t-il ?",
          "choices": ["Le programme est retiré, sa configuration est restée",
@@ -653,9 +660,21 @@ QUIZ = {
          "choices": ["<code>dpkg -S nano</code>", "<code>dpkg -s nano</code>", "<code>dpkg -L nano</code>", "<code>which nano</code>"],
          "answer": 1,
          "explain": "<code>dpkg -s</code> affiche l'état et les informations d'un paquet, dont sa version. <code>dpkg -L</code> liste ses fichiers, which ne donne qu'un chemin."},
+        {"q": "Où apt trouve-t-il l'adresse des dépôts d'où il télécharge les paquets ?",
+         "choices": ["Dans <code>/var/lib/dpkg/status</code>", "Dans <code>/etc/apt/sources.list</code> et <code>/etc/apt/sources.list.d/</code>",
+                     "Dans <code>/var/log/apt/history.log</code>", "Dans <code>/etc/hosts</code>"],
+         "answer": 1,
+         "explain": "Chaque ligne <code>deb URL distribution composants</code> déclare un dépôt ; une entreprise y met souvent son miroir interne. <code>/var/lib/dpkg/status</code> décrit les paquets installés, pas les dépôts."},
+        {"q": "Après <code>sudo apt remove outil</code>, apt affiche : « The following packages were automatically installed and are no longer required: libfoo1 libbar2 ». Que faire pour retirer aussi ces paquets ?",
+         "choices": ["Rien : apt les retirera tout seul au prochain <code>apt update</code>",
+                     "<code>sudo apt purge outil</code>",
+                     "<code>sudo apt autoremove</code>",
+                     "<code>sudo dpkg --configure -a</code>"],
+         "answer": 2,
+         "explain": "Ces dépendances avaient été installées pour <code>outil</code> ; plus rien n'en a besoin, et <code>autoremove</code> les désinstalle. purge ne concerne que la configuration du paquet nommé."},
     ],
 
-    # ─── Disques et systèmes de fichiers ─────────────────────────────────
+    # ─── Jour 14 — Disques et systèmes de fichiers ───────────────────────
     14: [
         {"q": "Pourquoi préférer <code>UUID=…</code> à <code>/dev/sdb1</code> dans <code>/etc/fstab</code> ?",
          "choices": ["Parce que les UUID se montent plus rapidement au démarrage",
@@ -712,7 +731,7 @@ QUIZ = {
          "explain": "<code>ro</code> (read-only) interdit toute écriture, root compris (« Read-only file system »)."},
     ],
 
-    # ─── Variables d'environnement et shell ──────────────────────────────
+    # ─── Jour 15 — Variables d'environnement et shell ────────────────────
     15: [
         {"q": "Dans un nouveau terminal, vous tapez <code>VILLE=Grenoble</code> puis <code>bash -c 'echo $VILLE'</code>. Qu'est-ce qui s'affiche ?",
          "choices": ["<code>Grenoble</code>", "Une ligne vide", "<code>$VILLE</code>", "Une erreur : variable inconnue"],
@@ -760,7 +779,7 @@ QUIZ = {
          "explain": "Ordre de recherche : alias, fonction, commande interne, puis les dossiers du PATH."},
     ],
 
-    # ─── Archivage et compression ────────────────────────────────────────
+    # ─── Jour 16 — Archivage et compression ──────────────────────────────
     16: [
         {"q": "Julien tape <code>tar -cfz sauvegarde.tar docs/</code>. Que se passe-t-il ?",
          "choices": ["Une archive compressée sauvegarde.tar est créée",
@@ -814,7 +833,7 @@ QUIZ = {
          "explain": "Les propriétaires sont enregistrés dans l'archive, mais un utilisateur ordinaire ne peut pas créer des fichiers au nom d'un autre."},
     ],
 
-    # ─── Introduction au scripting Bash ──────────────────────────────────
+    # ─── Jour 17 — Introduction au scripting Bash ────────────────────────
     17: [
         {"q": "Un script contient <code>VILLE = Chamonix</code>. Que se passe-t-il à cette ligne ?",
          "choices": ["Erreur : le shell cherche une commande nommée VILLE",
@@ -865,7 +884,7 @@ QUIZ = {
          "explain": "Sans <code>$(( ))</code>, le shell ne calcule pas : il colle du texte. <code>n=$(( n + 1 ))</code> donnerait 6."},
     ],
 
-    # ─── Tâches planifiées (cron) ────────────────────────────────────────
+    # ─── Jour 18 — Tâches planifiées (cron) ──────────────────────────────
     18: [
         {"q": "Quand s'exécute la tâche <code>30 6 * * 1-5 /usr/local/bin/rapport</code> ?",
          "choices": ["Le 30 de chaque mois, à 6h, de janvier à mai",
@@ -922,7 +941,7 @@ QUIZ = {
          "explain": "syslog contient une ligne CMD (…) par exécution. crontab -l ne montre que ce qui est prévu, pas ce qui s'est passé."},
     ],
 
-    # ─── Surveillance du système ─────────────────────────────────────────
+    # ─── Jour 19 — Surveillance du système ───────────────────────────────
     19: [
         {"q": "<code>nproc</code> affiche 2 et <code>uptime</code> une charge moyenne de 4.00 sur 1 minute. Comment l'interpréter ?",
          "choices": ["Le processeur n'est occupé qu'à 4 % de sa capacité",
@@ -976,7 +995,7 @@ QUIZ = {
          "explain": "lsof indique qui a ouvert un fichier. ps ne montre que les lignes de commande, où le fichier n'apparaît pas forcément."},
     ],
 
-    # ─── Gestion des logs ────────────────────────────────────────────────
+    # ─── Jour 20 — Gestion des logs ──────────────────────────────────────
     20: [
         {"q": "Pourquoi <code>grep \"[CRIT]\" app.log</code> affiche-t-il presque toutes les lignes ?",
          "choices": ["Parce que grep ignore les crochets",
@@ -1027,7 +1046,7 @@ QUIZ = {
          "explain": "<code>-o</code> n'affiche que la partie qui correspond au motif, ici user= suivi des lettres minuscules."},
     ],
 
-    # ─── Réseau de base ──────────────────────────────────────────────────
+    # ─── Jour 21 — Réseau de base ────────────────────────────────────────
     21: [
         {"q": "À quel réseau appartient l'adresse <code>172.20.14.7/16</code> ?",
          "choices": ["<code>172.20.0.0/16</code>", "<code>172.20.14.0/16</code>", "<code>172.0.0.0/16</code>", "<code>172.20.14.7/16</code>"],
@@ -1075,7 +1094,7 @@ QUIZ = {
          "explain": "getent suit l'ordre de nsswitch.conf, exactement comme les programmes ; resolv.conf ne liste que les serveurs DNS."},
     ],
 
-    # ─── SSH et accès distant ────────────────────────────────────────────
+    # ─── Jour 22 — SSH et accès distant ──────────────────────────────────
     22: [
         {"q": "Où le serveur SSH cherche-t-il les clés publiques autorisées à se connecter au compte <code>deploy</code> ?",
          "choices": ["<code>/home/deploy/.ssh/known_hosts</code>", "<code>/etc/ssh/sshd_config</code>", "<code>/home/deploy/.ssh/id_ed25519.pub</code>", "<code>/home/deploy/.ssh/authorized_keys</code>"],
@@ -1129,7 +1148,7 @@ QUIZ = {
          "explain": "On ne transmet que la clé publique (.pub) ; la clé privée ne quitte jamais votre machine."},
     ],
 
-    # ─── Sécurité de base ────────────────────────────────────────────────
+    # ─── Jour 23 — Sécurité de base ──────────────────────────────────────
     23: [
         {"q": "Pourquoi un bit SUID sur <code>/usr/bin/find</code>, appartenant à root, est-il dangereux ?",
          "choices": ["Parce que find devient plus lent, car il vérifie chaque fichier en root",
@@ -1183,7 +1202,7 @@ QUIZ = {
          "explain": "last lit l'historique des connexions (wtmp), lastb celui des échecs (btmp), quand ces journaux existent."},
     ],
 
-    # ─── Dépannage ───────────────────────────────────────────────────────
+    # ─── Jour 24 — Dépannage ─────────────────────────────────────────────
     24: [
         {"q": "Un collègue vous dit : « le service ne démarre pas ». Quel est le premier réflexe ?",
          "choices": ["Redémarrer le serveur pour repartir de zéro",
@@ -1237,7 +1256,7 @@ QUIZ = {
          "explain": "Le shell ne cherche les commandes que dans le PATH, qui ne contient pas le dossier courant."},
     ],
 
-    # ─── Intégration finale : serveur web ────────────────────────────────
+    # ─── Jour 25 — Intégration finale : serveur web ──────────────────────
     25: [
         {"q": "Que donne la première ligne de <code>ls -1t /var/backups/*.gz</code> ?",
          "choices": ["L'archive la plus récente", "L'archive la plus ancienne", "L'archive la plus grosse", "La première archive par ordre alphabétique"],
