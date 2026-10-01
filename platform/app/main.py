@@ -26,6 +26,7 @@ from . import database as db
 from . import live
 from . import progression
 from . import badges
+from . import objectif
 from . import integrity
 from . import memo
 from . import quiz
@@ -476,8 +477,12 @@ async def catalogue(request: Request, msg: str = "", err: str = ""):
             "next_deadline": pending[0] if pending else None,
             "late": sum(1 for d in pending if d["due"] < today),
         })
+    classes = db.get_user_classes(user["user_id"])
+    # Objectif collectif de chaque classe de l'étudiant (sa propre part comprise)
+    goals = [{"name": cl["name"], **g} for cl in classes
+             if (g := objectif.compute(cl["id"], db.class_course_keys(cl["id"]), user["user_id"]))]
     return templates.TemplateResponse(request, "catalogue.html", {
-        "user": user, "cards": cards, "classes": db.get_user_classes(user["user_id"]), "msg": msg, "err": err,
+        "user": user, "cards": cards, "classes": classes, "goals": goals, "msg": msg, "err": err,
         "today": today, "certificate_pct": CERTIFICATE_MIN_PCT,
     })
 
@@ -945,8 +950,11 @@ async def admin_classes(request: Request, msg: str = "", err: str = ""):
     if not user:
         return RedirectResponse("/login", status_code=302)
     # Un enseignant ne choisit que parmi ses propres étudiants ; les autres s'ajoutent par leur adresse e-mail exacte
+    classes = db.list_classes(owner_filter(user))
+    for c in classes:
+        c["goal"] = objectif.compute(c["id"], c["courses"])
     return templates.TemplateResponse(request, "admin_classes.html", {
-        "user": user, "classes": db.list_classes(owner_filter(user)), "students": db.list_students(owner_filter(user)),
+        "user": user, "classes": classes, "students": db.list_students(owner_filter(user)),
         "all_courses": [{"key": k, "title": c["title"], "short": c["short"],
                          "steps": [{"num": n, "title": s["title"]} for n, s in c["steps"].items()]}
                         for k, c in COURSES.items()],

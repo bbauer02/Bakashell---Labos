@@ -89,6 +89,7 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 | `platform/app/courses/<parcours>/` | Un dossier par parcours (`linux`, `jest`, `docker`, `git`, `ansible`, `projet`) : `catalogue.py` (cours, mises en place, exercices, vérifications, indices), `memo.py` (fiches du mémo), `solutions.py` (corrigés) |
 | `platform/app/memo.py` | Mémo des commandes : déblocage des fiches selon la progression |
 | `platform/app/solutions.py` | Découpage des corrigés (un script par étape, un repère `#@ <exercice>` par exercice), visibles par les admins |
+| `platform/app/objectif.py` | Objectif collectif de classe (paliers, messages de Sophie) |
 | `platform/app/badges.py` | Badges, calculés à partir de la progression (rien n'est stocké) |
 | `platform/app/progression.py` | Grades, couches d'ICE percées, réponses des collègues aux tickets résolus |
 | `platform/app/scenario.py` | Entreprise fictive et personnages communs aux parcours, présentation affichée au début de chaque labo |
@@ -153,6 +154,11 @@ parle **Bakashell**, le « bac à shell » : cyberpunk à la *Neuromancer*, avec
 - **Profil** (`/profil`, lien « Mon profil » du catalogue) : badges obtenus et à venir avec leur avancement, grade et
   couches d'ICE percées dans chaque labo, tickets résolus pour chacun des collègues. L'enseignant ouvre le profil
   d'un étudiant en cliquant sur son nom dans le tableau de bord (`/profil/<id>`, mêmes règles de cloisonnement).
+- **Objectif de classe** (`platform/app/objectif.py`) : les tickets résolus par les étudiants d'une classe, dans les
+  labos qui lui sont ouverts (hors projet final), comptent pour un objectif commun en six paliers (5, 15, 30, 50, 75 et
+  100 % du potentiel : nombre d'étudiants × exercices). Chaque palier atteint débloque un message de Sophie. Sans
+  classement ni nom : le total, la semaine écoulée, le nombre d'étudiants actifs et, pour l'étudiant, sa propre part.
+  Affiché dans le catalogue de l'étudiant et, pour l'enseignant, sur `/admin/classes`.
 - Le projet final (épreuve notée) n'a ni grade, ni réponse des collègues, ni animation, ni notification de badge :
   seulement les couches percées. Il ne compte pas pour les badges d'autonomie (il n'a pas d'indice).
 

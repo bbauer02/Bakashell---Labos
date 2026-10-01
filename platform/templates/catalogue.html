@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% from "_staff.html" import role_badge, teachers_link %}
+{% from "_objectif.html" import goal_css, goal_card %}
 {% block title %}Mes labos — {{ APP_SHORT }}{% endblock %}
 {% block extra_css %}
+{{ goal_css() }}
+.goals { margin-bottom:26px; }
+.goals-note { font-size:12px; color:var(--dim); margin-top:8px; }
 .page { max-width:1180px; margin:0 auto; padding:32px 20px 60px; }
 .top { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:28px; flex-wrap:wrap; }
 .logo { font-size:22px; font-weight:700; color:var(--accent-l); }
@@ -98,6 +102,13 @@ h1 { font-size:28px; margin-bottom:6px; }
     {% if user.is_admin %}<p class="admin-note">{% if user.is_superadmin %}Compte administrateur{% else %}Compte enseignant{% endif %} : tous les labos vous sont ouverts. Les étudiants ne voient que ceux de leurs classes.</p>{% endif %}
     {% if msg %}<div class="notice ok">{{ msg }}</div>{% endif %}
     {% if err %}<div class="notice err">{{ err }}</div>{% endif %}
+
+    {% if goals %}
+    <div class="goals">
+        {% for g in goals %}{{ goal_card(g, g.name, mine=True) }}{% endfor %}
+        <p class="goals-note">Tous les tickets résolus par la classe dans ses labos comptent, sans classement : chacun avance à son rythme, et chaque ticket fait progresser tout le monde.</p>
+    </div>
+    {% endif %}
 
     {% if cards %}
     <div class="grid">

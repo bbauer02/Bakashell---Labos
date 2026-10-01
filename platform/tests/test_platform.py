@@ -881,3 +881,31 @@ def test_badges_et_profil(app_client):
     admin_client(app_client)
     assert "Vue enseignant" in app_client.get(f"/profil/{uid}").text
     assert f'href="/profil/{uid}"' in app_client.get("/dashboard?course=linux").text
+
+
+def test_objectif_de_classe(app_client):
+    from app import objectif
+    admin_client(app_client)
+    cid, code = make_class(app_client, courses=("linux", "projet"))
+    assert objectif.compute(cid, ["linux", "projet"]) is None  # aucun étudiant
+    for email in ("ada@lab.test", "alan@lab.test"):
+        assert register(app_client, email=email, code=code).status_code == 302
+    ada, alan = user_id("ada@lab.test"), user_id("alan@lab.test")
+    g = objectif.compute(cid, ["linux", "projet"], ada)
+    # Potentiel : 2 étudiants × exercices de Linux (l'épreuve notée ne compte pas)
+    assert g["potential"] == 2 * LINUX["total_exercises"] and g["total"] == 0 and g["reached"] == 0
+    premier = g["tiers"][0]["target"]
+    ids = [ex["id"] for s in LINUX["steps"].values() for ex in s["exercises"]]
+    for i in ids[:premier - 1]:
+        db.add_exercise_completion(ada, i, 1)
+    db.add_exercise_completion(alan, ids[0], 1)
+    db.add_exercise_completion(alan, COURSES["projet"]["steps"][1]["exercises"][0]["id"], 1)  # ne compte pas
+    g = objectif.compute(cid, ["linux", "projet"], ada)
+    assert g["total"] == premier and g["reached"] == 1 and g["mine"] == premier - 1
+    assert g["week"] == premier and g["active"] == 2 and g["message"] == objectif.PALIERS[0][1]
+    # L'étudiant voit l'objectif de sa classe dans son catalogue, l'enseignant sur la page des classes
+    login(app_client, "ada@lab.test", "motdepasse1")
+    page = app_client.get("/catalogue").text
+    assert "Objectif de classe" in page and f"dont <b>{premier - 1}</b> par vous" in page
+    admin_client(app_client)
+    assert "Objectif de classe" in app_client.get("/admin/classes").text

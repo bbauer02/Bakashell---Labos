@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% from "_staff.html" import role_badge, teachers_link %}
+{% from "_objectif.html" import goal_css, goal_card %}
 {% block title %}Classes — {{ APP_SHORT }}{% endblock %}
 {% block extra_css %}
+{{ goal_css() }}
 .page { max-width:1100px; margin:0 auto; padding:32px 20px 60px; }
 .top { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
 .top h1 { font-size:24px; color:var(--accent-l); }
@@ -88,6 +90,8 @@ select, input[type=date] { padding:8px 10px; background:var(--bg); border:1px so
             <span class="code" title="Code d'inscription">{{ c.code }}</span>
             <span class="meta">{{ c.members | length }} étudiant(s)</span>
         </h2>
+
+        {% if c.goal %}<div class="section">{{ goal_card(c.goal) }}</div>{% endif %}
 
         <div class="section">
             <h3>Labos ouverts</h3>

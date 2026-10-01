@@ -1043,6 +1043,34 @@ def find_student_by_email(email: str):
     return row["id"] if row else None
 
 
+def class_course_keys(class_id: int) -> list:
+    db = get_db()
+    rows = db.execute("SELECT course_key FROM class_courses WHERE class_id = ?", (class_id,)).fetchall()
+    db.close()
+    return [r["course_key"] for r in rows]
+
+
+def class_progress_counts(class_id: int, globs, user_id: int = None) -> dict:
+    """Tickets résolus par les étudiants de la classe dans les parcours donnés (filtres d'identifiants) :
+    au total, sur les 7 derniers jours, nombre d'étudiants actifs sur cette période, et part de user_id."""
+    globs = list(globs)
+    if not globs:
+        return {"students": 0, "total": 0, "week": 0, "active": 0, "mine": 0}
+    match = " OR ".join("p.exercise_id GLOB ?" for _ in globs)
+    base = ("FROM progress p JOIN class_members m ON m.user_id = p.user_id JOIN users u ON u.id = p.user_id "
+            f"WHERE m.class_id = ? AND u.is_admin = 0 AND ({match})")
+    db = get_db()
+    students = db.execute("SELECT COUNT(*) FROM class_members m JOIN users u ON u.id = m.user_id "
+                          "WHERE m.class_id = ? AND u.is_admin = 0", (class_id,)).fetchone()[0]
+    total = db.execute(f"SELECT COUNT(*) {base}", (class_id, *globs)).fetchone()[0]
+    week = db.execute(f"SELECT COUNT(*), COUNT(DISTINCT p.user_id) {base} AND p.completed_at >= datetime('now', '-7 days')",
+                      (class_id, *globs)).fetchone()
+    mine = (db.execute(f"SELECT COUNT(*) {base} AND p.user_id = ?", (class_id, *globs, user_id)).fetchone()[0]
+            if user_id else 0)
+    db.close()
+    return {"students": students, "total": total, "week": week[0], "active": week[1], "mine": mine}
+
+
 def class_member_ids(class_id: int) -> set:
     db = get_db()
     rows = db.execute("SELECT user_id FROM class_members WHERE class_id = ?", (class_id,)).fetchall()
