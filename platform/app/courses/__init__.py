@@ -14,7 +14,7 @@ from .git import catalogue as git_catalogue
 from .jest import catalogue as jest_catalogue
 from .linux import catalogue as linux_catalogue
 from .projet import catalogue as projet_catalogue
-from ..scenario import CHARACTERS
+from ..scenario import CHARACTERS, contexte
 
 COURSES = {
     "linux": {
@@ -178,6 +178,11 @@ for _key, _course in COURSES.items():
             if "ticket" in _ex:
                 assert _ex["ticket"]["from"] in CHARACTERS, f"Personnage inconnu dans {_ex['id']}"
             EXERCISE_INDEX[_ex["id"]] = (_key, _num, _pos, _ex)
+    # Présentation commune de l'entreprise et de l'équipe en tête de la première étape : les labos se suivent
+    # dans n'importe quel ordre, aucun ne doit supposer qu'un autre a été fait avant
+    _first = _course["steps"][min(_course["steps"])]
+    _first["lesson"] = (contexte(None if _course.get("exam") else _course["mentor"],
+                                 independant=not _course.get("exam")) + _first.get("lesson", ""))
     _course["max_score"] = sum(ex["points"] for s in _course["steps"].values() for ex in s["exercises"])
     # QCM de fin de cours (courses/<parcours>/quiz.py) : QUIZ_QUESTIONS points par étape qui en a un
     _quiz = (importlib.import_module(f"{__name__}.{_key}.quiz").QUIZ

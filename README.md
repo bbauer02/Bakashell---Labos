@@ -16,8 +16,12 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 
 ## Organisation : catalogue et classes
 
-- Après connexion, l'étudiant arrive sur **son catalogue** (`/catalogue`) : les labos ouverts à ses classes, avec sa
-  progression dans chacun.
+- Après connexion, l'étudiant arrive sur **son catalogue** (`/catalogue`) : les labos ouverts à ses classes, chacun
+  avec sa vignette d'illustration et sa progression.
+- **Vignettes** : `platform/static/vignettes/<parcours>.svg` (illustrations fournies). Pour en changer,
+  déposez une image `<parcours>.webp`, `.png` ou `.jpg` dans ce dossier (format paysage 16:7, par exemple 1280×560) :
+  elle remplace le `.svg`, sur le catalogue comme dans le panneau « L'équipe » du lab. Les vignettes sont copiées dans
+  l'image de la plateforme : reconstruire `platform` après un changement.
 - L'enseignant gère **ses classes** sur `/admin/classes` : il coche les labos ouverts à chaque classe et ajoute ou
   retire des étudiants (ajout par **adresse e-mail exacte** du compte, ou en cochant un étudiant de ses autres classes).
   Chaque classe a un **code d'inscription** (ex. `QTQ-V95`) que les étudiants saisissent à l'inscription ou depuis leur
@@ -83,7 +87,8 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 | `platform/app/courses/<parcours>/` | Un dossier par parcours (`linux`, `jest`, `docker`, `git`, `ansible`, `projet`) : `catalogue.py` (cours, mises en place, exercices, vérifications, indices), `memo.py` (fiches du mémo), `solutions.py` (corrigés) |
 | `platform/app/memo.py` | Mémo des commandes : déblocage des fiches selon la progression |
 | `platform/app/solutions.py` | Découpage des corrigés (un script par étape, un repère `#@ <exercice>` par exercice), visibles par les admins |
-| `platform/app/scenario.py` | Entreprise fictive et personnages communs aux parcours |
+| `platform/app/scenario.py` | Entreprise fictive et personnages communs aux parcours, présentation affichée au début de chaque labo |
+| `platform/static/vignettes/` | Vignettes d'illustration des labos (une par parcours) |
 | `platform/app/runner.py` | Construit les commandes de mise en place et de vérification (partagé avec les tests) |
 | `platform/app/terminals.py` | Diffusion du terminal d'un étudiant vers l'enseignant qui le regarde |
 | `platform/app/ratelimit.py` | Limitation des tentatives (connexion, inscription, mot de passe) |
@@ -119,8 +124,14 @@ Fonctionnement d'une étape :
 L'étudiant travaille chez **Cimes & Sentiers**, une PME fictive de vente de matériel de randonnée. Les exercices
 arrivent sous forme de **tickets** envoyés par des collègues récurrents : Sophie (DSI), Léa (admin senior, mentore
 des parcours Linux et Ansible), Nadia (lead développeuse, mentore des parcours Jest et Git), Thomas (développeur), Aminata
-(comptabilité), Julien (stagiaire). Tous les exercices des cinq parcours ont leur ticket ; un exercice
-sans clé `ticket` s'affiche au format classique.
+(comptabilité), Julien (stagiaire), et Marc, le prédécesseur parti précipitamment dont on retrouve le travail un peu
+partout. Tous les exercices des cinq parcours ont leur ticket ; un exercice sans clé `ticket` s'affiche au format
+classique.
+
+**Les labos se suivent dans n'importe quel ordre** : aucun ne doit supposer qu'un autre a été fait avant. La
+présentation de l'entreprise et de l'équipe (`scenario.contexte()`) est ajoutée automatiquement en tête de la première
+étape de chaque parcours (avec la mentore du labo), et reste accessible à toute étape par le bouton « 🏔 L'équipe » du
+lab. L'introduction propre à chaque parcours ne décrit que sa mission.
 
 ## Parcours Linux
 

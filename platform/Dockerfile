@@ -18,6 +18,8 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY --from=vendor /static/ /app/static/
+# Vignettes d'illustration des labos (static/vignettes/<parcours>.svg, .png, .jpg ou .webp)
+COPY static/ /app/static/
 COPY app/ /app/app/
 COPY templates/ /app/templates/
 

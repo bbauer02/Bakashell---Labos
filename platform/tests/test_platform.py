@@ -766,3 +766,34 @@ def test_page_confidentialite(app_client):
     for attendu in ("Hetzner Online GmbH", "Bauer Baptiste", "CNIL", "120 jours", "session"):
         assert attendu in page.text
     assert 'href="/confidentialite"' in app_client.get("/register").text
+
+
+def test_contexte_entreprise_dans_chaque_labo():
+    # Les labos se suivent dans n'importe quel ordre : chacun présente l'entreprise, Marc et toute l'équipe
+    for key, course in COURSES.items():
+        lesson = course["steps"][min(course["steps"])]["lesson"]
+        assert lesson.startswith('<div class="scenario company">'), key
+        assert lesson.count('class="scenario company"') == 1, key
+        for nom in ("Cimes &amp; Sentiers", "Marc Dumas", "Sophie Marchand", "Léa Nguyen", "Nadia Haddad",
+                    "Thomas Leroy", "Aminata Diallo", "Julien Petit"):
+            assert nom in lesson, (key, nom)
+        assert ("votre mentore dans ce labo" in lesson) != bool(course.get("exam")), key
+    # Aucune autre étape ne la répète
+    assert all('class="scenario company"' not in s["lesson"]
+               for c in COURSES.values() for n, s in c["steps"].items() if n != min(c["steps"]) and "lesson" in s)
+
+
+def test_vignettes_des_labos(app_client, tmp_path, monkeypatch):
+    admin_client(app_client)
+    page = app_client.get("/catalogue").text
+    for key in COURSES:
+        assert f'src="/static/vignettes/{key}.svg?v=' in page, key
+    assert app_client.get("/static/vignettes/linux.svg").status_code == 200
+    assert 'id="team-panel"' in app_client.get("/lab/docker").text
+    # Une image déposée en .png remplace l'illustration .svg ; sans image, la carte garde un fond neutre
+    os.makedirs(tmp_path / "static" / "vignettes")
+    (tmp_path / "static" / "vignettes" / "git.png").write_bytes(b"\x89PNG")
+    monkeypatch.setattr(main, "APP_DIR", str(tmp_path))
+    assert main.thumbnail_url("git").startswith("/static/vignettes/git.png?v=")
+    assert main.thumbnail_url("linux") is None
+    assert 'class="ph"' in app_client.get("/catalogue").text

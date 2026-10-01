@@ -32,7 +32,7 @@ from . import runner
 from . import solutions
 from . import terminals
 from .courses import COURSES, DEFAULT_COURSE, EXERCISE_INDEX, QUIZ_QUESTIONS, get_course, get_exercise
-from .scenario import CHARACTERS
+from .scenario import CHARACTERS, contexte
 
 log = logging.getLogger("linux-lab")
 logging.basicConfig(level=logging.INFO)
@@ -160,6 +160,20 @@ def course_for(user, course_key: str):
         return None
     if user.get("is_admin") or course_key in db.get_user_courses(user["user_id"]):
         return course
+    return None
+
+
+# Vignettes d'illustration des labos : static/vignettes/<parcours>.<ext>. Une image déposée en .webp, .png ou .jpg
+# remplace l'illustration .svg fournie (premier format trouvé dans cet ordre).
+THUMBNAIL_EXTS = ("webp", "png", "jpg", "jpeg", "svg")
+
+
+def thumbnail_url(key: str):
+    """Adresse de la vignette du parcours (avec sa date de modification, pour le cache), ou None."""
+    for ext in THUMBNAIL_EXTS:
+        path = os.path.join(APP_DIR, "static", "vignettes", f"{key}.{ext}")
+        if os.path.isfile(path):
+            return f"/static/vignettes/{key}.{ext}?v={int(os.path.getmtime(path))}"
     return None
 
 
@@ -419,6 +433,7 @@ async def catalogue(request: Request, msg: str = "", err: str = ""):
         cards.append({
             "memo_found": memo_found, "memo_total": memo_total,
             "key": key, "title": c["title"], "summary": c["summary"], "level": c["level"],
+            "thumbnail": thumbnail_url(key), "exam": bool(c.get("exam")),
             "duration": c["duration"], "steps": len(c["steps"]), "total": c["total_exercises"],
             "score": p["score"], "max": c["max_score"], "done": done,
             "pct": round(100 * p["score"] / c["max_score"]) if c["max_score"] else 0,
@@ -514,6 +529,9 @@ async def lab_page(request: Request, course_key: str):
                    "editor": bool(course["editor_root"]), "auto_validate": course["auto_validate"]},
         "courses": courses_menu(user),
         "integrity_days": integrity.RETENTION_DAYS,
+        "thumbnail": thumbnail_url(course["key"]),
+        "company_html": contexte(None if course.get("exam") else course["mentor"],
+                                 independant=not course.get("exam")),
     })
 
 
