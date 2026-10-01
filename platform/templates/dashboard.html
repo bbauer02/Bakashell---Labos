@@ -138,7 +138,7 @@ tr.flash td { animation:flash 2.5s ease-out; }
                 {% for s in students %}
                 {% set pct = (s.score * 100 / max_score) if max_score else 0 %}
                 <tr data-user="{{ s.id }}" data-score="{{ s.score }}" data-last-seen="{{ s.last_seen or '' }}">
-                    <td><div class="name">{{ s.first_name }} {{ s.last_name }}</div><div class="email">{{ s.email }}</div>
+                    <td><div class="name"><a href="/profil/{{ s.id }}" title="Profil : badges et progression dans chaque labo" style="color:inherit">{{ s.first_name }} {{ s.last_name }}</a></div><div class="email">{{ s.email }}</div>
                         {% if s.late %}<span class="late-badge" title="Échéance dépassée">⏰ En retard : étape{{ 's' if s.late | length > 1 }} {{ s.late | join(', ') }}</span>{% endif %}</td>
                     <td class="live"><div class="status offline"><span class="dot"></span><span class="label">Hors ligne</span></div><div class="where"></div></td>
                     <td class="score-cell {% if pct >= 70 %}score-high{% elif pct >= 30 %}score-mid{% else %}score-low{% endif %}"><span class="score">{{ s.score }}</span>/{{ max_score }}</td>

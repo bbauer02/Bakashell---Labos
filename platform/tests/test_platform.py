@@ -830,23 +830,54 @@ def test_envoi_d_une_vignette(app_client, tmp_path, monkeypatch):
     assert main.thumbnail_url("docker").startswith("/static/vignettes/docker.svg")
 
 
-def test_grade_altitude_et_reponse_du_collegue(app_client):
+def test_grade_intrusion_et_reponse_du_collegue(app_client):
     from app import progression
     assert [progression.grade(s, 200)["name"] for s in (0, 29, 30, 80, 140, 180)] == [
-        "Stagiaire", "Stagiaire", "Junior", "Confirmé·e", "Senior", "Référent·e"]
+        "Recrue", "Recrue", "Opérateur·rice", "Hacker", "Architecte", "Ghost"]
     assert progression.grade(29, 200)["next_points"] == 1 and "next" not in progression.grade(200, 200)
     admin_client(app_client)
     uid = user_id(ADMIN[0])
     seuil = -(-15 * LINUX["max_score"] // 100)
     db.add_exercise_completion(uid, FIRST, seuil)
     p = app_client.get("/api/linux/progress").json()
-    assert p["grade"]["name"] == "Junior" and p["altitude"]["summit"] == "Mont Blanc"
-    assert p["altitude"]["meters"] == round(4808 * seuil / LINUX["max_score"])
-    # Épreuve notée : l'altitude, pas de grade
+    assert p["grade"]["name"] == "Opérateur·rice" and p["breach"] == {"core": "Ring 0", "layers": 0, "total": len(LINUX["steps"])}
+    # Une couche d'ICE percée par étape entièrement réussie
+    for ex in LINUX["steps"][1]["exercises"][1:]:
+        db.add_exercise_completion(uid, ex["id"], 1)
+    assert app_client.get("/api/linux/progress").json()["breach"]["layers"] == 1
+    # Épreuve notée : les couches, pas de grade
     assert "grade" not in app_client.get("/api/projet/progress").json()
     page = app_client.get("/catalogue").text
-    assert "Junior" in page and "Mont Blanc" in page
+    assert "Opérateur·rice" in page and "Ring 0" in page
     # Le collègue répond toujours la même chose à un même ticket
     ex = app_client.get("/api/linux/step/1").json()["exercises"][0]
     assert ex["ticket"]["reply"] in progression.REPLIES[LINUX["steps"][1]["exercises"][0]["ticket"]["from"]]
     assert ex["ticket"]["reply"] == app_client.get("/api/linux/step/1").json()["exercises"][0]["ticket"]["reply"]
+
+
+def test_badges_et_profil(app_client):
+    from app import badges
+    assert badges._longest_run([10, 11, 12, 14]) == 3 and badges._longest_run([]) == 0
+    uid = student_in_class(app_client)
+    b = {x["id"]: x for x in app_client.get("/api/badges").json()["badges"]}
+    assert len(b) == len(badges.BADGES) and not any(x["earned"] for x in b.values())
+    # Étape 1 de Linux terminée sans indice, plus un exercice réussi après 5 vérifications ratées
+    step1 = [ex["id"] for ex in LINUX["steps"][1]["exercises"]]
+    for i in step1:
+        db.add_exercise_completion(uid, i, 1)
+    for _ in range(5):
+        db.record_attempt(uid, step1[0], False, "pas encore")
+    b = {x["id"]: x for x in app_client.get("/api/badges").json()["badges"]}
+    assert b["premier-ticket"]["earned"] and b["sans-filet"]["earned"] and b["perseverant"]["earned"]
+    assert not b["autonome"]["earned"] and b["autonome"]["value"] == len(step1)
+    assert b["polyvalent"]["value"] == 1 and b["regulier"]["value"] == 1
+    # Un indice demandé dans l'étape : plus « sans filet »
+    db.use_hint(uid, step1[1], 3)
+    assert not {x["id"]: x for x in badges.compute(uid)}["sans-filet"]["earned"]
+    page = app_client.get("/profil").text
+    assert "Hello, world" in page and "Brute force" in page and "Ring 0" in page
+    # Un étudiant ne voit pas le profil d'un autre ; l'enseignant de sa classe, si
+    assert app_client.get(f"/profil/{uid}", follow_redirects=False).status_code == 302
+    admin_client(app_client)
+    assert "Vue enseignant" in app_client.get(f"/profil/{uid}").text
+    assert f'href="/profil/{uid}"' in app_client.get("/dashboard?course=linux").text

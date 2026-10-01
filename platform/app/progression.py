@@ -1,28 +1,32 @@
-"""Progression ludique : grade par labo, altitude gravie sur le sentier, réponse du collègue à un ticket résolu.
+"""Progression ludique de Bakashell : grade par labo, intrusion jusqu'au noyau, réponse du collègue au ticket résolu.
 
-Rien ici ne change la note : grades et altitude se déduisent des points, déjà comptés ailleurs.
+Univers de la plateforme (le « bac à shell ») : cyberpunk, à la Neuromancer. Chaque étape d'un labo est une couche
+d'ICE (les pare-feu du roman) à percer pour atteindre le noyau. L'histoire des tickets, elle, se passe chez
+Cimes & Sentiers (scenario.py).
+
+Rien ici ne change la note : grades et couches se déduisent des points et des étapes, déjà comptés ailleurs.
 """
 import zlib
 
-# Grades d'un labo, selon la part des points obtenus (seuil en %, nom, icône)
+# Grades d'un labo, selon la part des points obtenus (seuil en %, nom, icône) : de la recrue au ghost (in the shell)
 GRADES = [
-    (0, "Stagiaire", "🎒"),
-    (15, "Junior", "🥾"),
-    (40, "Confirmé·e", "🧗"),
-    (70, "Senior", "⛰"),
-    (90, "Référent·e", "🏔"),
+    (0, "Recrue", "🔰"),
+    (15, "Opérateur·rice", "🎧"),
+    (40, "Hacker", "💻"),
+    (70, "Architecte", "📐"),
+    (90, "Ghost", "👻"),
 ]
 
-# Sommet visé par chaque labo : les points se convertissent en mètres gravis
-SUMMITS = {
-    "linux": ("Mont Blanc", 4808),
-    "jest": ("Barre des Écrins", 4102),
-    "docker": ("Grande Casse", 3855),
-    "git": ("Pic du Midi d'Ossau", 2884),
-    "ansible": ("Vignemale", 3298),
-    "projet": ("Aiguille du Midi", 3842),
+# Noyau visé par chaque labo, au bout des couches d'ICE
+CORES = {
+    "linux": "Ring 0",
+    "jest": "Zoo des mutants",
+    "docker": "Port franc",
+    "git": "Arbre des commits",
+    "ansible": "La Ruche",
+    "projet": "Cœur de prod",
 }
-DEFAULT_SUMMIT = ("Sommet", 3000)
+DEFAULT_CORE = "Noyau"
 
 # Réponses des collègues quand leur ticket est résolu : neutres, elles conviennent à tous leurs tickets.
 # Un exercice peut fixer la sienne avec ticket["reply"].
@@ -55,14 +59,17 @@ def grade(score: int, max_score: int) -> dict:
     return out
 
 
-def altitude(course_key: str, score: int, max_score: int) -> dict:
-    name, height = SUMMITS.get(course_key, DEFAULT_SUMMIT)
-    return {"summit": name, "height": height, "meters": round(height * score / max_score) if max_score else 0}
+def breach(course: dict, completed) -> dict:
+    """Couches d'ICE percées : les étapes entièrement réussies du labo."""
+    completed = set(completed)
+    layers = sum(1 for st in course["steps"].values()
+                 if st["exercises"] and all(ex["id"] in completed for ex in st["exercises"]))
+    return {"core": CORES.get(course["key"], DEFAULT_CORE), "layers": layers, "total": len(course["steps"])}
 
 
-def progression(course: dict, score: int) -> dict:
-    """Grade et altitude d'un labo (pas de grade pour une épreuve notée)."""
-    out = {"altitude": altitude(course["key"], score, course["max_score"])}
+def progression(course: dict, score: int, completed) -> dict:
+    """Grade et couches percées d'un labo (pas de grade pour une épreuve notée)."""
+    out = {"breach": breach(course, completed)}
     if not course.get("exam"):
         out["grade"] = grade(score, course["max_score"])
         out["grades"] = [{"pct": s, "name": n, "icon": i} for s, n, i in GRADES]

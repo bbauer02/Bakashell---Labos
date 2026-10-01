@@ -25,6 +25,7 @@ from . import containers
 from . import database as db
 from . import live
 from . import progression
+from . import badges
 from . import integrity
 from . import memo
 from . import quiz
@@ -464,7 +465,7 @@ async def catalogue(request: Request, msg: str = "", err: str = ""):
             "memo_found": memo_found, "memo_total": memo_total,
             "key": key, "title": c["title"], "summary": c["summary"], "level": c["level"],
             "thumbnail": thumbnail_url(key), "custom_thumbnail": bool(uploaded_thumbnail(key)),
-            **progression.progression(c, p["score"]),
+            **progression.progression(c, p["score"], p["completed"]),
             "exam": bool(c.get("exam")),
             "duration": c["duration"], "steps": len(c["steps"]), "total": c["total_exercises"],
             "score": p["score"], "max": c["max_score"], "done": done,
@@ -590,6 +591,64 @@ async def vignette_upload(request: Request, course_key: str):
     os.replace(tmp, os.path.join(VIGNETTES_DIR, f"{course_key}.{ext}"))
     return RedirectResponse(f"/catalogue?msg={quote_plus('Vignette mise à jour : ' + COURSES[course_key]['short'])}",
                             status_code=302)
+
+
+@app.get("/profil", response_class=HTMLResponse)
+async def profile_page(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    return profile_response(request, user, user, own=True)
+
+
+@app.get("/profil/{student_id}", response_class=HTMLResponse)
+async def student_profile_page(request: Request, student_id: int):
+    """Profil d'un étudiant, vu par un membre du personnel qui le suit."""
+    viewer = staff_or_none(request)
+    if not viewer or not can_see_student(viewer, student_id):
+        return RedirectResponse("/catalogue", status_code=302)
+    target = db.get_user(student_id)
+    return profile_response(request, viewer, {**target, "user_id": student_id}, own=False)
+
+
+def profile_response(request: Request, viewer: dict, target: dict, own: bool):
+    """Badges, grade et couches d'ICE percées dans chaque labo, collègues aidés."""
+    uid = target["user_id"]
+    labs, layers, tickets = [], 0, 0
+    for key in accessible_keys(target):
+        c = COURSES[key]
+        p = db.get_user_score(uid, c["id_glob"])
+        prog = progression.progression(c, p["score"], p["completed"])
+        layers += prog["breach"]["layers"]
+        tickets += len(p["completed"])
+        labs.append({"key": key, "title": c["title"], "short": c["short"], "thumbnail": thumbnail_url(key),
+                     "done": len(p["completed"]), "total": c["total_exercises"], "score": p["score"],
+                     "max": c["max_score"], "pct": 100 * p["score"] // c["max_score"] if c["max_score"] else 0, **prog})
+    # Collègues aidés : tickets résolus par personnage
+    helped = {}
+    for e in db.get_user_score(uid)["completed"]:
+        ticket = EXERCISE_INDEX.get(e, (None, None, None, {}))[3].get("ticket")
+        if ticket:
+            helped[ticket["from"]] = helped.get(ticket["from"], 0) + 1
+    colleagues = [{"name": ch["name"], "role": ch["role"].split(",")[0], "color": ch["color"],
+                   "initials": "".join(w[0] for w in ch["name"].split()[:2]), "count": helped.get(k, 0)}
+                  for k, ch in CHARACTERS.items()]
+    colleagues.sort(key=lambda x: -x["count"])
+    all_badges = badges.compute(uid)
+    return templates.TemplateResponse(request, "profile.html", {
+        "user": viewer, "target": target, "own": own, "labs": labs, "badges": all_badges,
+        "earned": sum(b["earned"] for b in all_badges), "layers": layers,
+        "tickets": tickets if labs else 0, "colleagues": colleagues,
+        "classes": db.get_user_classes(uid), "certificates": len(db.user_certificates(uid)),
+    })
+
+
+@app.get("/api/badges")
+async def api_badges(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return unauthorized()
+    return {"badges": badges.compute(user["user_id"])}
 
 
 @app.get("/lab/{course_key}", response_class=HTMLResponse)
@@ -1248,7 +1307,7 @@ def progress_payload(user_id: int, course: dict) -> dict:
     p = db.get_user_score(user_id, course["id_glob"])
     return {"score": p["score"], "completed": p["completed"],
             "max_score": course["max_score"], "total_exercises": course["total_exercises"],
-            **progression.progression(course, p["score"])}
+            **progression.progression(course, p["score"], p["completed"])}
 
 
 # ─── API ────────────────────────────────────────────────────────────────

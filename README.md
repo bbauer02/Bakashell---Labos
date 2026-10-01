@@ -89,7 +89,8 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 | `platform/app/courses/<parcours>/` | Un dossier par parcours (`linux`, `jest`, `docker`, `git`, `ansible`, `projet`) : `catalogue.py` (cours, mises en place, exercices, vérifications, indices), `memo.py` (fiches du mémo), `solutions.py` (corrigés) |
 | `platform/app/memo.py` | Mémo des commandes : déblocage des fiches selon la progression |
 | `platform/app/solutions.py` | Découpage des corrigés (un script par étape, un repère `#@ <exercice>` par exercice), visibles par les admins |
-| `platform/app/progression.py` | Grades, altitude du sentier, réponses des collègues aux tickets résolus |
+| `platform/app/badges.py` | Badges, calculés à partir de la progression (rien n'est stocké) |
+| `platform/app/progression.py` | Grades, couches d'ICE percées, réponses des collègues aux tickets résolus |
 | `platform/app/scenario.py` | Entreprise fictive et personnages communs aux parcours, présentation affichée au début de chaque labo |
 | `platform/static/vignettes/` | Vignettes d'illustration des labos (une par parcours) |
 | `platform/app/runner.py` | Construit les commandes de mise en place et de vérification (partagé avec les tests) |
@@ -131,17 +132,29 @@ des parcours Linux et Ansible), Nadia (lead développeuse, mentore des parcours 
 partout. Tous les exercices des cinq parcours ont leur ticket ; un exercice sans clé `ticket` s'affiche au format
 classique.
 
-**Progression ludique** (`platform/app/progression.py`, sans effet sur la note : seuls les points comptent) :
+**Progression ludique** (`platform/app/progression.py`, sans effet sur la note : seuls les points comptent). Deux
+univers coexistent : **Cimes & Sentiers** est l'histoire (l'entreprise, les tickets, les collègues) ; la progression
+parle **Bakashell**, le « bac à shell » : cyberpunk à la *Neuromancer*, avec une pointe de japonais.
 
-- **Ticket résolu** : tampon « RÉSOLU » et réponse du collègue (phrase tirée de sa liste, toujours la même pour un
-  exercice ; un exercice peut fixer la sienne avec `ticket["reply"]`). Confettis en fin d'étape, désactivés si le
-  système de l'élève demande moins d'animations.
-- **Grades par labo**, selon la part des points : Stagiaire, Junior (15 %), Confirmé·e (40 %), Senior (70 %),
-  Référent·e (90 %). Le passage d'un grade est annoncé par la mentore du labo.
-- **Le sentier** : les points se convertissent en mètres gravis vers le sommet du labo (Mont Blanc pour Linux, Barre
-  des Écrins pour Jest…). Le bouton du grade, dans la barre du lab, ouvre le sentier : un refuge par étape (cliquable),
-  le sommet et l'attestation tout en haut. Le catalogue affiche grade et altitude sur chaque carte.
-- Le projet final (épreuve notée) n'a ni grade, ni réponse des collègues, ni confettis : seulement l'altitude.
+- **Ticket résolu** : tampon néon `[ RÉSOLU ]` et réponse du collègue (phrase tirée de sa liste, toujours la même pour un
+  exercice ; un exercice peut fixer la sienne avec `ticket["reply"]`). Gerbe de caractères (`0 1 { } $ #`) en fin
+  d'étape, désactivée si le système de l'élève demande moins d'animations.
+- **Grades par labo**, selon la part des points : Recrue, Opérateur·rice (15 %), Hacker (40 %), Architecte (70 %),
+  Ghost (90 %, *ghost in the shell*). Le passage d'un grade est annoncé par la mentore du labo.
+- **L'intrusion** : chaque étape terminée est une couche d'ICE percée (les pare-feu du roman) vers le noyau du labo
+  (Ring 0 pour Linux, Zoo des mutants pour Jest, Port franc pour Docker, Arbre des commits pour Git, La Ruche pour
+  Ansible, Cœur de prod pour le projet final). Le bouton du grade, dans la barre du lab, ouvre la pile des couches
+  (cliquables) jusqu'au noyau et à l'attestation. Le catalogue affiche grade et couches sur chaque carte.
+- **Vignettes** synthwave (soleil néon, skyline, grille en perspective), une couleur et un motif par labo.
+- **Badges** (`platform/app/badges.py`) : 13 badges qui récompensent l'autonomie, la persévérance et la régularité
+  (étape entière sans indice, exercice réussi après 5 vérifications ratées, tickets 3 semaines d'affilée, un ticket de
+  chacun des six collègues, QCM sans faute, mémo complet…). Ils se calculent à partir des données déjà enregistrées :
+  rien n'est stocké. Une notification « Nouveau badge » apparaît dans le lab.
+- **Profil** (`/profil`, lien « Mon profil » du catalogue) : badges obtenus et à venir avec leur avancement, grade et
+  couches d'ICE percées dans chaque labo, tickets résolus pour chacun des collègues. L'enseignant ouvre le profil
+  d'un étudiant en cliquant sur son nom dans le tableau de bord (`/profil/<id>`, mêmes règles de cloisonnement).
+- Le projet final (épreuve notée) n'a ni grade, ni réponse des collègues, ni animation, ni notification de badge :
+  seulement les couches percées. Il ne compte pas pour les badges d'autonomie (il n'a pas d'indice).
 
 **Les labos se suivent dans n'importe quel ordre** : aucun ne doit supposer qu'un autre a été fait avant. La
 présentation de l'entreprise et de l'équipe (`scenario.contexte()`) est ajoutée automatiquement en tête de la première

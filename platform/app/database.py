@@ -1270,6 +1270,23 @@ def get_certificate(code: str):
     return dict(row) if row else None
 
 
+def badge_facts(user_id: int) -> dict:
+    """Ce qu'il faut pour calculer les badges : réussites (avec leur date), indices, vérifications ratées, QCM."""
+    db = get_db()
+    done = db.execute("SELECT exercise_id, completed_at FROM progress WHERE user_id = ?", (user_id,)).fetchall()
+    fails = db.execute("SELECT exercise_id, COUNT(*) AS n FROM attempts WHERE user_id = ? AND passed = 0 "
+                       "GROUP BY exercise_id", (user_id,)).fetchall()
+    quiz = db.execute("SELECT course, step, score, max_score FROM quiz_results WHERE user_id = ?", (user_id,)).fetchall()
+    db.close()
+    return {
+        "completed": {r["exercise_id"]: r["completed_at"] for r in done},
+        "hints": get_hints_used(user_id),
+        "fails": {r["exercise_id"]: r["n"] for r in fails},
+        "quiz": [dict(r) for r in quiz],
+        "certificates": set(user_certificates(user_id)),
+    }
+
+
 def user_certificates(user_id: int) -> dict:
     db = get_db()
     rows = db.execute("SELECT course_key, code FROM certificates WHERE user_id = ?", (user_id,)).fetchall()

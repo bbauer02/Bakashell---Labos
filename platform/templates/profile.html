@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% from "_staff.html" import role_badge, teachers_link %}
+{% block title %}{% if own %}Mon profil{% else %}{{ target.first_name }} {{ target.last_name }}{% endif %} — {{ APP_SHORT }}{% endblock %}
+{% block extra_css %}
+.page { max-width:1100px; margin:0 auto; padding:32px 20px 60px; }
+.top { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:28px; flex-wrap:wrap; }
+.logo { font-size:22px; font-weight:700; color:var(--accent-l); }
+.top-right { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--dim); flex-wrap:wrap; }
+.btn-link { padding:7px 14px; border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; background:var(--card); }
+.btn-link:hover { border-color:var(--accent); text-decoration:none; }
+.staff-note { font-size:12.5px; color:#fdcb6e; margin-bottom:14px; }
+.hero { display:flex; gap:22px; align-items:center; flex-wrap:wrap; background:linear-gradient(135deg, rgba(255,46,136,.14), rgba(108,92,231,.16) 50%, rgba(0,240,255,.10)); border:1px solid var(--border); border-radius:18px; padding:24px; margin-bottom:22px; }
+.avatar { width:76px; height:76px; border-radius:50%; background:linear-gradient(135deg, #ff2e88, #6c5ce7 55%, #00f0ff); display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:800; color:#fff; flex-shrink:0; box-shadow:0 6px 20px rgba(108,92,231,.35); }
+.who { flex:1; min-width:220px; }
+.who h1 { font-size:26px; }
+.who .sub { color:var(--dim); font-size:13.5px; margin-top:3px; }
+.chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+.chip { font-size:11.5px; padding:3px 9px; border-radius:10px; background:var(--card); color:var(--dim); }
+.stats { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin-bottom:30px; }
+.stat { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:14px 16px; }
+.stat .v { font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; }
+.stat .l { font-size:12px; color:var(--dim); margin-top:2px; }
+h2 { font-size:19px; margin:0 0 4px; }
+.section-sub { font-size:13px; color:var(--dim); margin-bottom:14px; }
+section { margin-bottom:34px; }
+.badges { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap:12px; }
+.badge { display:flex; gap:12px; align-items:flex-start; background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:14px; }
+.badge .ic { width:48px; height:48px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; background:var(--card); filter:grayscale(1); opacity:.45; }
+.badge.earned { border-color:rgba(0,240,255,.45); background:linear-gradient(135deg, rgba(0,240,255,.08), rgba(255,46,136,.05) 55%, var(--bg2)); box-shadow:0 0 16px rgba(0,240,255,.08); }
+.badge.earned .ic { filter:none; opacity:1; background:#11152a; border:1px solid #00f0ff; box-shadow:0 0 12px rgba(0,240,255,.45), inset 0 0 10px rgba(0,240,255,.2); }
+.badge .n { font-weight:700; font-size:14px; }
+.badge .d { font-size:12.5px; color:var(--dim); line-height:1.45; margin-top:2px; }
+.badge .ok { font-size:11px; color:#00f0ff; font-weight:700; margin-top:6px; font-family:'JetBrains Mono',monospace; letter-spacing:1px; text-shadow:0 0 6px rgba(0,240,255,.6); }
+.badge .bar { height:5px; background:var(--border); border-radius:3px; overflow:hidden; margin-top:8px; }
+.badge .bar div { height:100%; background:linear-gradient(90deg, #ff2e88, #00f0ff); }
+.badge .pv { font-size:11px; color:var(--dim); margin-top:3px; font-variant-numeric:tabular-nums; }
+.labs { display:grid; gap:10px; }
+.lab { display:flex; gap:16px; align-items:center; background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:10px 16px 10px 10px; color:var(--text); }
+.lab:hover { border-color:var(--accent); text-decoration:none; }
+.lab img, .lab .ph { width:128px; aspect-ratio:16/7; object-fit:cover; border-radius:9px; flex-shrink:0; background:var(--card); }
+.lab .body { flex:1; min-width:0; }
+.lab .t { font-weight:700; font-size:14.5px; }
+.lab .line { display:flex; justify-content:space-between; gap:10px; font-size:12px; color:var(--dim); margin-top:4px; flex-wrap:wrap; }
+.lab .grade { color:var(--text); font-weight:600; }
+.lab .ice { color:#00f0ff; font-family:'JetBrains Mono',monospace; }
+.lab .bar { height:6px; background:var(--border); border-radius:3px; overflow:hidden; margin-top:6px; }
+.lab .bar div { height:100%; background:linear-gradient(90deg, var(--accent), var(--ok)); }
+.team { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap:10px; }
+.mate { display:flex; gap:10px; align-items:center; background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:10px 12px; }
+.mate .av { width:36px; height:36px; border-radius:50%; color:#fff; font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.mate .nm { font-size:13px; font-weight:600; }
+.mate .ct { font-size:12px; color:var(--dim); }
+.mate.zero { opacity:.5; }
+@media (max-width:700px) {
+  .page { padding:20px 16px 40px; }
+  .stats { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .lab img, .lab .ph { width:84px; }
+}
+{% endblock %}
+{% block body %}
+<div class="page">
+    <div class="top">
+        <a class="logo" href="/catalogue" style="text-decoration:none">&gt;_ {{ APP_TITLE }}</a>
+        <div class="top-right">
+            <span>{{ user.first_name }} {{ user.last_name }}{% if user.is_admin %}{{ role_badge(user) }}{% endif %}</span>
+            <a class="btn-link" href="/catalogue">Mes labos</a>
+            {% if user.is_admin %}<a class="btn-link" href="/dashboard">Tableau de bord</a>{% endif %}
+            <a class="btn-link" href="/compte">Mon compte</a>
+            <a class="btn-link" href="/logout">Déconnexion</a>
+        </div>
+    </div>
+
+    {% if not own %}<p class="staff-note">Vue enseignant : le profil tel que l'étudiant·e le voit. Badges et grades ne comptent pas dans la note.</p>{% endif %}
+
+    <div class="hero">
+        <div class="avatar" aria-hidden="true">{{ target.first_name[:1] }}{{ target.last_name[:1] }}</div>
+        <div class="who">
+            <h1>{{ target.first_name }} {{ target.last_name }}</h1>
+            <div class="sub">Équipe informatique · Cimes &amp; Sentiers</div>
+            {% if classes %}<div class="chips">{% for cl in classes %}<span class="chip">{{ cl.name }}</span>{% endfor %}</div>{% endif %}
+        </div>
+    </div>
+
+    <div class="stats">
+        <div class="stat"><div class="v">{{ tickets }}</div><div class="l">tickets résolus</div></div>
+        <div class="stat"><div class="v">⌁ {{ layers }}</div><div class="l">couches d'ICE percées</div></div>
+        <div class="stat"><div class="v">{{ earned }}/{{ badges|length }}</div><div class="l">badges obtenus</div></div>
+        <div class="stat"><div class="v">{{ certificates }}</div><div class="l">attestation{{ 's' if certificates > 1 }}</div></div>
+    </div>
+
+    <section>
+        <h2>🏅 Badges</h2>
+        <p class="section-sub">Ils récompensent l'autonomie, la persévérance et la régularité, dans tous les labos. Ils ne comptent pas dans la note.</p>
+        <div class="badges">
+            {% for b in badges %}
+            <div class="badge {% if b.earned %}earned{% endif %}">
+                <div class="ic" aria-hidden="true">{{ b.icon }}</div>
+                <div style="flex:1;min-width:0">
+                    <div class="n">{{ b.name }}</div>
+                    <div class="d">{{ b.desc }}</div>
+                    {% if b.earned %}<div class="ok">[ DÉBLOQUÉ ]</div>
+                    {% else %}<div class="bar"><div style="width:{{ (100 * b.value / b.target)|round|int }}%"></div></div><div class="pv">{{ b.value }}{{ b.unit }} / {{ b.target }}{{ b.unit }}</div>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    {% if labs %}
+    <section>
+        <h2>⌁ Les intrusions</h2>
+        <p class="section-sub">Grade et couches d'ICE percées (les étapes terminées) vers le noyau de chaque labo.</p>
+        <div class="labs">
+            {% for l in labs %}
+            <a class="lab" href="{% if own %}/lab/{{ l.key }}{% else %}/dashboard?course={{ l.key }}{% endif %}">
+                {% if l.thumbnail %}<img src="{{ l.thumbnail }}" alt="" loading="lazy">{% else %}<span class="ph"></span>{% endif %}
+                <div class="body">
+                    <div class="t">{{ l.title }}</div>
+                    <div class="line">
+                        <span>{% if l.grade %}<span class="grade">{{ l.grade.icon }} {{ l.grade.name }}</span> · {% endif %}{{ l.done }}/{{ l.total }} exercices · {{ l.score }}/{{ l.max }} pts</span>
+                        <span class="ice">⌁ {{ l.breach.layers }}/{{ l.breach.total }} ICE · {{ l.breach.core }}</span>
+                    </div>
+                    <div class="bar"><div style="width:{{ l.pct }}%"></div></div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section>
+        <h2>🤝 Les collègues aidés</h2>
+        <p class="section-sub">Tickets résolus pour chacun de vos collègues de Cimes &amp; Sentiers.</p>
+        <div class="team">
+            {% for m in colleagues %}
+            <div class="mate {% if not m.count %}zero{% endif %}">
+                <div class="av" style="background:{{ m.color }}">{{ m.initials }}</div>
+                <div><div class="nm">{{ m.name }}</div><div class="ct">{{ m.role }} · {{ m.count }} ticket{{ 's' if m.count > 1 }}</div></div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}
