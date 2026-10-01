@@ -737,6 +737,78 @@
         .cast-avatar { width: 32px; height: 32px; border-radius: 50%; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .cast-mentor { display: inline-block; font-size: 10px; font-weight: 600; color: var(--success); background: var(--success-bg); border-radius: 8px; padding: 1px 7px; margin-left: 4px; vertical-align: 1px; }
         .scenario.company .company-note { color: var(--text-dim); font-size: 12.5px; font-style: italic; }
+        /* Ticket résolu : tampon et réponse du collègue */
+        .ticket-stamp { margin-left: auto; align-self: center; transform: rotate(-8deg); border: 2px solid var(--success); color: var(--success); font-weight: 800; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 10px; border-radius: 6px; background: rgba(15,17,23,.75); pointer-events: none; }
+        .ticket-stamp.fresh { animation: stampIn .45s cubic-bezier(.2,1.6,.4,1) both; }
+        @keyframes stampIn { from { opacity: 0; transform: rotate(-8deg) scale(2.4); } to { opacity: 1; transform: rotate(-8deg) scale(1); } }
+        .ticket-reply { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 4px; }
+        .ticket-reply .ticket-avatar { width: 26px; height: 26px; font-size: 10px; }
+        .ticket-reply .bubble { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 4px 12px 12px 12px; padding: 7px 11px; font-size: 13px; line-height: 1.45; }
+        .ticket-reply .bubble strong { display: block; font-size: 11px; color: var(--text-dim); font-weight: 600; margin-bottom: 1px; }
+        .ticket-reply.fresh { animation: replyIn .4s ease-out .5s both; }
+        @keyframes replyIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+        /* Confettis (fin d'étape, nouveau grade) */
+        .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 1200; overflow: hidden; }
+        .confetti i { position: absolute; width: 8px; height: 12px; border-radius: 2px; opacity: 0; animation: confetti 1.5s cubic-bezier(.15,.6,.4,1) forwards; }
+        @keyframes confetti { 0% { opacity: 1; transform: translate(0, 0) rotate(0); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--r)); } }
+
+        /* Grade et sentier */
+        .grade-btn .alt { color: var(--text-dim); font-variant-numeric: tabular-nums; font-size: 12px; }
+        .grade-btn.pulse { animation: memoPulse 1.2s ease-out 3; border-color: var(--success); }
+        .trail-body { overflow-y: auto; padding: 16px 20px 30px; }
+        #trail-summary { margin-top: 12px; }
+        .grade-card { display: flex; gap: 14px; align-items: center; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+        .grade-card .big { font-size: 34px; line-height: 1; }
+        .grade-card .name { font-size: 17px; font-weight: 700; }
+        .grade-card .sub { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+        .grade-card .bar { height: 6px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+        .grade-card .bar div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); }
+        .grade-ladder { list-style: none; display: flex; gap: 6px; margin: 10px 0 0; padding: 0; flex-wrap: wrap; }
+        .grade-ladder li { flex: 1; min-width: 90px; text-align: center; font-size: 11.5px; color: var(--text-dim); background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; opacity: .55; }
+        .grade-ladder li.reached { opacity: 1; color: var(--text); }
+        .grade-ladder li.current { border-color: var(--success); box-shadow: 0 0 0 1px var(--success) inset; }
+        .grade-ladder li span { display: block; font-size: 18px; }
+        .trail-note { font-size: 11.5px; color: var(--text-dim); margin: 6px 0 12px; }
+        .trail-svg { width: 100%; height: auto; display: block; }
+        .trail-svg .seg { fill: none; stroke: var(--border); stroke-width: 4; stroke-dasharray: 2 9; stroke-linecap: round; }
+        .trail-svg .seg.done { stroke: var(--success); stroke-dasharray: none; }
+        .trail-svg .node { cursor: pointer; }
+        .trail-svg .node circle { fill: var(--bg-card); stroke: var(--border); stroke-width: 3; transition: .2s; }
+        .trail-svg .node:hover circle { stroke: var(--accent-light); }
+        .trail-svg .node text { fill: var(--text-dim); font-size: 12px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+        .trail-svg .node.partial circle { stroke: var(--warning); }
+        .trail-svg .node.done circle { fill: var(--success); stroke: var(--success); }
+        .trail-svg .node.done text { fill: #fff; }
+        .trail-svg .node.current circle { stroke: var(--accent-light); stroke-width: 4; }
+        .trail-svg .node.current .halo { fill: none; stroke: var(--accent); stroke-width: 2; opacity: .6; animation: halo 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+        @keyframes halo { from { transform: scale(1); opacity: .7; } to { transform: scale(1.7); opacity: 0; } }
+        .trail-svg .label { fill: var(--text); font-size: 12px; }
+        .trail-svg .label.dim { fill: var(--text-dim); }
+        .trail-svg .here { fill: var(--accent-light); font-size: 10.5px; font-weight: 700; letter-spacing: .5px; }
+        .trail-svg .summit-name { fill: var(--text); font-size: 14px; font-weight: 700; text-anchor: middle; }
+        .trail-svg .summit-sub { fill: var(--text-dim); font-size: 11.5px; text-anchor: middle; }
+
+        /* Nouveau grade */
+        .rankup { position: fixed; inset: 0; z-index: 1100; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 16px; }
+        .rankup.open { display: flex; }
+        .rankup-card { background: var(--bg-secondary); border: 1px solid var(--success); border-radius: 16px; padding: 26px 28px 22px; max-width: 420px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.5); animation: rankIn .5s cubic-bezier(.2,1.4,.4,1) both; }
+        @keyframes rankIn { from { opacity: 0; transform: scale(.8) translateY(20px); } to { opacity: 1; transform: none; } }
+        .rankup-card .big { font-size: 54px; line-height: 1.1; }
+        .rankup-card h2 { font-size: 21px; margin: 8px 0 4px; }
+        .rankup-card .who { font-size: 13.5px; color: var(--text-dim); margin: 10px 0 16px; line-height: 1.5; }
+        .rankup-card .who strong { color: var(--text); }
+        .rankup-card button { margin: 0 4px; padding: 9px 16px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-weight: 600; cursor: pointer; font-family: inherit; }
+        .rankup-card button.primary { background: var(--success); border-color: var(--success); color: #fff; }
+
+        /* Barre des étapes : un sentier qui relie les refuges */
+        .step-dot { position: relative; }
+        .step-dot + .step-dot::before { content: ''; position: absolute; right: calc(100% + 2px); top: 50%; width: 6px; border-top: 2px dotted var(--border); }
+        .step-dot.done + .step-dot.done::before { border-top: 2px solid var(--success); }
+
+        @media (prefers-reduced-motion: reduce) {
+            .ticket-stamp.fresh, .ticket-reply.fresh, .rankup-card, .trail-svg .node.current .halo, .grade-btn.pulse { animation: none; }
+        }
         .team-body { overflow-y: auto; padding: 0 20px 30px; font-size: 13.5px; line-height: 1.6; }
         .team-body p { margin-bottom: 10px; }
         .team-body .scenario { background: none; border: none; padding: 0; }
@@ -751,6 +823,15 @@
         .deliverable-label { font-weight: 600; color: var(--text); }
 
         /* ─── Responsive ───────────────────────────── */
+        /* Écrans moyens : boutons réduits à leur icône, pour que la barre du haut tienne sur une ligne */
+        @media (max-width: 1600px) {
+            .topbar-right { gap: 10px; }
+            .topbar-right .lbl, .grade-btn .alt { display: none; }
+            .topbar-right .user-name { display: none; }
+            /* Le sélecteur de labos se réduit au labo courant (les autres : « Mes labos ») : place aux étapes */
+            .course-switch a:not(.active) { display: none; }
+            .topbar-center { min-width: 120px; }
+        }
         @media (max-width: 768px) {
             .main { flex-direction: column; }
             .panel-left { width: 100%; height: 55vh; border-right: none; border-bottom: 1px solid var(--border); }
@@ -783,8 +864,9 @@
         </div>
         <div class="topbar-center" id="step-dots"></div>
         <div class="topbar-right">
-            <button class="memo-btn" id="team-btn" onclick="openTeam()" title="L'entreprise et vos collègues">🏔 L'équipe</button>
-            <button class="memo-btn" id="memo-btn" onclick="openMemo()" title="Mémo des commandes découvertes">📖 Mémo <span class="memo-count" id="memo-count">…</span></button>
+            <button class="memo-btn grade-btn" id="grade-btn" onclick="openTrail()" title="Votre progression sur le sentier">⛰ …</button>
+            <button class="memo-btn" id="team-btn" onclick="openTeam()" title="L'entreprise et vos collègues" aria-label="L'équipe">🏔<span class="lbl"> L'équipe</span></button>
+            <button class="memo-btn" id="memo-btn" onclick="openMemo()" title="Mémo des commandes découvertes">📖<span class="lbl"> Mémo</span> <span class="memo-count" id="memo-count">…</span></button>
             <div class="score-display">
                 <svg class="progress-ring" viewBox="0 0 40 40">
                     <circle class="bg" cx="20" cy="20" r="17"/>
@@ -887,6 +969,21 @@
         </div>
     </aside>
 
+    <!-- Le sentier : grade, étapes et sommet du labo -->
+    <div class="memo-overlay" id="trail-overlay" onclick="closeTrail()"></div>
+    <aside class="memo-panel" id="trail-panel" aria-label="Votre progression sur le sentier">
+        <div class="memo-head">
+            <h2 id="trail-title">🥾 Le sentier <button class="close" onclick="closeTrail()" title="Fermer (Échap)">×</button></h2>
+            <div id="trail-summary"></div>
+        </div>
+        <div class="trail-body" id="trail-body"></div>
+    </aside>
+
+    <!-- Nouveau grade -->
+    <div class="rankup" id="rankup" role="dialog" aria-modal="true" aria-labelledby="rankup-title" onclick="if (event.target === this) closeRankUp()">
+        <div class="rankup-card" id="rankup-card"></div>
+    </div>
+
     <!-- Toast -->
     <div class="toast" id="toast"></div>
     <div class="env-banner" id="env-banner" role="status"><span></span></div>
@@ -900,6 +997,8 @@
         const HAS_EDITOR = {{ course.editor | tojson }};
         const AUTO_VALIDATE = {{ course.auto_validate | tojson }};
         const IS_ADMIN = {{ (user.is_admin == 1) | tojson }};
+        const COURSE_SHORT = {{ course.short | tojson }};
+        const CERT_PCT = {{ certificate_pct | tojson }};
         let currentStep = Number(localStorage.getItem('step:' + COURSE)) || 1;
         let stepsData = [];
         let ws = null;
@@ -1026,6 +1125,7 @@
         async function fetchSteps() {
             stepsData = await api(`/api/${COURSE}/steps`);
             renderStepDots();
+            if (document.getElementById('trail-panel').classList.contains('open')) renderTrail();
             // Étape terminée (par exemple avec « Vérifier cet exercice ») : son échéance ne s'affiche plus
             const cur = stepsData.find((s) => s.num === currentStep);
             if (cur && cur.total > 0 && cur.completed === cur.total) document.getElementById('step-due').className = 'step-due hidden';
@@ -1171,6 +1271,7 @@
                 <div class="step-outdated">⚠ Cette étape a été mise à jour depuis votre dernier passage (nouveaux exercices ou fichiers).
                 Réinitialisez-la pour recevoir les fichiers à jour : vos points sont conservés, mais les fichiers fournis pour cette étape reviennent à leur état initial.<br>
                 <button onclick="resetStep()">Mettre l'étape à jour</button></div>` : '';
+            ticketById = Object.fromEntries(stepData.exercises.filter((ex) => ex.ticket).map((ex) => [ex.id, ex.ticket]));
             list.innerHTML = outdated + stepData.exercises.map(ex => `
                 <div class="exercise-card ${ex.completed ? 'passed' : ''}" id="card-${ex.id}">
                     <div class="exercise-top">
@@ -1182,6 +1283,7 @@
                     <div class="ticket-head">
                         <div class="ticket-avatar" style="background:${ex.ticket.color}">${ex.ticket.initials}</div>
                         <div class="ticket-from">${ex.ticket.from}<br><span class="ticket-role">${ex.ticket.role}</span></div>
+                        ${ex.completed ? '<div class="ticket-stamp">Résolu</div>' : ''}
                     </div>
                     <div class="ticket-body">${ex.ticket.body}</div>
                     <div class="exercise-desc"><span class="deliverable-label">À livrer :</span> ${ex.desc}</div>` : `
@@ -1189,6 +1291,7 @@
                     ${IS_ADMIN || (ex.completed && !stepData.exam) ? solutionZone(ex.id) : ''}
                     <div class="hint-zone" id="hints-${ex.id}" data-ticket="${ex.ticket ? 1 : ''}">${renderHints(ex.id, ex.hints, ex.hints_total, ex.completed, !!ex.ticket)}</div>
                     <div class="exercise-result">${ex.completed ? '<div class="exercise-status pass">&#10003; Validé</div>' : ''}</div>
+                    ${ex.ticket && ex.completed && !stepData.exam ? replyHtml(ex.ticket, false) : ''}
                     ${ex.completed ? '' : `<button class="btn-check" onclick="validateExercise('${ex.id}', this)">▶ Vérifier cet exercice</button>`}
                     <div class="history-zone" id="history-${ex.id}">${renderHistory(ex.attempts, ex.attempts_total)}</div>
                 </div>
@@ -1204,6 +1307,39 @@
         }
 
         let mentorName = 'Léa';
+        let ticketById = {};
+
+        // ─── Ticket résolu : tampon et réponse du collègue ─────
+        function replyHtml(t, fresh) {
+            return `<div class="ticket-reply${fresh ? ' fresh' : ''}"><div class="ticket-avatar" style="background:${t.color}">${t.initials}</div>`
+                + `<div class="bubble"><strong>${escHtml(t.from)}</strong>${escHtml(t.reply)}</div></div>`;
+        }
+
+        function ticketResolved(card, id) {
+            const t = ticketById[id];
+            if (!t || card.querySelector('.ticket-stamp')) return;
+            card.querySelector('.ticket-head')?.insertAdjacentHTML('beforeend', '<div class="ticket-stamp fresh">Résolu</div>');
+            if (!currentExam) card.querySelector('.exercise-result')?.insertAdjacentHTML('afterend', replyHtml(t, true));
+        }
+
+        // ─── Confettis (désactivés si l'élève a demandé moins d'animations) ─────
+        function celebrate() {
+            if (currentExam || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            const box = document.createElement('div');
+            box.className = 'confetti';
+            const colors = ['#00b894', '#a29bfe', '#fdcb6e', '#e17055', '#00cec9', '#6c5ce7'];
+            const ox = window.innerWidth * 0.22, oy = window.innerHeight * 0.55;
+            for (let i = 0; i < 70; i++) {
+                const c = document.createElement('i');
+                const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.9;
+                const v = 220 + Math.random() * 380;
+                c.style.cssText = `left:${ox}px;top:${oy}px;background:${colors[i % colors.length]};`
+                    + `--dx:${Math.cos(a) * v}px;--dy:${Math.sin(a) * v + 320}px;--r:${Math.random() * 720 - 360}deg;animation-delay:${Math.random() * 0.12}s`;
+                box.appendChild(c);
+            }
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 1900);
+        }
 
         // ─── Historique des vérifications ─────────────
         function renderHistory(items, total) {
@@ -1291,7 +1427,7 @@
             document.getElementById('team-panel').classList.remove('open');
         }
 
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMemo(); closeTeam(); } });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMemo(); closeTeam(); closeTrail(); closeRankUp(); } });
 
         function renderMemo() {
             if (!memoData) {
@@ -1420,6 +1556,7 @@ ${s.preamble}
                 if (r.passed) {
                     const left = [...document.querySelectorAll('.exercise-card')].filter((c) => !c.classList.contains('passed')).length;
                     showToast(left ? `Exercice ${id} validé ! +${r.earned} pts` : `Exercice ${id} validé ! Étape ${currentStep} terminée 🎉`, 'success');
+                    if (!left && !r.already) celebrate();
                 } else {
                     showToast(`Exercice ${id} : pas encore, lisez le message sous l'exercice.`, 'error');
                     card.querySelector('.exercise-fail-msg')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -1445,6 +1582,7 @@ ${s.preamble}
                 if (!card.querySelector('.solution-zone') && !currentExam) zone.insertAdjacentHTML('beforebegin', solutionZone(r.id));
                 const pts = card.querySelector('.exercise-points');
                 if (pts && r.earned) pts.textContent = `${r.earned}/${r.points} pts`;
+                ticketResolved(card, r.id);
             } else if (r.skipped) {
                 zone.innerHTML = '';
             } else {
@@ -1455,7 +1593,117 @@ ${s.preamble}
 
         let maxScore = 100;
 
+        // ─── Grade, altitude et sentier ─────────────────
+        let progressData = null;
+        let lastRank = null;
+        const fmtM = (m) => `${Number(m || 0).toLocaleString('fr-FR')} m`;
+
+        function updateGrade(progress) {
+            if (!progress.altitude) return;
+            progressData = progress;
+            const g = progress.grade, alt = progress.altitude;
+            const btn = document.getElementById('grade-btn');
+            btn.innerHTML = g ? `${g.icon} ${escHtml(g.name)} <span class="alt">· ${fmtM(alt.meters)}</span>` : `⛰ <span class="alt">${fmtM(alt.meters)}</span>`;
+            btn.title = `Le sentier du ${alt.summit} : ${fmtM(alt.meters)} gravis sur ${fmtM(alt.height)}`;
+            if (g && lastRank !== null && g.rank > lastRank) showRankUp(g);
+            if (g) lastRank = g.rank;
+            if (document.getElementById('trail-panel').classList.contains('open')) renderTrail();
+        }
+
+        function showRankUp(g) {
+            const next = g.next ? `<br>Prochain grade : <strong>${escHtml(g.next)}</strong>, dans ${g.next_points} pt${g.next_points > 1 ? 's' : ''}.` : '<br>Vous avez atteint le plus haut grade de ce labo.';
+            document.getElementById('rankup-card').innerHTML = `<div class="big">${g.icon}</div>
+                <h2 id="rankup-title">Nouveau grade : ${escHtml(g.name)}</h2>
+                <p class="who"><strong>${escHtml(mentorName)}</strong> : « Beau travail, tu passes ${escHtml(g.name)} sur ${escHtml(COURSE_SHORT)} ! »${next}</p>
+                <button class="primary" onclick="closeRankUp()">Continuer</button><button onclick="closeRankUp(); openTrail()">Voir le sentier</button>`;
+            document.getElementById('rankup').classList.add('open');
+            document.getElementById('grade-btn').classList.add('pulse');
+            celebrate();
+            setTimeout(() => document.querySelector('#rankup-card .primary')?.focus(), 50);
+        }
+
+        function closeRankUp() {
+            document.getElementById('rankup').classList.remove('open');
+        }
+
+        function openTrail() {
+            document.getElementById('grade-btn').classList.remove('pulse');
+            renderTrail();
+            document.getElementById('trail-overlay').classList.add('open');
+            document.getElementById('trail-panel').classList.add('open');
+            // Le refuge courant au milieu du panneau
+            setTimeout(() => document.querySelector('#trail-body .node.current')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 260);
+        }
+
+        function closeTrail() {
+            document.getElementById('trail-overlay').classList.remove('open');
+            document.getElementById('trail-panel').classList.remove('open');
+        }
+
+        function trailStep(num) {
+            closeTrail();
+            selectStep(num);
+        }
+
+        function renderTrail() {
+            const p = progressData || { score: 0, max_score: maxScore, altitude: { summit: 'Sommet', height: 0, meters: 0 } };
+            const alt = p.altitude, g = p.grade;
+            document.getElementById('trail-title').firstChild.textContent = `🥾 Le sentier du ${alt.summit} `;
+            const pct = p.max_score ? Math.floor(100 * p.score / p.max_score) : 0;
+            let html = `<div class="grade-card"><div class="big">${g ? g.icon : '⛰'}</div><div style="flex:1">
+                <div class="name">${g ? escHtml(g.name) : 'Épreuve notée'}</div>
+                <div class="sub">${fmtM(alt.meters)} gravis sur ${fmtM(alt.height)} · ${p.score}/${p.max_score} pts (${pct} %)</div>
+                <div class="bar"><div style="width:${Math.min(100, pct)}%"></div></div>
+                <div class="sub">${g ? (g.next ? `Encore ${g.next_points} pt${g.next_points > 1 ? 's' : ''} pour passer <strong>${escHtml(g.next)}</strong>.` : 'Plus haut grade atteint : bravo !') : 'Ni indice ni correction : le sommet se mérite.'}</div>
+                </div></div>`;
+            if (g && p.grades) {
+                html += `<ol class="grade-ladder">${p.grades.map((x, i) => `<li class="${i <= g.rank ? 'reached' : ''} ${i === g.rank ? 'current' : ''}"><span>${x.icon}</span>${escHtml(x.name)}<br>${x.pct} %</li>`).join('')}</ol>`;
+            }
+            document.getElementById('trail-summary').innerHTML = html;
+            html = `<p class="trail-note">Chaque refuge est une étape, que vous pouvez gravir dans l'ordre que vous voulez : cliquez dessus pour y aller. Les grades ne comptent pas dans la note, seuls les points comptent.</p>`;
+            html += trailSvg(alt);
+            document.getElementById('trail-body').innerHTML = html;
+        }
+
+        function trailSvg(alt) {
+            const n = stepsData.length, W = 520, gap = 68, top = 150, H = top + n * gap + 40;
+            const pos = stepsData.map((s, i) => ({ s, x: W / 2 + 150 * Math.sin(i * 0.95), y: H - 50 - i * gap }));
+            const summit = { x: W / 2, y: 104 };
+            const done = (s) => s.total > 0 && s.completed === s.total;
+            const curve = (a, b) => `M${a.x},${a.y} C${a.x},${(a.y + b.y) / 2} ${b.x},${(a.y + b.y) / 2} ${b.x},${b.y}`;
+            let svg = `<svg class="trail-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sentier des étapes jusqu'au sommet">`;
+            // Le sommet
+            svg += `<path d="M${W / 2 - 120},${summit.y + 34} L${W / 2},${summit.y - 46} L${W / 2 + 120},${summit.y + 34} Z" fill="var(--bg-card)" stroke="var(--border)"/>`
+                + `<path d="M${W / 2},${summit.y - 46} l22,15 h-10 l-12,8 l-12,-8 h-10 z" fill="#e1e4ed" opacity=".85"/>`
+                + `<path d="M${W / 2},${summit.y - 46} V${summit.y - 84}" stroke="#e1e4ed" stroke-width="2.5"/><path d="M${W / 2},${summit.y - 84} l26,8 l-26,8 z" fill="#e17055"/>`
+                + `<text class="summit-name" x="${W / 2}" y="${summit.y + 56}">${escHtml(alt.summit)} · ${fmtM(alt.height)}</text>`
+                + `<text class="summit-sub" x="${W / 2}" y="${summit.y + 74}">🎓 attestation à partir de ${CERT_PCT} % des points</text>`;
+            // Les segments du sentier : en couleur entre deux étapes terminées
+            pos.forEach((a, i) => {
+                const b = pos[i + 1];
+                svg += b ? `<path class="seg${done(a.s) && done(b.s) ? ' done' : ''}" d="${curve(a, b)}"/>`
+                         : `<path class="seg${done(a.s) && stepsData.every(done) ? ' done' : ''}" d="${curve(a, { x: summit.x, y: summit.y + 96 })}"/>`;
+            });
+            // Les refuges
+            pos.forEach(({ s, x, y }) => {
+                const cls = done(s) ? 'done' : (s.completed > 0 ? 'partial' : '');
+                const cur = s.num === currentStep ? ' current' : '';
+                const left = x > W / 2 + 10;
+                const title = s.title.split(' — ').pop();
+                const label = title.length > 30 ? title.slice(0, 29) + '…' : title;
+                svg += `<g class="node ${cls}${cur}" onclick="trailStep(${s.num})" tabindex="0" role="button" aria-label="Étape ${s.num} : ${escHtml(s.title)}" onkeydown="if (event.key === 'Enter') trailStep(${s.num})">`
+                    + `<title>Étape ${s.num} : ${escHtml(s.title)} (${s.completed}/${s.total})</title>`
+                    + (cur ? `<circle class="halo" cx="${x}" cy="${y}" r="17"/>` : '')
+                    + `<circle cx="${x}" cy="${y}" r="17"/><text x="${x}" y="${y}">${s.num}</text></g>`
+                    + `<text class="label${cls ? '' : ' dim'}" x="${left ? x - 28 : x + 28}" y="${y - (cur ? 6 : 0)}" text-anchor="${left ? 'end' : 'start'}" dominant-baseline="central">${escHtml(label)}</text>`
+                    + (cur ? `<text class="here" x="${left ? x - 28 : x + 28}" y="${y + 11}" text-anchor="${left ? 'end' : 'start'}" dominant-baseline="central">VOUS ÊTES ICI · ${s.completed}/${s.total}</text>` : '');
+            });
+            svg += `<text class="summit-sub" x="${W / 2}" y="${H - 8}">Départ de la vallée</text></svg>`;
+            return svg;
+        }
+
         function updateScore(progress) {
+            updateGrade(progress);
             const score = progress.score || 0;
             if (progress.max_score) maxScore = progress.max_score;
             document.getElementById('score-num').textContent = score;
@@ -1598,6 +1846,7 @@ ${s.preamble}
                 // Toast
                 if (allPassed) {
                     showToast(`Étape ${currentStep} complète ! ${newPoints > 0 ? '+' + newPoints + ' pts' : ''}`, 'success');
+                    if (newPoints > 0) celebrate();
                     btn.className = 'btn-validate success';
                     btn.innerHTML = `
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -1636,7 +1885,8 @@ ${s.preamble}
         async function resetProgress() {
             if (!confirm('Remettre votre score à zéro ?')) return;
             await api(`/api/${COURSE}/reset`, { method: 'POST' });
-            updateScore({ score: 0, completed: [] });
+            lastRank = null;
+            updateScore(await fetchProgress());
             await fetchSteps();
             selectStep(currentStep);
             showToast('Progression remise à zéro', 'info');
@@ -1687,6 +1937,7 @@ ${s.preamble}
                     showToast(`+${newPoints} pts !`, 'success');
                 }
 
+                if (allPassed && newPoints > 0) celebrate();
                 // Auto-advance when step complete
                 if (allPassed && currentStep < stepsData.length) {
                     showToast(`Étape ${currentStep} terminée !`, 'success');

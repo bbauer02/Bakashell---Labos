@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 from . import containers
 from . import database as db
 from . import live
+from . import progression
 from . import integrity
 from . import memo
 from . import quiz
@@ -463,10 +464,12 @@ async def catalogue(request: Request, msg: str = "", err: str = ""):
             "memo_found": memo_found, "memo_total": memo_total,
             "key": key, "title": c["title"], "summary": c["summary"], "level": c["level"],
             "thumbnail": thumbnail_url(key), "custom_thumbnail": bool(uploaded_thumbnail(key)),
+            **progression.progression(c, p["score"]),
             "exam": bool(c.get("exam")),
             "duration": c["duration"], "steps": len(c["steps"]), "total": c["total_exercises"],
             "score": p["score"], "max": c["max_score"], "done": done,
-            "pct": round(100 * p["score"] / c["max_score"]) if c["max_score"] else 0,
+            # Arrondi vers le bas, comme les seuils des grades : 14,9 % n'affiche pas « 15 % »
+            "pct": 100 * p["score"] // c["max_score"] if c["max_score"] else 0,
             "certificate": certificates.get(key),
             "certificate_ok": certificate_eligible(c, p["score"]),
             "next_deadline": pending[0] if pending else None,
@@ -603,6 +606,7 @@ async def lab_page(request: Request, course_key: str):
                    "editor": bool(course["editor_root"]), "auto_validate": course["auto_validate"]},
         "courses": courses_menu(user),
         "integrity_days": integrity.RETENTION_DAYS,
+        "certificate_pct": CERTIFICATE_MIN_PCT,
         "thumbnail": thumbnail_url(course["key"]),
         "company_html": contexte(None if course.get("exam") else course["mentor"],
                                  independant=not course.get("exam")),
@@ -1243,7 +1247,8 @@ def validate_step(user_id: int, course: dict, step_num: int, auto: bool, only: s
 def progress_payload(user_id: int, course: dict) -> dict:
     p = db.get_user_score(user_id, course["id_glob"])
     return {"score": p["score"], "completed": p["completed"],
-            "max_score": course["max_score"], "total_exercises": course["total_exercises"]}
+            "max_score": course["max_score"], "total_exercises": course["total_exercises"],
+            **progression.progression(course, p["score"])}
 
 
 # ─── API ────────────────────────────────────────────────────────────────
@@ -1305,6 +1310,7 @@ def ticket_payload(ex: dict):
         "color": person["color"],
         "initials": "".join(w[0] for w in person["name"].split()[:2]),
         "body": ticket["body"],
+        "reply": progression.reply(ticket, ex["id"]),
     }
 
 

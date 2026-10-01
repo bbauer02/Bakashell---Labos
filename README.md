@@ -89,6 +89,7 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 | `platform/app/courses/<parcours>/` | Un dossier par parcours (`linux`, `jest`, `docker`, `git`, `ansible`, `projet`) : `catalogue.py` (cours, mises en place, exercices, vérifications, indices), `memo.py` (fiches du mémo), `solutions.py` (corrigés) |
 | `platform/app/memo.py` | Mémo des commandes : déblocage des fiches selon la progression |
 | `platform/app/solutions.py` | Découpage des corrigés (un script par étape, un repère `#@ <exercice>` par exercice), visibles par les admins |
+| `platform/app/progression.py` | Grades, altitude du sentier, réponses des collègues aux tickets résolus |
 | `platform/app/scenario.py` | Entreprise fictive et personnages communs aux parcours, présentation affichée au début de chaque labo |
 | `platform/static/vignettes/` | Vignettes d'illustration des labos (une par parcours) |
 | `platform/app/runner.py` | Construit les commandes de mise en place et de vérification (partagé avec les tests) |
@@ -129,6 +130,18 @@ des parcours Linux et Ansible), Nadia (lead développeuse, mentore des parcours 
 (comptabilité), Julien (stagiaire), et Marc, le prédécesseur parti précipitamment dont on retrouve le travail un peu
 partout. Tous les exercices des cinq parcours ont leur ticket ; un exercice sans clé `ticket` s'affiche au format
 classique.
+
+**Progression ludique** (`platform/app/progression.py`, sans effet sur la note : seuls les points comptent) :
+
+- **Ticket résolu** : tampon « RÉSOLU » et réponse du collègue (phrase tirée de sa liste, toujours la même pour un
+  exercice ; un exercice peut fixer la sienne avec `ticket["reply"]`). Confettis en fin d'étape, désactivés si le
+  système de l'élève demande moins d'animations.
+- **Grades par labo**, selon la part des points : Stagiaire, Junior (15 %), Confirmé·e (40 %), Senior (70 %),
+  Référent·e (90 %). Le passage d'un grade est annoncé par la mentore du labo.
+- **Le sentier** : les points se convertissent en mètres gravis vers le sommet du labo (Mont Blanc pour Linux, Barre
+  des Écrins pour Jest…). Le bouton du grade, dans la barre du lab, ouvre le sentier : un refuge par étape (cliquable),
+  le sommet et l'attestation tout en haut. Le catalogue affiche grade et altitude sur chaque carte.
+- Le projet final (épreuve notée) n'a ni grade, ni réponse des collègues, ni confettis : seulement l'altitude.
 
 **Les labos se suivent dans n'importe quel ordre** : aucun ne doit supposer qu'un autre a été fait avant. La
 présentation de l'entreprise et de l'équipe (`scenario.contexte()`) est ajoutée automatiquement en tête de la première

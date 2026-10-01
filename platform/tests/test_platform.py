@@ -828,3 +828,25 @@ def test_envoi_d_une_vignette(app_client, tmp_path, monkeypatch):
     assert sorted(os.listdir(tmp_path / "vignettes")) == ["docker.webp"]
     app_client.post("/admin/vignettes/docker", data={"action": "supprimer"})
     assert main.thumbnail_url("docker").startswith("/static/vignettes/docker.svg")
+
+
+def test_grade_altitude_et_reponse_du_collegue(app_client):
+    from app import progression
+    assert [progression.grade(s, 200)["name"] for s in (0, 29, 30, 80, 140, 180)] == [
+        "Stagiaire", "Stagiaire", "Junior", "Confirmé·e", "Senior", "Référent·e"]
+    assert progression.grade(29, 200)["next_points"] == 1 and "next" not in progression.grade(200, 200)
+    admin_client(app_client)
+    uid = user_id(ADMIN[0])
+    seuil = -(-15 * LINUX["max_score"] // 100)
+    db.add_exercise_completion(uid, FIRST, seuil)
+    p = app_client.get("/api/linux/progress").json()
+    assert p["grade"]["name"] == "Junior" and p["altitude"]["summit"] == "Mont Blanc"
+    assert p["altitude"]["meters"] == round(4808 * seuil / LINUX["max_score"])
+    # Épreuve notée : l'altitude, pas de grade
+    assert "grade" not in app_client.get("/api/projet/progress").json()
+    page = app_client.get("/catalogue").text
+    assert "Junior" in page and "Mont Blanc" in page
+    # Le collègue répond toujours la même chose à un même ticket
+    ex = app_client.get("/api/linux/step/1").json()["exercises"][0]
+    assert ex["ticket"]["reply"] in progression.REPLIES[LINUX["steps"][1]["exercises"][0]["ticket"]["from"]]
+    assert ex["ticket"]["reply"] == app_client.get("/api/linux/step/1").json()["exercises"][0]["ticket"]["reply"]
