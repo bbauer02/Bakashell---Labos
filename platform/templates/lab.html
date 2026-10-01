@@ -1653,11 +1653,19 @@ ${s.preamble}
         // ─── Badges ─────────────────────────────────────
         let badgeSet = null;
         const badgeQueue = [];
+        let uptimeData = null;
 
         async function checkBadges() {
             let data;
             try { data = await api('/api/badges'); } catch (e) { return; }
             const earned = data.badges.filter((b) => b.earned);
+            // Premier ticket de la semaine : l'uptime est prolongé
+            const u = data.uptime;
+            if (uptimeData && !uptimeData.this_week && u.this_week && !currentExam) {
+                badgeQueue.push({ icon: '⏱', kind: 'Uptime prolongé', name: `${u.current} semaine${u.current > 1 ? 's' : ''} d'affilée`,
+                                  desc: u.current > 1 ? 'Au moins un ticket résolu chaque semaine : continuez comme ça.' : 'Première semaine : une série démarre.' });
+            }
+            uptimeData = u;
             if (badgeSet !== null && !currentExam) earned.filter((b) => !badgeSet.has(b.id)).forEach((b) => badgeQueue.push(b));
             badgeSet = new Set(earned.map((b) => b.id));
             if (badgeQueue.length && !document.getElementById('badge-pop').classList.contains('show')) showNextBadge();
@@ -1667,7 +1675,7 @@ ${s.preamble}
             const b = badgeQueue.shift();
             const el = document.getElementById('badge-pop');
             if (!b) { el.classList.remove('show'); return; }
-            el.innerHTML = `<div class="ic">${b.icon}</div><div><div class="k">🏅 Nouveau badge</div><div class="n">${escHtml(b.name)}</div>`
+            el.innerHTML = `<div class="ic">${b.icon}</div><div><div class="k">${b.kind ? escHtml(b.kind) : '🏅 Nouveau badge'}</div><div class="n">${escHtml(b.name)}</div>`
                 + `<div class="d">${escHtml(b.desc)}</div><a href="/profil" target="_blank">Voir mon profil →</a></div>`;
             el.classList.add('show');
             clearTimeout(el._t);
@@ -1711,7 +1719,9 @@ ${s.preamble}
             if (g && p.grades) {
                 html += `<ol class="grade-ladder">${p.grades.map((x, i) => `<li class="${i <= g.rank ? 'reached' : ''} ${i === g.rank ? 'current' : ''}"><span>${x.icon}</span>${escHtml(x.name)}<br>${x.pct} %</li>`).join('')}</ol>`;
             }
-            html += `<div class="trail-note" style="margin:8px 0 0"><a href="/profil" target="_blank">🏅 Mes badges et mon profil →</a></div>`;
+            const u = uptimeData;
+            const up = u ? `⏱ Uptime : <strong>${u.current} sem.</strong>${u.record > u.current ? ` (record ${u.record})` : ''} · ${u.this_week ? '✓ prolongé cette semaine' : (u.current ? 'un ticket cette semaine pour le prolonger' : 'un ticket suffit pour démarrer une série')} · ` : '';
+            html += `<div class="trail-note" style="margin:8px 0 0">${up}<a href="/profil" target="_blank">🏅 Mes badges et mon profil →</a></div>`;
             document.getElementById('trail-summary').innerHTML = html;
             const done = (s) => s.total > 0 && s.completed === s.total;
             html = `<p class="trail-note">Chaque étape est une couche d'<abbr title="Intrusion Countermeasures Electronics : les pare-feu du roman Neuromancer">ICE</abbr> à percer pour atteindre le noyau du labo, dans l'ordre que vous voulez : cliquez sur une couche pour y aller. Les grades ne comptent pas dans la note, seuls les points comptent.</p>

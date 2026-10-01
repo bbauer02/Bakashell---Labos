@@ -1,0 +1,19 @@
+{# Série hebdomadaire (« uptime ») : semaines consécutives avec au moins un ticket résolu #}
+{% macro uptime_css() %}
+.uptime { display:inline-flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; color:var(--dim); background:var(--bg2); border:1px solid rgba(0,240,255,.25); border-radius:10px; padding:8px 14px; }
+.uptime .u-k { font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#00f0ff; }
+.uptime .u-v { font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
+.uptime .u-ok { color:#00f0ff; font-weight:600; }
+.uptime .u-todo { color:#ff2e88; font-weight:600; }
+{% endmacro %}
+
+{% macro uptime_pill(u, own=True) %}
+<div class="uptime" title="Semaines consécutives avec au moins un ticket résolu, tous labos confondus. Jusqu'à {{ u.pause }} semaines vides d'affilée (les vacances) ne cassent pas la série.">
+    <span class="u-k">⏱ uptime</span>
+    <span class="u-v">{{ u.current }} sem.</span>
+    {% if u.record > u.current %}<span>record {{ u.record }}</span>{% endif %}
+    {% if u.this_week %}<span class="u-ok">✓ prolongé cette semaine</span>
+    {% elif u.current %}<span class="u-todo">{% if own %}un ticket cette semaine pour le prolonger{% else %}pas encore de ticket cette semaine{% endif %}</span>
+    {% else %}<span>{% if own %}un ticket suffit pour démarrer une série{% else %}pas de série en cours{% endif %}</span>{% endif %}
+</div>
+{% endmacro %}

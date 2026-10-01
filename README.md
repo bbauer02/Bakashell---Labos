@@ -148,12 +148,17 @@ parle **Bakashell**, le « bac à shell » : cyberpunk à la *Neuromancer*, avec
   (cliquables) jusqu'au noyau et à l'attestation. Le catalogue affiche grade et couches sur chaque carte.
 - **Vignettes** synthwave (soleil néon, skyline, grille en perspective), une couleur et un motif par labo.
 - **Badges** (`platform/app/badges.py`) : 13 badges qui récompensent l'autonomie, la persévérance et la régularité
-  (étape entière sans indice, exercice réussi après 5 vérifications ratées, tickets 3 semaines d'affilée, un ticket de
+  (étape entière sans indice, exercice réussi après 5 vérifications ratées, uptime de 3 semaines, un ticket de
   chacun des six collègues, QCM sans faute, mémo complet…). Ils se calculent à partir des données déjà enregistrées :
   rien n'est stocké. Une notification « Nouveau badge » apparaît dans le lab.
 - **Profil** (`/profil`, lien « Mon profil » du catalogue) : badges obtenus et à venir avec leur avancement, grade et
   couches d'ICE percées dans chaque labo, tickets résolus pour chacun des collègues. L'enseignant ouvre le profil
   d'un étudiant en cliquant sur son nom dans le tableau de bord (`/profil/<id>`, mêmes règles de cloisonnement).
+- **Uptime** (série hebdomadaire) : les semaines consécutives avec au moins un ticket résolu, tous labos confondus.
+  Jusqu'à deux semaines vides d'affilée (les vacances) mettent la série en pause sans la casser ; trois la terminent.
+  Rien de punitif : l'uptime actuel, le record, et « un ticket suffit pour le prolonger ». Affiché dans le catalogue,
+  le profil et le panneau d'intrusion ; notification « Uptime prolongé » au premier ticket de la semaine. Le badge
+  « Cron humain » demande un uptime de 3 semaines.
 - **Objectif de classe** (`platform/app/objectif.py`) : les tickets résolus par les étudiants d'une classe, dans les
   labos qui lui sont ouverts (hors projet final), comptent pour un objectif commun en six paliers (5, 15, 30, 50, 75 et
   100 % du potentiel : nombre d'étudiants × exercices). Chaque palier atteint débloque un message de Sophie. Sans

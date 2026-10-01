@@ -483,6 +483,7 @@ async def catalogue(request: Request, msg: str = "", err: str = ""):
              if (g := objectif.compute(cl["id"], db.class_course_keys(cl["id"]), user["user_id"]))]
     return templates.TemplateResponse(request, "catalogue.html", {
         "user": user, "cards": cards, "classes": classes, "goals": goals, "msg": msg, "err": err,
+        "uptime": badges.streak(user["user_id"]),
         "today": today, "certificate_pct": CERTIFICATE_MIN_PCT,
     })
 
@@ -645,6 +646,7 @@ def profile_response(request: Request, viewer: dict, target: dict, own: bool):
         "earned": sum(b["earned"] for b in all_badges), "layers": layers,
         "tickets": tickets if labs else 0, "colleagues": colleagues,
         "classes": db.get_user_classes(uid), "certificates": len(db.user_certificates(uid)),
+        "uptime": badges.streak(uid),
     })
 
 
@@ -653,7 +655,7 @@ async def api_badges(request: Request):
     user = get_current_user(request)
     if not user:
         return unauthorized()
-    return {"badges": badges.compute(user["user_id"])}
+    return {"badges": badges.compute(user["user_id"]), "uptime": badges.streak(user["user_id"])}
 
 
 @app.get("/lab/{course_key}", response_class=HTMLResponse)

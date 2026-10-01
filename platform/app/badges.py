@@ -23,7 +23,7 @@ BADGES = [
     ("qcm", "🧠", "Mémoire vive", "Réussir 5 QCM de fin de cours sans aucune faute.", 5),
     ("encyclopedie", "📚", "RTFM", "Découvrir toutes les fiches du mémo d'un labo.", 1),
     ("polyvalent", "🧩", "Full stack", "Terminer au moins une étape dans 3 labos différents.", 3),
-    ("regulier", "⏰", "Cron humain", "Résoudre des tickets 3 semaines d'affilée.", 3),
+    ("regulier", "⏰", "Cron humain", "Tenir un uptime de 3 semaines : des tickets résolus 3 semaines de suite (les vacances ne cassent pas la série).", 3),
     ("sommet", "⚡", "Root", "Atteindre le grade Ghost (90 % des points) dans un labo.", 1),
     ("diplome", "🎓", "Certifié·e", "Obtenir une attestation de fin de parcours.", 1),
 ]
@@ -33,19 +33,39 @@ MARC = {ex_id for ex_id, (_, _, _, ex) in EXERCISE_INDEX.items()
         if re.search(r"\bMarc\b", " ".join((ex.get("ticket", {}).get("body", ""), ex["title"], ex["desc"])))}
 
 
+# Série hebdomadaire (« uptime ») : jusqu'à PAUSE semaines vides d'affilée (les vacances) ne la cassent pas
+PAUSE = 2
+
+
 def _week(ts: str) -> int:
-    """Numéro de semaine (lundi) d'une date SQLite « AAAA-MM-JJ HH:MM:SS »."""
-    d = datetime.date.fromisoformat(ts[:10])
-    return (d.toordinal() - 1) // 7
+    """Numéro de semaine (du lundi), en heure locale, d'une date SQLite en UTC « AAAA-MM-JJ HH:MM:SS »."""
+    utc = datetime.datetime.fromisoformat(ts[:19]).replace(tzinfo=datetime.timezone.utc)
+    return (utc.astimezone().date().toordinal() - 1) // 7
 
 
-def _longest_run(weeks) -> int:
-    best = run = 0
+def _this_week() -> int:
+    return (datetime.date.today().toordinal() - 1) // 7
+
+
+def uptime(weeks, current: int = None) -> dict:
+    """Semaines actives de la série en cours, record, et semaine en cours déjà comptée ou non.
+
+    Une semaine vide met la série en pause ; plus de PAUSE semaines vides d'affilée la terminent. La semaine en
+    cours, pas encore finie, ne compte jamais comme vide.
+    """
+    current = _this_week() if current is None else current
+    weeks = sorted(set(w for w in weeks if w <= current))
+    record = run = 0
     prev = None
-    for w in sorted(set(weeks)):
-        run = run + 1 if prev is not None and w == prev + 1 else 1
-        best, prev = max(best, run), w
-    return best
+    for w in weeks:
+        run = run + 1 if prev is not None and w - prev - 1 <= PAUSE else 1
+        record, prev = max(record, run), w
+    alive = prev is not None and current - prev - 1 <= PAUSE
+    return {"current": run if alive else 0, "record": record, "this_week": prev == current, "pause": PAUSE}
+
+
+def streak(user_id: int) -> dict:
+    return uptime(_week(t) for t in db.badge_facts(user_id)["completed"].values() if t)
 
 
 def compute(user_id: int) -> list:
@@ -89,7 +109,7 @@ def compute(user_id: int) -> list:
         "qcm": sum(1 for q in f["quiz"] if q["max_score"] and q["score"] == q["max_score"]),
         "encyclopedie": 1 if memo_best >= 1 else 0,
         "polyvalent": len(labs_with_step),
-        "regulier": _longest_run(_week(t) for t in done.values() if t),
+        "regulier": uptime(_week(t) for t in done.values() if t)["record"],
         "sommet": 1 if best_pct >= 90 else 0,
         "diplome": 1 if f["certificates"] else 0,
     }

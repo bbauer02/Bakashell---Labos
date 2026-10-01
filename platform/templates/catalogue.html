@@ -1,9 +1,11 @@
 {% extends "base.html" %}
 {% from "_staff.html" import role_badge, teachers_link %}
 {% from "_objectif.html" import goal_css, goal_card %}
+{% from "_uptime.html" import uptime_css, uptime_pill %}
 {% block title %}Mes labos — {{ APP_SHORT }}{% endblock %}
 {% block extra_css %}
 {{ goal_css() }}
+{{ uptime_css() }}
 .goals { margin-bottom:26px; }
 .goals-note { font-size:12px; color:var(--dim); margin-top:8px; }
 .page { max-width:1180px; margin:0 auto; padding:32px 20px 60px; }
@@ -95,6 +97,7 @@ h1 { font-size:28px; margin-bottom:6px; }
 
     <h1>Mes labos</h1>
     <p class="intro">Choisissez un labo pour reprendre là où vous vous étiez arrêté·e. Les labos sont indépendants : suivez-les dans l'ordre qui vous convient.</p>
+    {% if not user.is_admin %}<div style="margin-bottom:18px">{{ uptime_pill(uptime) }}</div>{% endif %}
     <div class="company">
         <span class="mark" aria-hidden="true">🏔</span>
         <p>Dans chaque labo, vous faites partie de l'équipe informatique de <strong>Cimes &amp; Sentiers</strong>, une PME qui vend du matériel de randonnée, en ligne et en magasin. Vos collègues vous confient leurs demandes sous forme de tickets ; l'entreprise et l'équipe sont présentées au début de chaque labo.</p>

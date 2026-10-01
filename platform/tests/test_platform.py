@@ -857,7 +857,14 @@ def test_grade_intrusion_et_reponse_du_collegue(app_client):
 
 def test_badges_et_profil(app_client):
     from app import badges
-    assert badges._longest_run([10, 11, 12, 14]) == 3 and badges._longest_run([]) == 0
+    up = badges.uptime
+    assert up([], 20) == {"current": 0, "record": 0, "this_week": False, "pause": 2}
+    # Semaine en cours pas encore comptée : la série reste en vie ; deux semaines vides (vacances) ne la cassent pas
+    assert up([17, 18, 19], 20) == {"current": 3, "record": 3, "this_week": False, "pause": 2}
+    assert up([14, 15, 18, 20], 20)["current"] == 4 and up([14, 15, 18, 20], 20)["this_week"]
+    # Trois semaines vides d'affilée la terminent ; le record reste
+    assert up([10, 11, 12, 16], 16) == {"current": 1, "record": 3, "this_week": True, "pause": 2}
+    assert up([10, 11, 12], 16)["current"] == 0
     uid = student_in_class(app_client)
     b = {x["id"]: x for x in app_client.get("/api/badges").json()["badges"]}
     assert len(b) == len(badges.BADGES) and not any(x["earned"] for x in b.values())
@@ -871,6 +878,9 @@ def test_badges_et_profil(app_client):
     assert b["premier-ticket"]["earned"] and b["sans-filet"]["earned"] and b["perseverant"]["earned"]
     assert not b["autonome"]["earned"] and b["autonome"]["value"] == len(step1)
     assert b["polyvalent"]["value"] == 1 and b["regulier"]["value"] == 1
+    u = app_client.get("/api/badges").json()["uptime"]
+    assert u["current"] == 1 and u["this_week"]
+    assert "✓ prolongé cette semaine" in app_client.get("/catalogue").text
     # Un indice demandé dans l'étape : plus « sans filet »
     db.use_hint(uid, step1[1], 3)
     assert not {x["id"]: x for x in badges.compute(uid)}["sans-filet"]["earned"]
