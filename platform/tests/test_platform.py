@@ -797,3 +797,34 @@ def test_vignettes_des_labos(app_client, tmp_path, monkeypatch):
     assert main.thumbnail_url("git").startswith("/static/vignettes/git.png?v=")
     assert main.thumbnail_url("linux") is None
     assert 'class="ph"' in app_client.get("/catalogue").text
+
+
+def test_envoi_d_une_vignette(app_client, tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "VIGNETTES_DIR", str(tmp_path / "vignettes"))
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 100
+
+    def envoi(data, nom="image.png", key="docker"):
+        return app_client.post(f"/admin/vignettes/{key}", files={"image": (nom, data)}, follow_redirects=False)
+
+    # Réservé à l'administrateur (la vignette est commune à toutes les classes)
+    student_in_class(app_client)
+    assert login(app_client, "ada@lab.test", "motdepasse1").status_code == 302
+    assert envoi(png).headers["location"] == "/catalogue" and main.uploaded_thumbnail("docker") is None
+    assert "Changer la vignette" not in app_client.get("/catalogue").text
+
+    admin_client(app_client)
+    assert "Changer la vignette" in app_client.get("/catalogue").text
+    # Formats reconnus à leur signature : pas de SVG (script possible), pas d'image trop lourde
+    assert "err=" in envoi(b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', "x.svg").headers["location"]
+    assert "err=" in envoi(b"\xff\xd8\xff" + b"0" * main.VIGNETTE_MAX_BYTES).headers["location"]
+    assert "msg=" in envoi(png).headers["location"]
+    page = app_client.get("/catalogue").text
+    assert 'src="/vignettes/docker.png?v=' in page and "Rétablir" in page
+    r = app_client.get("/vignettes/docker.png")
+    assert r.status_code == 200 and r.content == png and r.headers["content-type"] == "image/png"
+    assert app_client.get("/vignettes/..%2Fplatform.db").status_code == 404
+    # Une image d'un autre format remplace la précédente ; « Rétablir » revient à l'illustration fournie
+    assert "msg=" in envoi(b"RIFF\0\0\0\0WEBPVP8 ", "a.webp").headers["location"]
+    assert sorted(os.listdir(tmp_path / "vignettes")) == ["docker.webp"]
+    app_client.post("/admin/vignettes/docker", data={"action": "supprimer"})
+    assert main.thumbnail_url("docker").startswith("/static/vignettes/docker.svg")

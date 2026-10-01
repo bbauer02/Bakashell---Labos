@@ -18,10 +18,12 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 
 - Après connexion, l'étudiant arrive sur **son catalogue** (`/catalogue`) : les labos ouverts à ses classes, chacun
   avec sa vignette d'illustration et sa progression.
-- **Vignettes** : `platform/static/vignettes/<parcours>.svg` (illustrations fournies). Pour en changer,
-  déposez une image `<parcours>.webp`, `.png` ou `.jpg` dans ce dossier (format paysage 16:7, par exemple 1280×560) :
-  elle remplace le `.svg`, sur le catalogue comme dans le panneau « L'équipe » du lab. Les vignettes sont copiées dans
-  l'image de la plateforme : reconstruire `platform` après un changement.
+- **Vignettes** : sur le catalogue, l'administrateur survole la vignette d'un labo puis clique sur « 🖼 Changer la
+  vignette » (PNG, JPEG ou WebP, 3 Mo au plus, format paysage 16:7, par exemple 1280×560) ; « Rétablir » revient à
+  l'illustration fournie (`platform/static/vignettes/<parcours>.svg`). Une vignette est commune à toutes les classes :
+  les enseignants ne peuvent pas la changer. Les images envoyées sont gardées avec la base (`/data/vignettes`, variable
+  `VIGNETTES_DIR`) : elles survivent aux reconstructions de la plateforme. Les SVG ne sont pas acceptés à l'envoi (ils
+  peuvent contenir du script).
 - L'enseignant gère **ses classes** sur `/admin/classes` : il coche les labos ouverts à chaque classe et ajoute ou
   retire des étudiants (ajout par **adresse e-mail exacte** du compte, ou en cochant un étudiant de ses autres classes).
   Chaque classe a un **code d'inscription** (ex. `QTQ-V95`) que les étudiants saisissent à l'inscription ou depuis leur

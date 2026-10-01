@@ -163,13 +163,42 @@ def course_for(user, course_key: str):
     return None
 
 
-# Vignettes d'illustration des labos : static/vignettes/<parcours>.<ext>. Une image déposée en .webp, .png ou .jpg
-# remplace l'illustration .svg fournie (premier format trouvé dans cet ordre).
+# Vignettes d'illustration des labos. Par ordre de priorité :
+# 1. l'image envoyée par l'administrateur depuis le catalogue, gardée avec la base (VIGNETTES_DIR) : elle survit aux
+#    reconstructions de l'image de la plateforme ;
+# 2. une image déposée dans static/vignettes/<parcours>.webp, .png ou .jpg (copiée dans l'image) ;
+# 3. l'illustration .svg fournie dans static/vignettes.
 THUMBNAIL_EXTS = ("webp", "png", "jpg", "jpeg", "svg")
+VIGNETTES_DIR = os.environ.get("VIGNETTES_DIR") or os.path.join(os.path.dirname(db.DB_PATH), "vignettes")
+VIGNETTE_MAX_BYTES = 3 * 1024 * 1024
+# Formats acceptés à l'envoi, reconnus à leur signature (jamais de SVG envoyé : il peut contenir du script)
+VIGNETTE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}
+
+
+def vignette_format(data: bytes):
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+def uploaded_thumbnail(key: str):
+    """Chemin de la vignette envoyée pour ce parcours, ou None."""
+    for ext in VIGNETTE_TYPES:
+        path = os.path.join(VIGNETTES_DIR, f"{key}.{ext}")
+        if os.path.isfile(path):
+            return path
+    return None
 
 
 def thumbnail_url(key: str):
     """Adresse de la vignette du parcours (avec sa date de modification, pour le cache), ou None."""
+    path = uploaded_thumbnail(key)
+    if path:
+        return f"/vignettes/{os.path.basename(path)}?v={int(os.path.getmtime(path))}"
     for ext in THUMBNAIL_EXTS:
         path = os.path.join(APP_DIR, "static", "vignettes", f"{key}.{ext}")
         if os.path.isfile(path):
@@ -433,7 +462,8 @@ async def catalogue(request: Request, msg: str = "", err: str = ""):
         cards.append({
             "memo_found": memo_found, "memo_total": memo_total,
             "key": key, "title": c["title"], "summary": c["summary"], "level": c["level"],
-            "thumbnail": thumbnail_url(key), "exam": bool(c.get("exam")),
+            "thumbnail": thumbnail_url(key), "custom_thumbnail": bool(uploaded_thumbnail(key)),
+            "exam": bool(c.get("exam")),
             "duration": c["duration"], "steps": len(c["steps"]), "total": c["total_exercises"],
             "score": p["score"], "max": c["max_score"], "done": done,
             "pct": round(100 * p["score"] / c["max_score"]) if c["max_score"] else 0,
@@ -513,6 +543,50 @@ async def catalogue_join(request: Request):
     if not name:
         return RedirectResponse("/catalogue?err=Code+de+classe+inconnu", status_code=302)
     return RedirectResponse(f"/catalogue?msg=Vous+avez+rejoint+la+classe+{quote_plus(name)}", status_code=302)
+
+
+@app.get("/vignettes/{name}")
+async def vignette(name: str):
+    m = re.fullmatch(r"([a-z]+)\.(png|jpg|webp)", name)
+    path = os.path.join(VIGNETTES_DIR, name) if m and m.group(1) in COURSES else None
+    if not path or not os.path.isfile(path):
+        return not_found()
+    with open(path, "rb") as f:
+        data = f.read()
+    return Response(data, media_type=VIGNETTE_TYPES[m.group(2)],
+                    headers={"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff"})
+
+
+@app.post("/admin/vignettes/{course_key}")
+async def vignette_upload(request: Request, course_key: str):
+    """Vignette d'un labo envoyée depuis le catalogue (administrateur : elle est commune à toutes les classes)."""
+    if not superadmin_or_none(request):
+        return RedirectResponse("/catalogue", status_code=302)
+    if course_key not in COURSES:
+        return not_found()
+    form = await request.form()
+    if form.get("action") == "supprimer":
+        path = uploaded_thumbnail(course_key)
+        if path:
+            os.remove(path)
+        return RedirectResponse("/catalogue?msg=Illustration+d%27origine+r%C3%A9tablie", status_code=302)
+    upload = form.get("image")
+    data = await upload.read(VIGNETTE_MAX_BYTES + 1) if hasattr(upload, "read") else b""
+    if len(data) > VIGNETTE_MAX_BYTES:
+        return RedirectResponse("/catalogue?err=Image+trop+lourde+%283+Mo+au+plus%29", status_code=302)
+    ext = vignette_format(data)
+    if not ext:
+        return RedirectResponse("/catalogue?err=Format+non+reconnu+%3A+PNG%2C+JPEG+ou+WebP", status_code=302)
+    os.makedirs(VIGNETTES_DIR, exist_ok=True)
+    old = uploaded_thumbnail(course_key)
+    tmp = os.path.join(VIGNETTES_DIR, f".{course_key}.{ext}.tmp")
+    with open(tmp, "wb") as f:
+        f.write(data)
+    if old and not old.endswith(f".{ext}"):
+        os.remove(old)
+    os.replace(tmp, os.path.join(VIGNETTES_DIR, f"{course_key}.{ext}"))
+    return RedirectResponse(f"/catalogue?msg={quote_plus('Vignette mise à jour : ' + COURSES[course_key]['short'])}",
+                            status_code=302)
 
 
 @app.get("/lab/{course_key}", response_class=HTMLResponse)
