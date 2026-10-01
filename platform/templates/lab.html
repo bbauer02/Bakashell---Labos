@@ -818,7 +818,10 @@
         .rankup-card h2 { font-size: 21px; margin: 8px 0 4px; }
         .rankup-card h2 span { color: var(--neon-c); text-shadow: 0 0 8px rgba(0,240,255,.6); }
         .rankup-card .who { font-size: 13.5px; color: var(--text-dim); margin: 10px 0 16px; line-height: 1.5; }
+        .rankup-card .who { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12.5px; }
         .rankup-card .who strong { color: var(--text); }
+        .rankup-card .who .sys { color: var(--neon-m); }
+        .rankup-card .who .sys::after { content: ':'; }
         .rankup-card button { margin: 0 4px; padding: 9px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-weight: 600; cursor: pointer; font-family: inherit; }
         .rankup-card button.primary { background: transparent; border-color: var(--neon-c); color: var(--neon-c); box-shadow: 0 0 10px rgba(0,240,255,.35); }
 
@@ -1639,10 +1642,13 @@ ${s.preamble}
         }
 
         function showRankUp(g) {
-            const next = g.next ? `<br>Prochain grade : <strong>${escHtml(g.next)}</strong>, dans ${g.next_points} pt${g.next_points > 1 ? 's' : ''}.` : '<br>Vous avez atteint le plus haut grade de ce labo.';
-            document.getElementById('rankup-card').innerHTML = `<div class="cmd">&gt; sudo usermod --grade "${escHtml(g.name)}" $USER<br>&gt; accès élevé ✓</div><div class="big">${g.icon}</div>
+            // Annonce de la plateforme (Bakashell) seule : l'histoire Cimes & Sentiers n'intervient pas ici
+            const next = g.next ? `prochain grade : <strong>${escHtml(g.next)}</strong> dans ${g.next_points} pt${g.next_points > 1 ? 's' : ''}`
+                                : 'grade maximal atteint : ghost in the shell';
+            document.getElementById('rankup-card').innerHTML = `<div class="cmd">&gt; sudo usermod --grade "${escHtml(g.name)}" $USER</div><div class="big">${g.icon}</div>
                 <h2 id="rankup-title">Nouveau grade : <span>${escHtml(g.name)}</span></h2>
-                <p class="who"><strong>${escHtml(mentorName)}</strong> : « Beau travail, tu passes ${escHtml(g.name)} sur ${escHtml(COURSE_SHORT)} ! »${next}</p>
+                <p class="who"><span class="sys">bakashell</span> privilèges élevés sur ${escHtml(COURSE_SHORT)} ✓<br>
+                <span class="sys">bakashell</span> ${next}</p>
                 <button class="primary" onclick="closeRankUp()">Continuer</button><button onclick="closeRankUp(); openTrail()">Voir l'intrusion</button>`;
             document.getElementById('rankup').classList.add('open');
             document.getElementById('grade-btn').classList.add('pulse');

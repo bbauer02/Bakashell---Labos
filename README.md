@@ -141,7 +141,7 @@ parle **Bakashell**, le « bac à shell » : cyberpunk à la *Neuromancer*, avec
   exercice ; un exercice peut fixer la sienne avec `ticket["reply"]`). Gerbe de caractères (`0 1 { } $ #`) en fin
   d'étape, désactivée si le système de l'élève demande moins d'animations.
 - **Grades par labo**, selon la part des points : Recrue, Opérateur·rice (15 %), Hacker (40 %), Architecte (70 %),
-  Ghost (90 %, *ghost in the shell*). Le passage d'un grade est annoncé par la mentore du labo.
+  Ghost (90 %, *ghost in the shell*). Le passage d'un grade est annoncé par Bakashell seul (la plateforme), sans personnage de l'histoire.
 - **L'intrusion** : chaque étape terminée est une couche d'ICE percée (les pare-feu du roman) vers le noyau du labo
   (Ring 0 pour Linux, Zoo des mutants pour Jest, Port franc pour Docker, Arbre des commits pour Git, La Ruche pour
   Ansible, Cœur de prod pour le projet final). Le bouton du grade, dans la barre du lab, ouvre la pile des couches
