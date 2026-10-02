@@ -81,7 +81,7 @@ h1 { font-size:28px; margin-bottom:6px; }
 {% block body %}
 <div class="page">
     <div class="top">
-        {{ marque() }}
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">{{ marque() }}{{ badges_marque() }}</div>
         <div class="top-right">
             <span>{{ user.first_name }} {{ user.last_name }}{% if user.is_admin %}{{ role_badge(user) }}{% endif %}</span>
             {% if user.is_admin %}
