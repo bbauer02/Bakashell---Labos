@@ -87,11 +87,8 @@
 h1 .marque { vertical-align: middle; margin-right: 2px; }
 h1 .fil { color: var(--border-hi); font-weight: 400; margin: 0 12px 0 10px; vertical-align: middle; }
 
-/* Badges à côté du logo : version, et mode bac à sable */
+/* Badge à côté du logo : la version */
 .badges-marque { display: inline-flex; align-items: center; gap: 8px; margin-left: 4px; flex-shrink: 0; }
 .badge-version { font-family: var(--font-mono); font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 999px;
     color: #34d399; background: rgba(16, 185, 129, .1); border: 1px solid rgba(16, 185, 129, .25); white-space: nowrap; }
-.badge-bac { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 2px 9px; border-radius: 999px;
-    color: #fcd34d; background: rgba(245, 158, 11, .14); border: 1px solid rgba(245, 158, 11, .32); white-space: nowrap; cursor: help; }
-@media (max-width: 1280px) { .badge-bac { display: none; } }
 @media (max-width: 600px) { .badges-marque { display: none; } }

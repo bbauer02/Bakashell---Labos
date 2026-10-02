@@ -75,10 +75,8 @@ def marque(taille: str = "normal", lien: str = "/catalogue") -> Markup:
 
 
 def badges_marque() -> Markup:
-    """Badges à côté du logo : la version de la plateforme, et le rappel qu'on travaille dans un bac à sable."""
-    return Markup(f'<span class="badges-marque"><span class="badge-version" title="Version de la plateforme">v{APP_VERSION}-sandbox</span>'
-                  "<span class=\"badge-bac\" title=\"Tout se passe sur des machines d'entraînement : vous pouvez tout casser, "
-                  "aucun vrai serveur n'est touché.\">🏖️ Mode bac à sable : prod en sécurité</span></span>")
+    """Badge à côté du logo : la version de la plateforme."""
+    return Markup(f'<span class="badges-marque"><span class="badge-version" title="Version de la plateforme">v{APP_VERSION}-sandbox</span></span>')
 
 
 templates.env.globals.update(asset=asset, marque=marque, badges_marque=badges_marque)
