@@ -444,6 +444,17 @@ def test_titre_et_auteur(app_client):
     assert '<meta name="author" content="Bauer Baptiste (contact@bakashell.fr)">' in page
 
 
+def test_icones_et_charte(app_client):
+    r = app_client.get("/favicon.ico")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/x-icon" and r.content[:4] == bytes([0, 0, 1, 0])
+    for page in ("/login", "/confidentialite"):
+        html = app_client.get(page).text
+        assert 'rel="icon" href="/favicon.ico"' in html and "/static/favicon.svg?v=" in html, page
+        assert "/static/theme.css?v=" in html and 'class="marque-nom">Bakashell<' in html, page
+    assert app_client.get("/static/favicon.svg").status_code == 200
+    assert app_client.get("/static/apple-touch-icon.png").status_code == 200
+
+
 def test_description_pedagogique(app_client):
     # Lue par les filtres web des établissements, qui avaient classé le site parmi les jeux
     page = app_client.get("/login").text

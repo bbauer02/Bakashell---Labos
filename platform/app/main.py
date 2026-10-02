@@ -17,7 +17,7 @@ from urllib.parse import quote, quote_plus
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
@@ -237,6 +237,13 @@ def courses_menu(user=None):
 
 
 # ─── Pages ──────────────────────────────────────────────────────────────
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Icône demandée d'office par les navigateurs, à la racine du site."""
+    return FileResponse(os.path.join(APP_DIR, "static", "favicon.ico"), media_type="image/x-icon",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):

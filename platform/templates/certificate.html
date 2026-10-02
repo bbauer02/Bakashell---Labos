@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="author" content="{{ AUTHOR_NAME }} ({{ AUTHOR_EMAIL }})">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     <title>{% if cert %}Attestation — {{ cert.first_name }} {{ cert.last_name }}{% else %}Attestation introuvable{% endif %}</title>
     <style>
         :root { --ink:#1d2033; --dim:#5f6478; --accent:#0e7490; --gold:#b7950b; --paper:#fffdf7; --bg:#eceef4; }
