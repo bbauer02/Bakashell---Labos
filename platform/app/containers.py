@@ -230,12 +230,12 @@ def exec_in_container(container_id: str, cmd, env: dict = None, user: str = "roo
         return 1, str(e)
 
 
-def create_exec_stream(container_id: str):
-    """Ouvre un shell de connexion interactif (PTY) en tant qu'étudiant."""
+def create_exec_stream(container_id: str, command: list = None):
+    """Ouvre un shell de connexion interactif (PTY) en tant qu'étudiant, ou la commande donnée (même PTY)."""
     container = client().containers.get(container_id)
     exec_instance = client().api.exec_create(
         container.id,
-        ["bash", "-l"],
+        command or ["bash", "-l"],
         stdin=True,
         stdout=True,
         stderr=True,

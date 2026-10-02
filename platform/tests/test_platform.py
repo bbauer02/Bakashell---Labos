@@ -211,16 +211,43 @@ def test_terminal_en_lecture_seule():
         tid = terminals.opened(key)
         terminals.feed(key, tid, b"etudiant@lab:~$ ls\r\n")
         q = terminals.subscribe(key)  # arrivée de l'enseignant : il reçoit l'écran récent
-        assert q.get_nowait() == ("open", tid, b"")
+        assert q.get_nowait() == ("open", tid, "")
         assert q.get_nowait() == ("data", tid, b"etudiant@lab:~$ ls\r\n")
         terminals.feed(key, tid, b"notes.txt\r\n")
         assert q.get_nowait() == ("data", tid, b"notes.txt\r\n")
         terminals.closed(key, tid)
         assert q.get_nowait() == ("close", tid, b"")
         assert not terminals.is_open(key)
+        # Parcours Réseau : chaque terminal porte le nom de sa machine (onglet de l'enseignant)
+        tid = terminals.opened(key, "caisse")
+        assert q.get_nowait() == ("open", tid, "caisse")
+        terminals.closed(key, tid)
         terminals.unsubscribe(key, q)
 
     asyncio.run(scenario())
+
+
+def test_onglets_des_machines_reseau(app_client, monkeypatch):
+    admin_client(app_client)
+    vus = []
+
+    def faux_exec(container_id, cmd, env=None, user="root", workdir=None):
+        vus.append((container_id, cmd))
+        return 0, "sw-annecy\ncaisse\nbureau\n../piege\n"
+    monkeypatch.setattr(main.containers, "exec_in_container", faux_exec)
+    r = app_client.get("/api/reseau/machines").json()
+    assert r["machines"] == ["sw-annecy", "caisse", "bureau"]  # un nom invalide est ignoré
+    assert vus == [("lab-reseau-1", ["cat", "/etc/reseau/machines"])]
+    assert app_client.get("/api/linux/machines").json() == {"machines": []}  # pas d'onglets hors parcours Réseau
+    page = app_client.get("/lab/reseau").text
+    assert 'id="term-tabs"' in page and "const MACHINE_TABS = true;" in page
+    assert 'id="term-tabs"' not in app_client.get("/lab/linux").text
+    # Terminal sur une machine : nom refusé hors parcours Réseau ou mal formé, avant toute ouverture de shell
+    for query in ("course=reseau&machine=../etc", "course=linux&machine=caisse"):
+        with pytest.raises(WebSocketDisconnect) as e:
+            with app_client.websocket_connect(f"/ws?{query}") as ws:
+                ws.receive_text()
+        assert e.value.code == 4004, query
 
 
 def test_page_du_terminal_enseignant(app_client):

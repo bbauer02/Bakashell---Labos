@@ -118,7 +118,12 @@
                     return;
                 }
                 const msg = JSON.parse(event.data);
-                if (msg.type === 'open') ensure(msg.term).tab.classList.remove('closed');
+                if (msg.type === 'open') {
+                    const t = ensure(msg.term);
+                    t.tab.classList.remove('closed');
+                    // Parcours Réseau : chaque terminal est celui d'une machine (console, caisse…)
+                    if (msg.label) t.tab.textContent = msg.label;
+                }
                 else if (msg.type === 'size') {
                     const t = ensure(msg.term);
                     t.dims = { cols: msg.cols, rows: msg.rows };

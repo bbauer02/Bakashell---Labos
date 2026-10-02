@@ -17,18 +17,19 @@ _watchers: dict = {}    # (user_id, parcours) -> set de asyncio.Queue
 
 
 class _Term:
-    __slots__ = ("buf", "size", "dims")
+    __slots__ = ("buf", "size", "dims", "label")
 
-    def __init__(self):
+    def __init__(self, label: str = ""):
         self.buf = deque()
         self.size = 0        # octets dans le tampon (tenu à jour, pas recalculé à chaque paquet)
         self.dims = None     # (colonnes, lignes) du terminal de l'étudiant
+        self.label = label   # machine du terminal (parcours Réseau : « console », « caisse »…), sinon vide
 
 
-def opened(key) -> int:
+def opened(key, label: str = "") -> int:
     term_id = next(_ids)
-    _terminals.setdefault(key, {})[term_id] = _Term()
-    _broadcast(key, ("open", term_id, b""))
+    _terminals.setdefault(key, {})[term_id] = _Term(label)
+    _broadcast(key, ("open", term_id, label))
     return term_id
 
 
@@ -78,7 +79,7 @@ def subscribe(key) -> asyncio.Queue:
     """Abonne un enseignant ; la file reçoit d'abord, pour chaque terminal ouvert, sa taille et son écran récent."""
     q = asyncio.Queue()
     for term_id, term in _terminals.get(key, {}).items():
-        q.put_nowait(("open", term_id, b""))
+        q.put_nowait(("open", term_id, term.label))
         if term.dims:
             q.put_nowait(("size", term_id, term.dims))
         if term.buf:

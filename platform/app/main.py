@@ -860,7 +860,8 @@ async def lab_page(request: Request, course_key: str):
     return templates.TemplateResponse(request, "lab.html", {
         "user": user,
         "course": {"key": course["key"], "title": course["title"], "short": course["short"],
-                   "editor": bool(course["editor_root"]), "auto_validate": course["auto_validate"]},
+                   "editor": bool(course["editor_root"]), "auto_validate": course["auto_validate"],
+                   "machine_tabs": bool(course.get("machine_tabs"))},
         "courses": courses_menu(user),
         "integrity_days": integrity.RETENTION_DAYS,
         "certificate_pct": CERTIFICATE_MIN_PCT,
@@ -1943,6 +1944,25 @@ async def api_file_write(request: Request, course_key: str):
 
 # ─── Terminal WebSocket ─────────────────────────────────────────────────
 
+MACHINE_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,30}")
+
+
+@app.get("/api/{course_key}/machines")
+async def api_machines(request: Request, course_key: str):
+    """Machines du module en cours (parcours Réseau), pour les onglets du terminal ; la liste change d'un module à
+    l'autre. Lue dans le conteneur de l'étudiant, s'il tourne (sinon : la console seule, en attendant)."""
+    user = get_current_user(request)
+    course = course_for(user, course_key)
+    if not user or not course:
+        return unauthorized()
+    if not course.get("machine_tabs"):
+        return {"machines": []}
+    name = containers.get_container_name(user["user_id"], course)
+    code, out = await run_in_threadpool(containers.exec_in_container, name, ["cat", "/etc/reseau/machines"])
+    machines = [m for m in out.split() if MACHINE_NAME.fullmatch(m)] if code == 0 else []
+    return {"machines": machines}
+
+
 @app.websocket("/ws")
 async def websocket_terminal(ws: WebSocket):
     token = ws.cookies.get("session")
@@ -1952,6 +1972,13 @@ async def websocket_terminal(ws: WebSocket):
         await ws.close(code=4001, reason="Unauthorized")
         return
 
+    # Onglet d'une machine du réseau : le shell passe par « connexion » (sudo, liste fermée des machines), comme
+    # si l'étudiant l'avait tapée ; sans paramètre, la console (le conteneur de l'étudiant)
+    machine = ws.query_params.get("machine", "")
+    if machine and not (course.get("machine_tabs") and MACHINE_NAME.fullmatch(machine)):
+        await ws.close(code=4004, reason="Machine inconnue")
+        return
+
     await ws.accept()
     user_id = user["user_id"]
     key = (user_id, course["key"])
@@ -1959,7 +1986,8 @@ async def websocket_terminal(ws: WebSocket):
 
     try:
         container_id = await run_in_threadpool(containers.get_or_create_container, user_id, course)
-        exec_id, sock = await run_in_threadpool(containers.create_exec_stream, container_id)
+        command = ["sudo", "-n", "/usr/local/sbin/lab-machine", "connexion", machine] if machine else None
+        exec_id, sock = await run_in_threadpool(containers.create_exec_stream, container_id, command)
     except Exception as e:
         log.exception("Ouverture du terminal impossible")
         await ws.send_text(json.dumps({"error": str(e)}))
@@ -1967,7 +1995,7 @@ async def websocket_terminal(ws: WebSocket):
         return
 
     open_terminals[key] += 1
-    term_id = terminals.opened(key)
+    term_id = terminals.opened(key, machine or "console")
     live.remember_name(user)
     live.terminal_opened(user_id, course["key"])
     raw_sock = sock._sock
@@ -2084,6 +2112,8 @@ async def websocket_watch(ws: WebSocket):
                 await ws.send_bytes(term_id.to_bytes(4, "big") + data)
             elif kind == "size":
                 await ws.send_text(json.dumps({"type": "size", "term": term_id, "cols": data[0], "rows": data[1]}))
+            elif kind == "open":
+                await ws.send_text(json.dumps({"type": "open", "term": term_id, "label": data or ""}))
             else:
                 await ws.send_text(json.dumps({"type": kind, "term": term_id}))
     except (WebSocketDisconnect, RuntimeError):

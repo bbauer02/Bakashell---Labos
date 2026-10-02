@@ -162,6 +162,8 @@ COURSES = {
         "pids_limit": 1024,
         # Les machines du réseau (postes, switch…) tournent dans un moteur Docker propre à l'étudiant
         "docker_in_docker": os.environ.get("DOCKER_LAB_RUNTIME", "sysbox-runc"),
+        # Un onglet de terminal par machine du module en cours (/etc/reseau/machines), en plus de la console
+        "machine_tabs": True,
     },
     "projet": {
         "key": "projet",

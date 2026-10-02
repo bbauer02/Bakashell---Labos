@@ -551,8 +551,22 @@
 
         #terminal {
             flex: 1;
-            padding: 4px;
+            position: relative;
+            min-height: 0;
         }
+        /* Un panneau par session (console, machines du réseau) : seul l'actif est affiché */
+        .term-pane { position: absolute; inset: 4px; display: none; }
+        .term-pane.active { display: block; }
+
+        /* Onglets des machines (parcours Réseau) */
+        .term-tabs { display: flex; gap: 4px; overflow-x: auto; min-width: 0; flex: 1; scrollbar-width: none; }
+        .term-tabs::-webkit-scrollbar { display: none; }
+        .term-tab { flex-shrink: 0; font-family: var(--font-mono); font-size: 12px; padding: 4px 11px; border-radius: 8px;
+            border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-dim); cursor: pointer;
+            display: flex; align-items: center; gap: 6px; transition: .15s; }
+        .term-tab:hover { color: var(--text); border-color: var(--border-hi); }
+        .term-tab.ouvert::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+        .term-tab.active { color: #fff; background: rgba(6, 182, 212, .18); border-color: var(--accent); }
 
         /* ─── Parcours et éditeur ──────────────────── */
         .course-switch { display: flex; gap: 4px; margin-left: 14px; flex-shrink: 0; }
@@ -943,7 +957,8 @@
                 <div class="terminal-dots">
                     <span></span><span></span><span></span>
                 </div>
-                <span class="terminal-title">bash — {{ course.short | lower }}</span>
+                {% if course.machine_tabs %}<div class="term-tabs" id="term-tabs"></div>
+                {% else %}<span class="terminal-title">bash — {{ course.short | lower }}</span>{% endif %}
                 <span class="terminal-status disconnected" id="ws-status">Connexion...</span>
             </div>
             <div id="terminal"></div>
@@ -1004,15 +1019,18 @@
         const COURSE = {{ course.key | tojson }};
         const HAS_EDITOR = {{ course.editor | tojson }};
         const AUTO_VALIDATE = {{ course.auto_validate | tojson }};
+        const MACHINE_TABS = {{ (course.machine_tabs or false) | tojson }};
         const IS_ADMIN = {{ (user.is_admin == 1) | tojson }};
         const COURSE_SHORT = {{ course.short | tojson }};
         const CERT_PCT = {{ certificate_pct | tojson }};
         let currentStep = Number(localStorage.getItem('step:' + COURSE)) || 1;
         let stepsData = [];
-        let ws = null;
 
-        // ─── Terminal Setup ────────────────────────────
-        const term = new Terminal({
+        // ─── Terminaux ─────────────────────────────────
+        // Une session par onglet : la console (le conteneur de l'étudiant) et, au parcours Réseau, une par machine
+        // du module en cours. Chaque session a son propre terminal et sa propre connexion, ouverts au premier clic ;
+        // le serveur ouvre le shell de la machine par la commande « connexion ».
+        const OPTIONS_TERMINAL = {
             cursorBlink: true,
             fontSize: 14,
             fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
@@ -1031,15 +1049,122 @@
                 white: '#e2e8f0',
             },
             allowProposedApi: true,
-        });
+        };
+        const sessions = new Map();   // nom de la machine (« console » pour le conteneur) -> session
+        let sessionActive = null;
 
-        const fitAddon = new FitAddon.FitAddon();
-        const webLinksAddon = new WebLinksAddon.WebLinksAddon();
-        term.loadAddon(fitAddon);
-        term.loadAddon(webLinksAddon);
+        function ajusterTerminal() {
+            const s = sessions.get(sessionActive);
+            if (s) s.fit.fit();
+        }
 
-        term.open(document.getElementById('terminal'));
-        fitAddon.fit();
+        function afficherEtat(s) {
+            if (s.nom !== sessionActive) return;
+            const el = document.getElementById('ws-status');
+            el.textContent = s.etat;
+            el.className = 'terminal-status ' + (s.etat === 'Connecté' ? 'connected' : 'disconnected');
+        }
+
+        function creerSession(nom) {
+            const el = document.createElement('div');
+            el.className = 'term-pane';
+            document.getElementById('terminal').appendChild(el);
+            const term = new Terminal(OPTIONS_TERMINAL);
+            const fit = new FitAddon.FitAddon();
+            term.loadAddon(fit);
+            term.loadAddon(new WebLinksAddon.WebLinksAddon());
+            term.open(el);
+            const s = { nom, el, term, fit, ws: null, etat: 'Connexion...' };
+            sessions.set(nom, s);
+            term.onData((data) => {
+                if (s.ws && s.ws.readyState === WebSocket.OPEN) s.ws.send(JSON.stringify({ type: 'input', data }));
+            });
+            term.onResize(({ cols, rows }) => {
+                if (s.ws && s.ws.readyState === WebSocket.OPEN) s.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+            });
+            return s;
+        }
+
+        function connecter(s) {
+            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const machine = s.nom === 'console' ? '' : `&machine=${encodeURIComponent(s.nom)}`;
+            const ws = new WebSocket(`${proto}//${location.host}/ws?course=${COURSE}${machine}`);
+            ws.binaryType = 'arraybuffer';
+            s.ws = ws;
+            s.etat = 'Connexion...';
+            afficherEtat(s);
+            ws.onopen = () => {
+                s.etat = 'Connecté';
+                afficherEtat(s);
+                ws.send(JSON.stringify({ type: 'resize', cols: s.term.cols, rows: s.term.rows }));
+            };
+            ws.onmessage = (event) => {
+                s.term.write(event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : event.data);
+            };
+            ws.onclose = () => {
+                s.etat = 'Déconnecté';
+                afficherEtat(s);
+                s.term.write(s.nom === 'console'
+                    ? '\r\n\x1b[31m[Session terminée. Rechargez la page.]\x1b[0m\r\n'
+                    : `\r\n\x1b[33m[Session terminée sur ${s.nom}. Cliquez sur l'onglet pour vous reconnecter.]\x1b[0m\r\n`);
+                ongletsAJour();
+            };
+            ws.onerror = () => {
+                s.etat = 'Erreur';
+                afficherEtat(s);
+            };
+        }
+
+        // Affiche la session d'une machine (la crée et la connecte au premier clic, la reconnecte si elle est fermée)
+        function ouvrirSession(nom) {
+            let s = sessions.get(nom);
+            if (!s) s = creerSession(nom);
+            sessionActive = nom;
+            for (const x of sessions.values()) x.el.classList.toggle('active', x.nom === nom);
+            s.fit.fit();
+            if (!s.ws || s.ws.readyState === WebSocket.CLOSED) {
+                if (s.ws) s.term.write('\r\n');
+                connecter(s);
+            }
+            afficherEtat(s);
+            ongletsAJour();
+            s.term.focus();
+            return s;
+        }
+
+        // ─── Onglets des machines (parcours Réseau) ─────
+        let machines = [];
+
+        function ongletsAJour() {
+            const barre = document.getElementById('term-tabs');
+            if (!barre) return;
+            barre.innerHTML = ['console', ...machines].map((nom) => {
+                const s = sessions.get(nom);
+                const ouvert = s && s.ws && s.ws.readyState === WebSocket.OPEN;
+                const classes = ['term-tab', nom === sessionActive ? 'active' : '', ouvert ? 'ouvert' : ''].join(' ');
+                const icone = nom === 'console' ? '⌨' : nom.startsWith('sw-') ? '⇄' : '▣';
+                return `<button class="${classes}" data-machine="${nom}" title="${nom === 'console' ? 'La console du technicien' : 'Terminal root sur ' + nom}">${icone} ${nom}</button>`;
+            }).join('');
+            barre.querySelectorAll('button').forEach((b) => { b.onclick = () => ouvrirSession(b.dataset.machine); });
+        }
+
+        // Les machines changent d'un module à l'autre : liste relue après chaque changement d'étape (le conteneur
+        // peut encore démarrer : on réessaie quelques fois)
+        async function chargerMachines(essais = 6) {
+            if (!MACHINE_TABS) return;
+            try {
+                const r = await fetch(`/api/${COURSE}/machines`);
+                if (r.ok) machines = (await r.json()).machines || [];
+            } catch (e) { /* réseau indisponible : la console reste utilisable */ }
+            ongletsAJour();
+            if (!machines.length && essais > 1) setTimeout(() => chargerMachines(essais - 1), 5000);
+        }
+
+        const consoleSession = creerSession('console');
+        sessionActive = 'console';
+        consoleSession.el.classList.add('active');
+        consoleSession.fit.fit();
+        const term = consoleSession.term;
 
         // Bannière Bakashell, écrite par la page avant la première invite (les machines des labos n'y sont pour
         // rien : changer leurs images recréerait les conteneurs des élèves). Dessin en turquoise, puis le moteur en bleu.
@@ -1064,51 +1189,7 @@
             term.write(sortie + ` ${moteur}\r\n\r\n`);
         })();
 
-        function connectWS() {
-            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${proto}//${location.host}/ws?course=${COURSE}`);
-            ws.binaryType = 'arraybuffer';
-
-            ws.onopen = () => {
-                document.getElementById('ws-status').textContent = 'Connecté';
-                document.getElementById('ws-status').className = 'terminal-status connected';
-                // Send initial size
-                ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-            };
-
-            ws.onmessage = (event) => {
-                if (event.data instanceof ArrayBuffer) {
-                    term.write(new Uint8Array(event.data));
-                } else {
-                    term.write(event.data);
-                }
-            };
-
-            ws.onclose = () => {
-                document.getElementById('ws-status').textContent = 'Déconnecté';
-                document.getElementById('ws-status').className = 'terminal-status disconnected';
-                term.write('\r\n\x1b[31m[Session terminée. Rechargez la page.]\x1b[0m\r\n');
-            };
-
-            ws.onerror = () => {
-                document.getElementById('ws-status').textContent = 'Erreur';
-                document.getElementById('ws-status').className = 'terminal-status disconnected';
-            };
-        }
-
-        term.onData((data) => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'input', data: data }));
-            }
-        });
-
-        term.onResize(({ cols, rows }) => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'resize', cols, rows }));
-            }
-        });
-
-        window.addEventListener('resize', () => fitAddon.fit());
+        window.addEventListener('resize', ajusterTerminal);
 
         // ─── Panel Resize ──────────────────────────────
         const resizeHandle = document.getElementById('resize-handle');
@@ -1125,7 +1206,7 @@
             if (!isResizing) return;
             const newWidth = Math.max(280, Math.min(700, e.clientX));
             panelLeft.style.width = newWidth + 'px';
-            fitAddon.fit();
+            ajusterTerminal();
         });
 
         document.addEventListener('mouseup', () => {
@@ -1133,7 +1214,7 @@
                 isResizing = false;
                 document.body.style.cursor = '';
                 document.body.style.userSelect = '';
-                fitAddon.fit();
+                ajusterTerminal();
             }
         });
 
@@ -1335,6 +1416,7 @@
 
             // Show lesson tab by default when switching steps
             switchTab('lesson');
+            chargerMachines();  // la mise en place de l'étape a pu changer les machines du réseau
         }
 
         let mentorName = 'Léa';
@@ -2009,7 +2091,8 @@ ${s.preamble}
             updateScore(progress);
             if (!stepsData.some(s => s.num === currentStep)) currentStep = 1;
             await selectStep(currentStep);
-            connectWS();
+            ouvrirSession('console');
+            chargerMachines();
             loadMemo();
             if (AUTO_VALIDATE) startAutoValidation();
             checkBadges();
@@ -2069,7 +2152,7 @@ ${s.preamble}
             loader.onerror = () => setEditorStatus("Éditeur indisponible : utilisez nano dans le terminal");
             document.body.appendChild(loader);
             window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
-            setTimeout(() => fitAddon.fit(), 100);
+            setTimeout(() => ajusterTerminal(), 100);
         }
 
         async function refreshFiles(openDefault = false) {
