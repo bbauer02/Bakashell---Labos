@@ -1053,8 +1053,12 @@
             ];
             const turquoise = '\x1b[1;38;2;34;211;238m', bleu = '\x1b[1;38;2;103;232;249m', fin = '\x1b[0m';
             const moteur = `🐚 ${bleu}Bakashell Container Sandbox Engine${fin} \x1b[38;2;148;163;184mv{{ APP_VERSION }}${fin}`;
+            // Le dessin seulement à la première ouverture d'un terminal dans la session du navigateur (ensuite, il
+            // prendrait 6 lignes à chaque rechargement), et pas dans un terminal étroit (téléphone, panneau réduit)
+            let dejaVu = false;
+            try { dejaVu = sessionStorage.getItem('bakashell-banniere') === '1'; sessionStorage.setItem('bakashell-banniere', '1'); } catch (e) {}
             let sortie = '\r\n';
-            if (term.cols >= dessin[0].length + 2) {  // terminal étroit (téléphone, panneau réduit) : sans le dessin
+            if (!dejaVu && term.cols >= dessin[0].length + 2) {
                 sortie += dessin.map((ligne) => ` ${turquoise}${ligne}${fin}`).join('\r\n') + '\r\n';
             }
             term.write(sortie + ` ${moteur}\r\n\r\n`);
