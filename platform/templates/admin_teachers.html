@@ -51,15 +51,18 @@ tr.off td { opacity:.55; }
     <p class="help">
         Chaque enseignant gère <strong>ses propres classes</strong> et ne voit que les étudiants qui en sont membres
         (tableau de bord, statistiques, intégrité, export, terminal). Vous, administrateur, voyez tout. Un compte
-        enseignant se crée uniquement par <strong>invitation</strong> : un lien à usage unique, valable {{ invite_days }} jours,
-        que vous transmettez à la personne (messagerie de l'établissement…).
+        enseignant se crée uniquement par <strong>invitation</strong> : un lien valable {{ invite_days }} jours, pour un
+        ou plusieurs comptes, que vous transmettez (messagerie de l'établissement…). Pour inviter toute une équipe, créez
+        un lien à plusieurs places, de préférence réservé au domaine de l'établissement (<code>@lycee.fr</code>).
     </p>
 
     {% if new_link %}
     <div class="box new-link">
         <h2>Lien d'invitation créé{% if new_email %} pour {{ new_email }}{% endif %}</h2>
         <p class="dim">Copiez-le maintenant : il ne sera plus affiché (la plateforme n'en garde qu'une empreinte).
-            Il permet de créer un seul compte enseignant, pendant {{ invite_days }} jours.</p>
+            Il permet de créer {% if new_places > 1 %}jusqu'à {{ new_places }} comptes enseignants{% else %}un seul compte
+            enseignant{% endif %}{% if new_email.startswith('@') %} (adresses {{ new_email }} uniquement){% endif %},
+            pendant {{ invite_days }} jours.</p>
         <input type="text" id="invite-url" readonly value="{{ new_link }}" onclick="this.select()">
         <button type="button" class="small primary" onclick="copyInvite(this)">Copier</button>
     </div>
@@ -68,17 +71,20 @@ tr.off td { opacity:.55; }
     <div class="box">
         <h2>Inviter un enseignant</h2>
         <form method="post" action="/admin/enseignants/invitation" class="row">
-            <input type="email" name="email" placeholder="Adresse e-mail (facultatif : réserve le lien à cette adresse)" style="flex:1; min-width:280px">
+            <input type="text" name="email" placeholder="Facultatif : prenom.nom@lycee.fr (cette adresse) ou @lycee.fr (ce domaine)" style="flex:1; min-width:280px">
+            <label class="dim" style="display:flex; align-items:center; gap:6px">Comptes
+                <input type="number" name="places" value="1" min="1" max="{{ invite_max }}" style="width:70px"></label>
             <button type="submit" class="primary">Créer un lien d'invitation</button>
         </form>
         {% if invites %}
         <div class="table-wrap" style="margin-top:14px">
         <table>
-            <thead><tr><th>Invitations en attente</th><th>Créée le (UTC)</th><th>Expire le (UTC)</th><th></th></tr></thead>
+            <thead><tr><th>Invitations en attente</th><th>Comptes créés</th><th>Créée le (UTC)</th><th>Expire le (UTC)</th><th></th></tr></thead>
             <tbody>
             {% for i in invites %}
             <tr>
-                <td>{{ i.email or "Toute adresse" }}</td>
+                <td>{% if not i.email %}Toute adresse{% elif i.email.startswith('@') %}Adresses {{ i.email }}{% else %}{{ i.email }}{% endif %}</td>
+                <td class="dim">{{ i.uses }} / {{ i.max_uses }}</td>
                 <td class="dim">{{ i.created_at[:16] }}</td>
                 <td class="dim">{{ i.expires_at[:16] }}</td>
                 <td><form method="post" action="/admin/enseignants/invitation/{{ i.id }}/revoke"><button type="submit" class="small danger">Annuler</button></form></td>

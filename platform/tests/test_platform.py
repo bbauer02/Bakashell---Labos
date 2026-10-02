@@ -460,10 +460,10 @@ def teacher_form(email, first="Alan", last="Turing", password=TEACHER_PASSWORD):
     return {"first_name": first, "last_name": last, "email": email, "password": password, "password2": password}
 
 
-def invite_path(client, email=""):
+def invite_path(client, email="", places=1):
     """Lien d'invitation créé par l'administrateur (chemin relatif /invitation/<jeton>)."""
     admin_client(client)
-    page = client.post("/admin/enseignants/invitation", data={"email": email})
+    page = client.post("/admin/enseignants/invitation", data={"email": email, "places": places})
     assert page.status_code == 200
     link = re.search(r'id="invite-url" readonly value="([^"]+)"', page.text).group(1)
     return "/" + link.split("/", 3)[3]
@@ -540,6 +540,47 @@ def test_invitation_enseignant(app_client):
     assert app_client.post("/admin/enseignants/invitation", follow_redirects=False).status_code == 302
     assert invites_count() == before
     assert db.get_user(user_id("eve@lab.test"))["is_admin"] == 0
+
+
+def test_lien_d_invitation_partage(app_client):
+    # Un lien à plusieurs places, réservé au domaine de l'établissement : une équipe entière s'inscrit
+    path = invite_path(app_client, email="@lycee.test", places=2)
+    page = app_client.get("/admin/enseignants").text
+    assert "Adresses @lycee.test" in page and "0 / 2" in page
+    app_client.cookies.clear()
+    page = app_client.get(path).text
+    assert "Ce lien est partagé" in page and "@lycee.test" in page and not re.search(r"autocomplete=\"email\" readonly", page)
+    r = app_client.post(path, data=teacher_form("grace@ailleurs.test", "Grace", "Hopper"))
+    assert "réservée aux adresses @lycee.test" in r.text
+    for email, first in (("ada@lycee.test", "Ada"), ("grace@lycee.test", "Grace")):
+        app_client.cookies.clear()
+        r = app_client.post(path, data=teacher_form(email, first, "Lovelace"), follow_redirects=False)
+        assert r.status_code == 302, email
+        assert db.get_user(user_id(email))["is_admin"] == 1
+    # Plus aucune place : le lien ne fonctionne plus
+    app_client.cookies.clear()
+    assert app_client.get(path).status_code == 404
+    assert app_client.post(path, data=teacher_form("linus@lycee.test"), follow_redirects=False).status_code == 404
+
+    # Validation du formulaire de l'administrateur
+    admin_client(app_client)
+    before = invites_count()
+    assert "Nombre de comptes invalide" in app_client.post("/admin/enseignants/invitation", data={"places": 0}).text
+    assert "Nombre de comptes invalide" in app_client.post("/admin/enseignants/invitation", data={"places": 500}).text
+    assert "réservé à une seule adresse" in app_client.post("/admin/enseignants/invitation",
+                                                           data={"email": "ada@lycee.test", "places": 3}).text
+    assert "invalide" in app_client.post("/admin/enseignants/invitation", data={"email": "lycee"}).text
+    assert invites_count() == before
+
+    # Un lien partagé entamé peut encore être annulé
+    path = invite_path(app_client, places=3)
+    app_client.cookies.clear()
+    assert app_client.post(path, data=teacher_form("tim@web.test", "Tim", "Lee"), follow_redirects=False).status_code == 302
+    admin_client(app_client)
+    invite_id = next(i["id"] for i in db.list_pending_invites() if i["uses"] == 1 and i["max_uses"] == 3)
+    app_client.post(f"/admin/enseignants/invitation/{invite_id}/revoke")
+    app_client.cookies.clear()
+    assert app_client.get(path).status_code == 404
 
 
 def test_cloisonnement_entre_enseignants(app_client):

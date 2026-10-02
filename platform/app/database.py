@@ -86,7 +86,8 @@ def init_db(courses):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (owner_id, name)
         );
-        -- Invitations d'enseignants : lien à usage unique (seule l'empreinte du jeton est stockée)
+        -- Invitations d'enseignants : lien valable pour max_uses comptes (seule l'empreinte du jeton est stockée) ;
+        -- email : adresse réservée, ou domaine réservé s'il commence par « @ » ; used_at / used_by : dernier compte créé
         CREATE TABLE IF NOT EXISTS teacher_invites (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             token_hash TEXT UNIQUE NOT NULL,
@@ -94,7 +95,9 @@ def init_db(courses):
             created_by INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             used_at TIMESTAMP,
-            used_by INTEGER
+            used_by INTEGER,
+            max_uses INTEGER DEFAULT 1,
+            uses INTEGER DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS class_members (
             class_id INTEGER NOT NULL,
@@ -177,6 +180,12 @@ def init_db(courses):
         if column not in cols:
             db.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
     _migrate_class_owner(db)
+    # Invitations à plusieurs places : les anciens liens (à usage unique) déjà utilisés comptent une utilisation
+    cols = [r["name"] for r in db.execute("PRAGMA table_info(teacher_invites)").fetchall()]
+    if "uses" not in cols:
+        db.execute("ALTER TABLE teacher_invites ADD COLUMN max_uses INTEGER DEFAULT 1")
+        db.execute("ALTER TABLE teacher_invites ADD COLUMN uses INTEGER DEFAULT 0")
+        db.execute("UPDATE teacher_invites SET uses = 1 WHERE used_at IS NOT NULL")
     # Ancienne table step_setup (un seul parcours) : on la convertit en conservant ses données
     cols = [r["name"] for r in db.execute("PRAGMA table_info(step_setup)").fetchall()]
     if "course" not in cols:
@@ -473,27 +482,38 @@ def reset_token_user(token: str):
 INVITE_DAYS = 7
 
 
-def create_invite(created_by: int, email: str = "") -> str:
-    """Nouveau lien d'invitation d'enseignant, à usage unique, éventuellement réservé à une adresse e-mail.
+INVITE_MAX_USES = 50
+
+
+def create_invite(created_by: int, email: str = "", max_uses: int = 1) -> str:
+    """Nouveau lien d'invitation d'enseignant, valable pour max_uses comptes, éventuellement réservé à une adresse
+    e-mail (« prenom.nom@lycee.fr ») ou à un domaine (« @lycee.fr »).
     Retourne le jeton en clair (affiché une seule fois) ; la base n'en garde que l'empreinte."""
     token = secrets.token_urlsafe(24)
     db = get_db()
-    db.execute("INSERT INTO teacher_invites (token_hash, email, created_by) VALUES (?, ?, ?)",
-               (_token_hash(token), email.strip().lower() or None, created_by))
+    db.execute("INSERT INTO teacher_invites (token_hash, email, created_by, max_uses) VALUES (?, ?, ?, ?)",
+               (_token_hash(token), email.strip().lower() or None, created_by, max(1, min(max_uses, INVITE_MAX_USES))))
     db.commit()
     db.close()
     return token
 
 
-_INVITE_VALID = f"used_at IS NULL AND created_at >= datetime('now', '-{INVITE_DAYS} days')"
+_INVITE_VALID = f"uses < max_uses AND created_at >= datetime('now', '-{INVITE_DAYS} days')"
+
+
+def invite_allows(restriction, email: str) -> bool:
+    """L'adresse convient-elle à l'invitation ? (aucune restriction, adresse réservée, ou domaine « @… » réservé)"""
+    if not restriction:
+        return True
+    return email.endswith(restriction) if restriction.startswith("@") else email == restriction
 
 
 def invite_info(token: str):
-    """L'invitation correspondant à un jeton encore valable (non utilisée, non expirée), ou None."""
+    """L'invitation correspondant à un jeton encore valable (places restantes, non expirée), ou None."""
     if not token:
         return None
     db = get_db()
-    row = db.execute(f"SELECT id, email, created_at FROM teacher_invites WHERE token_hash = ? AND {_INVITE_VALID}",
+    row = db.execute(f"SELECT id, email, created_at, max_uses, uses FROM teacher_invites WHERE token_hash = ? AND {_INVITE_VALID}",
                      (_token_hash(token),)).fetchone()
     db.close()
     return dict(row) if row else None
@@ -501,8 +521,8 @@ def invite_info(token: str):
 
 def accept_invite(token: str, first_name: str, last_name: str, email: str, password: str):
     """Crée le compte enseignant et consomme l'invitation, en une seule transaction.
-    Retourne (identifiant, None) ou (None, motif) : « invalid » (lien inconnu, expiré, déjà utilisé),
-    « email » (adresse différente de celle de l'invitation), « exists » (compte déjà existant)."""
+    Retourne (identifiant, None) ou (None, motif) : « invalid » (lien inconnu, expiré, plus aucune place),
+    « email » (adresse ou domaine différent de celui de l'invitation), « exists » (compte déjà existant)."""
     email = email.strip().lower()
     password_hash = hash_password(password)
     db = get_db()
@@ -511,7 +531,7 @@ def accept_invite(token: str, first_name: str, last_name: str, email: str, passw
                             (_token_hash(token),)).fetchone()
         if not invite:
             return None, "invalid"
-        if invite["email"] and invite["email"] != email:
+        if not invite_allows(invite["email"], email):
             return None, "email"
         try:
             cur = db.execute("INSERT INTO users (first_name, last_name, email, password_hash, is_admin, is_superadmin) "
@@ -519,8 +539,8 @@ def accept_invite(token: str, first_name: str, last_name: str, email: str, passw
         except sqlite3.IntegrityError:
             db.rollback()
             return None, "exists"
-        # Condition répétée dans la mise à jour : deux envois simultanés du même lien ne créent qu'un compte
-        used = db.execute(f"UPDATE teacher_invites SET used_at = CURRENT_TIMESTAMP, used_by = ? "
+        # Condition répétée dans la mise à jour : des envois simultanés ne dépassent pas le nombre de places
+        used = db.execute(f"UPDATE teacher_invites SET uses = uses + 1, used_at = CURRENT_TIMESTAMP, used_by = ? "
                           f"WHERE id = ? AND {_INVITE_VALID}", (cur.lastrowid, invite["id"]))
         if used.rowcount != 1:
             db.rollback()
@@ -533,7 +553,8 @@ def accept_invite(token: str, first_name: str, last_name: str, email: str, passw
 
 def list_pending_invites() -> list:
     db = get_db()
-    rows = db.execute(f"SELECT id, email, created_at, datetime(created_at, '+{INVITE_DAYS} days') AS expires_at "
+    rows = db.execute(f"SELECT id, email, created_at, max_uses, uses, "
+                      f"datetime(created_at, '+{INVITE_DAYS} days') AS expires_at "
                       f"FROM teacher_invites WHERE {_INVITE_VALID} ORDER BY created_at DESC").fetchall()
     db.close()
     return [dict(r) for r in rows]
@@ -541,7 +562,7 @@ def list_pending_invites() -> list:
 
 def revoke_invite(invite_id: int):
     db = get_db()
-    db.execute("DELETE FROM teacher_invites WHERE id = ? AND used_at IS NULL", (invite_id,))
+    db.execute("DELETE FROM teacher_invites WHERE id = ? AND uses < max_uses", (invite_id,))
     db.commit()
     db.close()
 

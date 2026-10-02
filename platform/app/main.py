@@ -300,12 +300,18 @@ async def register_submit(request: Request):
     return response
 
 
+def reserved_email(invite) -> str:
+    """Adresse à préremplir (et à ne pas modifier) : celle réservée par l'invitation, pas un domaine « @… »."""
+    restriction = (invite or {}).get("email") or ""
+    return "" if restriction.startswith("@") else restriction
+
+
 @app.get("/invitation/{token}", response_class=HTMLResponse)
 async def invitation_page(request: Request, token: str):
     """Invitation d'un enseignant (lien créé par l'administrateur) : formulaire de création du compte."""
     invite = db.invite_info(token)
     return templates.TemplateResponse(request, "invitation.html", {
-        "invite": invite, "error": None, "form": {"email": invite["email"] or ""} if invite else {},
+        "invite": invite, "error": None, "form": {"email": reserved_email(invite)} if invite else {},
     }, status_code=200 if invite else 404)
 
 
@@ -323,7 +329,7 @@ async def invitation_submit(request: Request, token: str):
 
     def error(msg, status_code=200):
         return templates.TemplateResponse(request, "invitation.html", {
-            "invite": invite, "error": msg, "form": {**dict(form), "email": (invite or {}).get("email") or email},
+            "invite": invite, "error": msg, "form": {**dict(form), "email": reserved_email(invite) or email},
         }, status_code=status_code)
 
     wait = ratelimit.REGISTER.blocked(ip_key)
@@ -344,7 +350,9 @@ async def invitation_submit(request: Request, token: str):
     if reason == "exists":
         return error("Un compte existe déjà avec cet email.")
     if reason == "email":
-        return error("Cette invitation est réservée à une autre adresse e-mail.")
+        restriction = invite["email"] or ""
+        return error(f"Cette invitation est réservée aux adresses {restriction}." if restriction.startswith("@")
+                     else "Cette invitation est réservée à une autre adresse e-mail.")
     if not user_id:
         invite = None
         return error(None, 404)
@@ -1157,10 +1165,12 @@ async def admin_reset_user(request: Request, user_id: int, course: str = DEFAULT
 
 # ─── Comptes enseignants (administrateur seulement) ─────────────────────
 
-def teachers_page(request: Request, user, msg: str = "", err: str = "", new_link: str = "", new_email: str = ""):
+def teachers_page(request: Request, user, msg: str = "", err: str = "", new_link: str = "", new_email: str = "",
+                  new_places: int = 1):
     return templates.TemplateResponse(request, "admin_teachers.html", {
         "user": user, "teachers": db.list_teachers(), "invites": db.list_pending_invites(),
-        "invite_days": db.INVITE_DAYS, "msg": msg, "err": err, "new_link": new_link, "new_email": new_email,
+        "invite_days": db.INVITE_DAYS, "invite_max": db.INVITE_MAX_USES, "msg": msg, "err": err,
+        "new_link": new_link, "new_email": new_email, "new_places": new_places,
     })
 
 
@@ -1180,16 +1190,27 @@ async def admin_teachers(request: Request, msg: str = "", err: str = ""):
 
 @app.post("/admin/enseignants/invitation", response_class=HTMLResponse)
 async def admin_teacher_invite(request: Request):
-    """Lien d'invitation à usage unique, valable INVITE_DAYS jours ; affiché une seule fois (seule son empreinte
-    est conservée)."""
+    """Lien d'invitation valable INVITE_DAYS jours, pour un ou plusieurs comptes (« places »), éventuellement réservé
+    à une adresse ou à un domaine (« @lycee.fr ») ; affiché une seule fois (seule son empreinte est conservée)."""
     user = superadmin_or_none(request)
     if not user:
         return staff_redirect(request)
-    email = (await request.form()).get("email", "").strip().lower()
-    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+", email):
-        return teachers_page(request, user, err="Adresse e-mail invalide.")
-    token = db.create_invite(user["user_id"], email)
-    return teachers_page(request, user, new_link=f"{public_base(request)}/invitation/{token}", new_email=email)
+    form = await request.form()
+    email = form.get("email", "").strip().lower()
+    if email and not re.fullmatch(r"[^@\s]*@[^@\s]+\.[^@\s]+", email):
+        return teachers_page(request, user, err="Adresse e-mail ou domaine invalide (exemples : prenom.nom@lycee.fr, @lycee.fr).")
+    try:
+        places = int(form.get("places") or 1)
+    except ValueError:
+        places = 0
+    if not 1 <= places <= db.INVITE_MAX_USES:
+        return teachers_page(request, user, err=f"Nombre de comptes invalide (de 1 à {db.INVITE_MAX_USES}).")
+    if places > 1 and email and not email.startswith("@"):
+        return teachers_page(request, user, err="Un lien réservé à une seule adresse ne peut créer qu'un compte : "
+                                                "indiquez un domaine (@lycee.fr) ou laissez le champ vide.")
+    token = db.create_invite(user["user_id"], email, places)
+    return teachers_page(request, user, new_link=f"{public_base(request)}/invitation/{token}", new_email=email,
+                         new_places=places)
 
 
 @app.post("/admin/enseignants/invitation/{invite_id}/revoke")

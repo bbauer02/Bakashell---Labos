@@ -22,7 +22,9 @@
         <div class="auth-logo">&gt;_ Compte enseignant</div>
         {% if invite %}
         <div class="auth-sub">Vous êtes invité·e à rejoindre {{ APP_TITLE }} en tant qu'enseignant·e : vous pourrez créer vos
-            classes et suivre vos étudiants. Ce lien ne sert qu'une fois.</div>
+            classes et suivre vos étudiants.{% if invite.max_uses > 1 %} Ce lien est partagé : créez votre propre compte, avec
+            votre adresse.{% else %} Ce lien ne sert qu'une fois.{% endif %}{% if invite.email and invite.email.startswith('@') %}
+            Réservé aux adresses <strong>{{ invite.email }}</strong>.{% endif %}</div>
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
         <form method="post">
             <div class="row">
@@ -37,7 +39,7 @@
             </div>
             <div class="field">
                 <label for="email">Adresse email</label>
-                <input type="email" id="email" name="email" required value="{{ form.email or '' }}" autocomplete="email" {% if invite.email %}readonly{% endif %}>
+                <input type="email" id="email" name="email" required value="{{ form.email or '' }}" autocomplete="email" {% if invite.email and not invite.email.startswith('@') %}readonly{% endif %}>
             </div>
             <div class="field">
                 <label for="password">Mot de passe (8 caractères minimum)</label>
