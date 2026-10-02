@@ -6,11 +6,11 @@
     <meta name="author" content="{{ AUTHOR_NAME }} ({{ AUTHOR_EMAIL }})">
     <title>Terminal de {{ target.first_name }} {{ target.last_name }} — {{ course.short }}</title>
     <link rel="stylesheet" href="/static/vendor/xterm/css/xterm.css">
+    <link rel="stylesheet" href="{{ asset('theme.css') }}">
     <style>
-        :root { --bg:#0f1117; --bg2:#161822; --card:#232639; --border:#2a2d3e; --text:#e1e4ed; --dim:#8b8fa3; --accent:#6c5ce7; --ok:#00b894; --err:#e17055; }
         * { margin:0; padding:0; box-sizing:border-box; }
         html, body { height:100%; }
-        body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--bg); color:var(--text); display:flex; flex-direction:column; }
+        body { font-family:var(--font-sans); background:var(--bg); color:var(--text); display:flex; flex-direction:column; }
         header { display:flex; align-items:center; gap:14px; padding:10px 16px; background:var(--bg2); border-bottom:1px solid var(--border); flex-wrap:wrap; }
         header h1 { font-size:15px; }
         header .dim { color:var(--dim); font-size:12px; }
@@ -20,9 +20,9 @@
         .status.on .dot { background:var(--ok); }
         .tabs { display:flex; gap:4px; padding:6px 16px 0; background:var(--bg2); }
         .tabs button { padding:6px 14px; border:1px solid var(--border); border-bottom:none; border-radius:8px 8px 0 0; background:var(--card); color:var(--dim); font-size:12px; cursor:pointer; }
-        .tabs button.active { background:#0a0c10; color:var(--text); }
+        .tabs button.active { background:#060a12; color:var(--text); }
         .tabs button.closed { text-decoration:line-through; opacity:.6; }
-        main { flex:1; position:relative; background:#0a0c10; min-height:0; }
+        main { flex:1; position:relative; background:#060a12; min-height:0; }
         .term { position:absolute; inset:8px; display:none; overflow:auto; }
         .term.active { display:block; }
         .empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; color:var(--dim); font-size:14px; line-height:1.6; padding:20px; }
@@ -30,7 +30,7 @@
 </head>
 <body>
     <header>
-        <h1>👁 {{ target.first_name }} {{ target.last_name }}</h1>
+        <h1>{{ marque() }}<span class="fil">›</span>👁 {{ target.first_name }} {{ target.last_name }}</h1>
         <span class="dim">{{ course.title }}</span>
         <span class="badge">Lecture seule : vos frappes ne sont pas transmises</span>
         <span class="status" id="status"><span class="dot"></span><span id="status-label">Connexion…</span></span>
@@ -73,7 +73,7 @@
             const term = new Terminal({
                 disableStdin: true, cursorBlink: false, fontSize: 14, scrollback: 5000,
                 fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-                theme: { background: '#0a0c10', foreground: '#e1e4ed', cursor: '#6c5ce7' },
+                theme: { background: '#060a12', foreground: '#e2e8f0', cursor: '#22d3ee' },
             });
             const fit = new FitAddon.FitAddon();
             term.loadAddon(fit);

@@ -20,6 +20,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 
 from . import containers
 from . import database as db
@@ -55,6 +56,23 @@ templates = Jinja2Templates(directory=os.path.join(APP_DIR, "templates"))
 templates.env.globals.update(APP_TITLE=APP_TITLE, APP_SHORT=APP_SHORT, APP_DESCRIPTION=APP_DESCRIPTION,
                              AUTHOR_NAME=AUTHOR_NAME, AUTHOR_EMAIL=AUTHOR_EMAIL)
 templates.env.filters["heure"] = lambda ts: datetime.datetime.fromtimestamp(ts).strftime("%d/%m %H:%M")
+
+
+def asset(path: str) -> str:
+    """Adresse d'un fichier de static/, avec sa date de modification (le navigateur recharge la nouvelle version)."""
+    full = os.path.join(APP_DIR, "static", path)
+    return f"/static/{path}?v={int(os.path.getmtime(full))}" if os.path.isfile(full) else f"/static/{path}"
+
+
+def marque(taille: str = "normal", lien: str = "/catalogue") -> Markup:
+    """Logo de la plateforme (charte : static/theme.css) ; taille « grand » : avec la devise, pour l'accueil."""
+    devise = '<span class="marque-devise">Le bac à shell · Labo DevOps</span>' if taille == "grand" else ""
+    return Markup(f'<a class="marque marque-{taille}" href="{lien}" title="{APP_TITLE}">'
+                  f'<span class="marque-icone" aria-hidden="true"><span>🐚</span></span>'
+                  f'<span class="marque-texte"><span class="marque-nom">{APP_SHORT}</span>{devise}</span></a>')
+
+
+templates.env.globals.update(asset=asset, marque=marque)
 # xterm.js et Monaco servis par la plateforme (installés dans l'image) : pas besoin d'Internet en salle
 if os.path.isdir(os.path.join(APP_DIR, "static")):
     app.mount("/static", StaticFiles(directory=os.path.join(APP_DIR, "static")), name="static")

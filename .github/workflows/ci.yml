@@ -35,7 +35,9 @@ jobs:
       - name: Les bibliothèques du navigateur sont servies localement
         run: |
           docker run --rm linux-lab-platform sh -c \
-            'test -f /app/static/vendor/xterm/lib/xterm.js && test -f /app/static/vendor/monaco-editor/min/vs/loader.js'
+            'test -f /app/static/vendor/xterm/lib/xterm.js && test -f /app/static/vendor/monaco-editor/min/vs/loader.js &&
+             test -f /app/static/vendor/fontsource/inter/files/inter-latin-800-normal.woff2 &&
+             test -f /app/static/vendor/fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2'
 
   parcours:
     name: Banc de test — ${{ matrix.course }}

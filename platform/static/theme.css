@@ -1,0 +1,88 @@
+/* Charte graphique de Bakashell : couleurs, polices et logo, partagés par toutes les pages.
+   Les polices sont servies par la plateforme (static/vendor/fontsource, voir le Dockerfile) : pas besoin d'Internet. */
+
+@font-face { font-family: 'Inter'; font-style: normal; font-display: swap; font-weight: 400;
+    src: url(/static/vendor/fontsource/inter/files/inter-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-display: swap; font-weight: 600;
+    src: url(/static/vendor/fontsource/inter/files/inter-latin-600-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-display: swap; font-weight: 700;
+    src: url(/static/vendor/fontsource/inter/files/inter-latin-700-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-display: swap; font-weight: 800;
+    src: url(/static/vendor/fontsource/inter/files/inter-latin-800-normal.woff2) format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-display: swap; font-weight: 400;
+    src: url(/static/vendor/fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-display: swap; font-weight: 700;
+    src: url(/static/vendor/fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2) format('woff2'); }
+
+:root {
+    /* Fonds, du plus profond au plus clair */
+    --bg: #090d16;
+    --bg2: #0e1626;
+    --bg3: #0f1728;
+    --card: #131c2e;
+    --border: #1e293b;
+    --border-hi: #334155;
+    /* Texte */
+    --text: #e2e8f0;
+    --dim: #94a3b8;
+    /* Marque : cyan, émeraude, sable */
+    --accent: #06b6d4;
+    --accent-l: #22d3ee;
+    --emerald: #10b981;
+    --sand: #e6c687;
+    --cyan: #67e8f9;
+    /* États */
+    --ok: #10b981;
+    --err: #ef4444;
+    --warn: #f59e0b;
+    /* Dégradés */
+    --grad: linear-gradient(135deg, #0891b2, #10b981);
+    --grad-logo: linear-gradient(90deg, #22d3ee, #5eead4, #fcd34d);
+    --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+    /* Mêmes couleurs sous les noms utilisés par la page du labo */
+    --bg-primary: var(--bg);
+    --bg-secondary: var(--bg2);
+    --bg-panel: var(--bg3);
+    --bg-card: var(--card);
+    --text-dim: var(--dim);
+    --accent-light: var(--accent-l);
+    --success: var(--ok);
+    --success-bg: rgba(16, 185, 129, 0.1);
+    --warning: var(--warn);
+    --danger: var(--err);
+    --danger-bg: rgba(239, 68, 68, 0.1);
+}
+
+/* Barres de défilement discrètes */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+* { scrollbar-color: var(--border-hi) var(--bg); }
+
+/* ─── Logo : coquillage dans un cadre en dégradé, nom en dégradé ─────────────────────────────── */
+.marque { display: inline-flex; align-items: center; gap: 10px; color: inherit; text-decoration: none !important; }
+.marque-icone { width: 36px; height: 36px; padding: 2px; border-radius: 12px; flex-shrink: 0;
+    background: linear-gradient(45deg, #0891b2, #10b981, #fcd34d); box-shadow: 0 4px 14px rgba(8, 51, 68, 0.7); }
+.marque-icone span { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
+    border-radius: 10px; background: #0b0f17; font-size: 18px; line-height: 1; }
+.marque-texte { display: flex; flex-direction: column; line-height: 1.15; text-align: left; }
+.marque-nom { font-family: var(--font-sans); font-weight: 800; font-size: 19px; letter-spacing: -0.02em;
+    background: var(--grad-logo); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.marque-devise { font-size: 11px; font-weight: 500; color: var(--dim); }
+.marque:hover .marque-icone { box-shadow: 0 0 14px rgba(34, 211, 238, 0.45); }
+.marque-grand { flex-direction: column; gap: 12px; }
+.marque-grand .marque-icone { width: 60px; height: 60px; border-radius: 18px; padding: 3px; }
+.marque-grand .marque-icone span { border-radius: 15px; font-size: 30px; }
+.marque-grand .marque-texte { text-align: center; align-items: center; }
+.marque-grand .marque-nom { font-size: 30px; }
+.marque-grand .marque-devise { font-size: 13px; margin-top: 2px; }
+
+/* Titre sous le logo des pages de compte (connexion, invitation…) */
+.auth-titre { margin-top: 14px; font-size: 20px; font-weight: 700; color: var(--text); }
+
+/* Logo en tête des pages du personnel : « logo › titre de la page » */
+h1 .marque { vertical-align: middle; margin-right: 2px; }
+h1 .fil { color: var(--border-hi); font-weight: 400; margin: 0 12px 0 10px; vertical-align: middle; }

@@ -9,13 +9,13 @@
 .btn-link { padding:7px 14px; border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; background:var(--card); }
 .btn-link:hover { border-color:var(--accent); text-decoration:none; }
 .notice { padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:20px; }
-.notice.ok { background:rgba(0,184,148,.12); border:1px solid var(--ok); color:var(--ok); }
-.notice.err { background:rgba(225,112,85,.12); border:1px solid var(--err); color:var(--err); }
+.notice.ok { background:rgba(16,185,129,.12); border:1px solid var(--ok); color:var(--ok); }
+.notice.err { background:rgba(239,68,68,.12); border:1px solid var(--err); color:var(--err); }
 .help { color:var(--dim); font-size:13px; line-height:1.6; margin-bottom:20px; }
 .box { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:20px 22px; margin-bottom:20px; }
 .box h2 { font-size:16px; margin-bottom:12px; }
 .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-input[type=email], input[type=text] { padding:9px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; }
+input[type=email], input[type=text], input[type=number] { padding:9px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; }
 button { padding:8px 14px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:13px; cursor:pointer; }
 button:hover { border-color:var(--accent); }
 button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
@@ -33,13 +33,13 @@ tr.off td { opacity:.55; }
 .actions { display:flex; gap:6px; flex-wrap:wrap; }
 .actions form { margin:0; }
 .state { font-size:11px; padding:1px 7px; border-radius:8px; }
-.state.off { background:rgba(225,112,85,.15); color:var(--err); }
+.state.off { background:rgba(239,68,68,.15); color:var(--err); }
 .empty { color:var(--dim); font-size:13px; }
 {% endblock %}
 {% block body %}
 <div class="page">
     <div class="top">
-        <h1>&gt;_ Enseignants {{ role_badge(user) }}</h1>
+        <h1>{{ marque() }}<span class="fil">›</span>Enseignants {{ role_badge(user) }}</h1>
         <div class="nav">
             <a class="btn-link" href="/dashboard">Tableau de bord</a>
             <a class="btn-link" href="/admin/classes">Classes</a>
@@ -51,7 +51,8 @@ tr.off td { opacity:.55; }
     <p class="help">
         Chaque enseignant gère <strong>ses propres classes</strong> et ne voit que les étudiants qui en sont membres
         (tableau de bord, statistiques, intégrité, export, terminal). Vous, administrateur, voyez tout. Un compte
-        enseignant se crée uniquement par <strong>invitation</strong> : un lien valable {{ invite_days }} jours, pour un
+        enseignant se crée par <strong>invitation</strong> (ci-dessous) ou, si l'envoi d'e-mails est configuré, par
+        inscription avec une adresse académique vérifiée. Une invitation est un lien valable {{ invite_days }} jours, pour un
         ou plusieurs comptes, que vous transmettez (messagerie de l'établissement…). Pour inviter toute une équipe, créez
         un lien à plusieurs places, de préférence réservé au domaine de l'établissement (<code>@lycee.fr</code>).
     </p>

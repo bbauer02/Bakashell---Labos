@@ -11,8 +11,8 @@
 .btn-link { padding:7px 14px; border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; background:var(--card); }
 .btn-link:hover { border-color:var(--accent); text-decoration:none; }
 .notice { padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:20px; }
-.notice.ok { background:rgba(0,184,148,.12); border:1px solid var(--ok); color:var(--ok); }
-.notice.err { background:rgba(225,112,85,.12); border:1px solid var(--err); color:var(--err); }
+.notice.ok { background:rgba(16,185,129,.12); border:1px solid var(--ok); color:var(--ok); }
+.notice.err { background:rgba(239,68,68,.12); border:1px solid var(--err); color:var(--err); }
 .help { color:var(--dim); font-size:13px; line-height:1.6; margin-bottom:20px; }
 .box { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:20px 22px; margin-bottom:20px; }
 .box h2 { font-size:18px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
@@ -49,7 +49,7 @@ select, input[type=date] { padding:8px 10px; background:var(--bg); border:1px so
 {% block body %}
 <div class="page">
     <div class="top">
-        <h1>&gt;_ {% if user.is_superadmin %}Classes{% else %}Mes classes{% endif %} {{ role_badge(user) }}</h1>
+        <h1>{{ marque() }}<span class="fil">›</span>{% if user.is_superadmin %}Classes{% else %}Mes classes{% endif %} {{ role_badge(user) }}</h1>
         <div class="nav">
             <a class="btn-link" href="/dashboard">Tableau de bord</a>
             {{ teachers_link(user) }}

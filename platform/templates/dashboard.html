@@ -28,16 +28,16 @@ th { background:var(--card); padding:12px; text-align:left; font-size:11px; font
 td { padding:10px 12px; border-bottom:1px solid var(--border); font-size:14px; vertical-align:middle; }
 tr:last-child td { border-bottom:none; }
 tr.flash td { animation:flash 2.5s ease-out; }
-@keyframes flash { 0% { background:rgba(0,184,148,.35); } 100% { background:transparent; } }
+@keyframes flash { 0% { background:rgba(16,185,129,.35); } 100% { background:transparent; } }
 .name { font-weight:600; white-space:nowrap; }
 .email { color:var(--dim); font-size:12px; }
 .status { display:flex; align-items:center; gap:8px; white-space:nowrap; font-size:13px; }
 .status .dot { width:10px; height:10px; border-radius:50%; background:var(--border); flex-shrink:0; }
-.status.active .dot { background:var(--ok); box-shadow:0 0 0 3px rgba(0,184,148,.2); }
+.status.active .dot { background:var(--ok); box-shadow:0 0 0 3px rgba(16,185,129,.2); }
 .status.idle .dot { background:#fdcb6e; }
 .status.offline { color:var(--dim); }
 .where { font-size:12px; color:var(--dim); margin-top:2px; }
-.stuck { display:inline-block; margin-top:4px; font-size:11px; color:#e17055; background:rgba(225,112,85,.12); border-radius:4px; padding:1px 6px; }
+.stuck { display:inline-block; margin-top:4px; font-size:11px; color:#ef4444; background:rgba(239,68,68,.12); border-radius:4px; padding:1px 6px; }
 .score-cell { font-weight:700; font-size:16px; white-space:nowrap; }
 .score-high { color:var(--ok); } .score-mid { color:var(--accent-l); } .score-low { color:var(--dim); }
 .steps-grid { display:flex; gap:2px; }
@@ -61,10 +61,10 @@ tr.flash td { animation:flash 2.5s ease-out; }
 .feed li { padding:9px 14px; border-bottom:1px solid var(--border); font-size:13px; line-height:1.45; animation:appear .4s ease-out; }
 .feed li .t { color:var(--dim); font-size:11px; margin-right:6px; font-variant-numeric:tabular-nums; }
 .feed li.progress b { color:var(--ok); }
-.feed li.attempt b { color:#e17055; }
+.feed li.attempt b { color:#ef4444; }
 .feed li.hint b { color:#fdcb6e; }
 .feed .none { color:var(--dim); font-style:italic; }
-.late-badge { display:inline-block; margin-top:4px; font-size:11px; color:var(--err); background:rgba(225,112,85,.12); border-radius:4px; padding:1px 6px; }
+.late-badge { display:inline-block; margin-top:4px; font-size:11px; color:var(--err); background:rgba(239,68,68,.12); border-radius:4px; padding:1px 6px; }
 .cell.late { box-shadow:inset 0 -3px 0 var(--err); }
 .btn-sm.watch { text-decoration:none; display:inline-flex; align-items:center; }
 .btn-sm.watch.live { border-color:var(--ok); color:var(--ok); }
@@ -80,7 +80,7 @@ tr.flash td { animation:flash 2.5s ease-out; }
 {% block body %}
 <div class="dashboard">
     <div class="dash-header">
-        <h1>&gt;_ Tableau des scores {{ role_badge(user) }} <span class="live-badge" id="live-badge"><span class="dot"></span><span id="live-label">connexion…</span></span></h1>
+        <h1>{{ marque() }}<span class="fil">›</span>Tableau des scores {{ role_badge(user) }} <span class="live-badge" id="live-badge"><span class="dot"></span><span id="live-label">connexion…</span></span></h1>
         <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end">
             <a href="/admin/export.csv?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}" class="back-btn" title="Notes du parcours{% if classe %} pour cette classe{% endif %}, à ouvrir dans un tableur">⬇ Exporter les notes (CSV)</a>
             <a href="/admin/stats?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}" class="back-btn">📊 Statistiques par exercice</a>
@@ -120,7 +120,7 @@ tr.flash td { animation:flash 2.5s ease-out; }
                 <span><span class="cell done"></span>étape terminée</span>
                 <span><span class="cell partial"></span>commencée</span>
                 <span><span class="cell here"></span>étape ouverte en ce moment</span>
-                <span>Statut : <span style="color:var(--ok)">●</span> actif (moins de 90 s) · <span style="color:#fdcb6e">●</span> connecté, inactif · ○ hors ligne · <span style="color:#e17055">⚠</span> 3 vérifications d'affilée sans progrès</span>
+                <span>Statut : <span style="color:var(--ok)">●</span> actif (moins de 90 s) · <span style="color:#fdcb6e">●</span> connecté, inactif · ○ hors ligne · <span style="color:#ef4444">⚠</span> 3 vérifications d'affilée sans progrès</span>
             </p>
             <div class="table-wrap">
             <table>

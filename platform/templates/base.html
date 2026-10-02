@@ -9,17 +9,13 @@
     <meta property="og:type" content="website">
     <meta property="og:title" content="{{ APP_TITLE }}">
     <meta property="og:description" content="{{ APP_DESCRIPTION }}">
+    <link rel="stylesheet" href="{{ asset('theme.css') }}">
     <style>
-        :root {
-            --bg: #0f1117; --bg2: #161822; --bg3: #1a1d2e; --card: #232639;
-            --border: #2a2d3e; --text: #e1e4ed; --dim: #8b8fa3;
-            --accent: #6c5ce7; --accent-l: #a29bfe; --ok: #00b894; --err: #e17055; --cyan: #00cec9;
-        }
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+        body { font-family:var(--font-sans); background:var(--bg); color:var(--text); min-height:100vh; }
         a { color:var(--accent-l); text-decoration:none; }
         a:hover { text-decoration:underline; }
-        code { background:var(--bg); padding:2px 6px; border-radius:4px; font-family:'JetBrains Mono','Fira Code',monospace; font-size:12px; color:var(--cyan); }
+        code { background:var(--bg); padding:2px 6px; border-radius:4px; font-family:var(--font-mono); font-size:12px; color:var(--cyan); }
         .site-footer { text-align:center; color:var(--dim); font-size:12px; padding:18px 16px 24px; }
         .site-footer a { color:var(--dim); text-decoration:underline; }
         .role-badge { display:inline-block; vertical-align:middle; font-size:11px; font-weight:600; letter-spacing:.4px; padding:3px 9px; border-radius:10px; background:rgba(0,206,201,.12); color:var(--cyan); margin-left:10px; }

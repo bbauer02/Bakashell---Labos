@@ -31,7 +31,7 @@ select { padding:7px 10px; background:var(--card); color:var(--text); border:1px
 {% block body %}
 <div class="page">
     <div class="top">
-        <h1>🔎 Intégrité : signaux à examiner {{ role_badge(user) }}</h1>
+        <h1>{{ marque() }}<span class="fil">›</span>🔎 Intégrité : signaux à examiner {{ role_badge(user) }}</h1>
         <div class="nav">
             <a class="btn-link" href="/dashboard?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}">Tableau de bord</a>
             <a class="btn-link" href="/admin/stats?course={{ course.key }}{% if classe %}&classe={{ classe }}{% endif %}">Statistiques</a>

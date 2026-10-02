@@ -11,8 +11,8 @@
 .btn-link { padding:7px 14px; border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; background:var(--card); }
 .btn-link:hover { border-color:var(--accent); text-decoration:none; }
 .staff-note { font-size:12.5px; color:#fdcb6e; margin-bottom:14px; }
-.hero { display:flex; gap:22px; align-items:center; flex-wrap:wrap; background:linear-gradient(135deg, rgba(255,46,136,.14), rgba(108,92,231,.16) 50%, rgba(0,240,255,.10)); border:1px solid var(--border); border-radius:18px; padding:24px; margin-bottom:22px; }
-.avatar { width:76px; height:76px; border-radius:50%; background:linear-gradient(135deg, #ff2e88, #6c5ce7 55%, #00f0ff); display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:800; color:#fff; flex-shrink:0; box-shadow:0 6px 20px rgba(108,92,231,.35); }
+.hero { display:flex; gap:22px; align-items:center; flex-wrap:wrap; background:linear-gradient(135deg, rgba(255,46,136,.14), rgba(6,182,212,.16) 50%, rgba(0,240,255,.10)); border:1px solid var(--border); border-radius:18px; padding:24px; margin-bottom:22px; }
+.avatar { width:76px; height:76px; border-radius:50%; background:linear-gradient(135deg, #ff2e88, #06b6d4 55%, #00f0ff); display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:800; color:#fff; flex-shrink:0; box-shadow:0 6px 20px rgba(6,182,212,.35); }
 .who { flex:1; min-width:220px; }
 .who h1 { font-size:26px; }
 .who .sub { color:var(--dim); font-size:13.5px; margin-top:3px; }
@@ -62,7 +62,7 @@ section { margin-bottom:34px; }
 {% block body %}
 <div class="page">
     <div class="top">
-        <a class="logo" href="/catalogue" style="text-decoration:none">&gt;_ {{ APP_TITLE }}</a>
+        {{ marque() }}
         <div class="top-right">
             <span>{{ user.first_name }} {{ user.last_name }}{% if user.is_admin %}{{ role_badge(user) }}{% endif %}</span>
             <a class="btn-link" href="/catalogue">Mes labos</a>
