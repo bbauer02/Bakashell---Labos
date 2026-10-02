@@ -25,7 +25,7 @@ emit() { echo "@$1=$2"; }
 own() { chown -R etudiant:etudiant "$@"; }
 # Attend le moteur Docker interne et l'image des machines (premier démarrage : environ 30 s)
 for _ in $(seq 1 150); do [ -f /run/lab-ready ] && docker info >/dev/null 2>&1 && break; sleep 1; done
-docker image inspect machine-reseau:3 >/dev/null 2>&1 || { echo "Le réseau n'est pas prêt" >&2; exit 1; }
+docker image inspect machine-reseau:4 >/dev/null 2>&1 || { echo "Le réseau n'est pas prêt" >&2; exit 1; }
 R=/etc/reseau
 mkdir -p $R
 # reseau_neuf : retire toutes les machines et tous les câbles du module précédent. Par leur étiquette, pas par la
@@ -45,11 +45,11 @@ machine() {
   [ "${2:-}" = routeur ] && extra=(--security-opt systempaths=unconfined)
   docker run -d --name "$1" --hostname "$1" --label reseau-lab --network none --cap-add NET_ADMIN "${extra[@]}" \
     --sysctl net.ipv6.conf.all.disable_ipv6=1 --sysctl net.ipv6.conf.default.disable_ipv6=1 \
-    --restart unless-stopped --init machine-reseau:3 >/dev/null
+    --restart unless-stopped --init machine-reseau:4 >/dev/null
   echo "$1" >> $R/machines
 }
 # fichier_sur <machine> <chemin> [droits] : écrit un fichier sur la machine (contenu lu sur l'entrée standard)
-fichier_sur() { docker exec -i "$1" sh -c "cat > '$2'${3:+ && chmod $3 '$2'}"; }
+fichier_sur() { docker exec -i "$1" sh -c "mkdir -p \"\$(dirname '$2')\" && cat > '$2'${3:+ && chmod $3 '$2'}"; }
 # interfaces <machine> : son /etc/network/interfaces (lu sur l'entrée standard), appliqué à chaque démarrage
 interfaces() { docker exec -i "$1" sh -c 'cat > /etc/network/interfaces'; }
 # cable <machine A> <interface A> <MAC A|-> <machine B> <interface B> <MAC B|-> (côté « sw-… » : port du switch)
@@ -82,6 +82,10 @@ montre_routes() { echo "MSG:routes de $1 : $(sur "$1" ip -4 route 2>/dev/null | 
 transfert() { sur "$1" sysctl -n net.ipv4.ip_forward 2>/dev/null; }
 # redemarree <machine> : l'étudiant a redémarré la machine depuis la console (commande redemarrer)
 redemarree() { grep -q "^$1 " /var/lib/lab/redemarrages 2>/dev/null; }
+# nom_ip <machine> <nom> : l'adresse que la machine obtient vraiment pour ce nom (/etc/hosts, puis DNS : comme un ping)
+nom_ip() { docker exec "$1" getent hosts "$2" 2>/dev/null | awk '{print $1; exit}'; }
+# dns <machine> <nom> : la réponse du serveur DNS de l'entreprise (10.20.0.53), interrogé depuis le réseau de la machine
+dns() { sur "$1" dig +short +time=2 +tries=1 @10.20.0.53 "$2" 2>/dev/null | tail -n 1; }
 # reboot_test <machine> : redémarre la machine comme le ferait l'étudiant, et attend qu'elle ait appliqué sa configuration
 reboot_test() { docker restart -t 1 "$1" >/dev/null && /usr/local/sbin/lab-cablage && sleep 1; }
 '''
@@ -570,6 +574,217 @@ EOF
     ],
 }
 
+
+# ─── Module 3 : les noms (DNS) ───────────────────────────────────────────────────────────────
+
+SCHEMA_RESOLUTION = (
+    f'<figure class="schema"><svg viewBox="0 0 640 216" role="img" aria-label="Le poste demande l\'adresse au serveur DNS, puis contacte le serveur">{_fleches(7)}'
+    + _machine_box(10, 84, "poste", "172.16.5.30", w=130)
+    + _machine_box(480, 10, "serveur DNS", "172.16.5.53", w=150)
+    + _machine_box(480, 156, "boutique", "172.16.5.80", w=150)
+    + '<path class="la" d="M140,98 C300,98 330,30 478,30" marker-end="url(#rl7)"/>'
+    '<text class="t2" x="250" y="34">① « boutique.chamonix.lan ? »</text>'
+    '<path class="ld" d="M478,52 C340,52 310,116 142,116" marker-end="url(#rw7)"/>'
+    '<text class="t2" x="300" y="106">② « 172.16.5.80 »</text>'
+    '<path class="l" d="M140,124 C300,124 330,180 478,180" marker-end="url(#rg7)"/>'
+    '<text class="t2" x="250" y="200">③ connexion à 172.16.5.80</text>'
+    '</svg><figcaption>Avant de contacter <code>boutique.chamonix.lan</code>, le poste demande son adresse IP au '
+    '<strong>serveur DNS</strong> : c\'est l\'annuaire du réseau. Ensuite seulement, il contacte la machine.</figcaption></figure>'
+)
+
+SCHEMA_ORDRE = (
+    f'<figure class="schema"><svg viewBox="0 0 640 196" role="img" aria-label="La machine cherche d\'abord dans /etc/hosts, puis interroge le DNS">{_fleches(8)}'
+    '<rect class="b" x="10" y="74" width="150" height="50" rx="8"/><text x="22" y="96">quelle adresse pour</text><text class="mono" x="22" y="114">boutique.chamonix.lan ?</text>'
+    '<rect class="w" x="200" y="20" width="200" height="56" rx="8"/><text x="212" y="42">① /etc/hosts</text><text class="t2" x="212" y="60">le carnet local de la machine</text>'
+    '<rect class="a" x="200" y="122" width="200" height="56" rx="8"/><text x="212" y="144">② le serveur DNS</text><text class="t2" x="212" y="162">celui de /etc/resolv.conf</text>'
+    '<rect class="g" x="450" y="20" width="180" height="56" rx="8"/><text x="462" y="42">trouvé : on s\'arrête là</text><text class="t2" x="462" y="60">même si le DNS dit autre chose</text>'
+    '<rect class="g" x="450" y="122" width="180" height="56" rx="8"/><text x="462" y="144">sa réponse</text><text class="t2" x="462" y="162">ou « nom inconnu »</text>'
+    '<path class="la" d="M160,92 C180,92 180,48 198,48" marker-end="url(#rl8)"/>'
+    '<path class="l" d="M400,48 L448,48" marker-end="url(#rg8)"/>'
+    '<path class="l" d="M300,76 L300,120" marker-end="url(#rg8)"/><text class="t2" x="308" y="104">pas trouvé</text>'
+    '<path class="l" d="M400,150 L448,150" marker-end="url(#rg8)"/>'
+    '</svg><figcaption>Une machine consulte d\'abord son fichier <code>/etc/hosts</code>, puis le serveur DNS. Une vieille ligne '
+    'oubliée dans <code>/etc/hosts</code> passe donc <strong>avant</strong> l\'annuaire officiel.</figcaption></figure>'
+)
+
+SCENARIO_NOMS = """<div class="scenario"><h3>Des noms plutôt que des adresses</h3><p>Le magasin et le siège communiquent : bravo ! Mais Thomas râle : « Je ne vais pas retenir <code>10.20.0.10</code> pour le serveur de stock, <code>10.20.0.53</code> pour celui-là… Et le jour où un serveur change d'adresse, on modifie tous les postes ? » Léa a installé un <strong>serveur DNS</strong> au siège, <code>srv-dns</code> : l'annuaire de l'entreprise, pour le domaine <code>cimes.lan</code>. Reste à s'en servir… et à le tenir à jour.</p></div>"""
+
+MODULE_3 = {
+    "title": "Module 3 — Des noms plutôt que des adresses : le DNS",
+    "description": "Appeler les machines par leur nom. Compétences : rôle du DNS, dig, /etc/resolv.conf, /etc/hosts et sa priorité, getent hosts, ajouter et corriger un enregistrement (dnsmasq), redémarrer un service.",
+    "lesson": SCENARIO_NOMS + """<h3>L'annuaire du réseau</h3>""" + SCHEMA_RESOLUTION + """<p>Les machines ne se parlent qu'avec des adresses IP. Le <strong>DNS</strong> (<em>Domain Name System</em>) traduit un nom, plus facile à retenir et qui ne change pas, en adresse IP. Quand un serveur déménage, on modifie une seule ligne dans l'annuaire, et tous les postes suivent.</p><h3>Où la machine cherche-t-elle ?</h3>""" + SCHEMA_ORDRE + """<p>Deux fichiers décident de tout, sur chaque machine :</p><pre># /etc/hosts : le carnet local, consulté en premier
+127.0.0.1      localhost
+172.16.5.80    boutique.chamonix.lan boutique
+
+# /etc/resolv.conf : le serveur DNS à interroger
+nameserver 172.16.5.53</pre><div class="tip">Le fichier <code>/etc/hosts</code> dépanne pour une machine isolée, mais il faut le tenir à jour à la main, sur chaque poste. Dans une entreprise, une seule source de vérité : le DNS.</div><h3>Interroger le DNS : dig</h3><pre>root@vitrine:~# dig boutique.chamonix.lan
+;; -&gt;&gt;HEADER&lt;&lt;- opcode: QUERY, status: NOERROR      # NOERROR : le nom existe · NXDOMAIN : nom inconnu
+;; ANSWER SECTION:
+boutique.chamonix.lan.  0  IN  A  172.16.5.80       # la réponse : l'adresse IP (enregistrement A)
+;; SERVER: 172.16.5.53#53(172.16.5.53)               # le serveur DNS qui a répondu</pre><pre>dig +short boutique.chamonix.lan                 # seulement l'adresse
+dig @172.16.5.53 boutique.chamonix.lan           # interroger un serveur DNS précis
+getent hosts boutique.chamonix.lan               # ce que la machine utilise VRAIMENT (/etc/hosts, puis DNS)</pre><div class="tip"><code>dig</code> interroge le DNS, et seulement lui. <code>getent hosts</code> suit le même chemin qu'un <code>ping</code> ou un navigateur. Si les deux ne donnent pas la même adresse, regardez <code>/etc/hosts</code>.</div><p>Messages d'erreur à reconnaître : <code>Temporary failure in name resolution</code> (aucun serveur DNS ne répond : vérifiez <code>/etc/resolv.conf</code>) et <code>Name or service not known</code> (le nom n'existe pas).</p><h3>Le serveur DNS du siège : dnsmasq</h3><p>Sur <code>srv-dns</code>, l'annuaire est un fichier texte, une ligne par nom :</p><pre># /etc/dnsmasq.d/chamonix.conf (exemple du magasin de Chamonix)
+host-record=boutique.chamonix.lan,172.16.5.80
+host-record=vitrine.chamonix.lan,172.16.5.30</pre><pre>service dnsmasq restart     # relire l'annuaire après une modification
+service dnsmasq status      # le service tourne-t-il ?</pre><div class="tip">Un service ne relit pas sa configuration tout seul : après chaque modification, redémarrez-le, puis vérifiez avec <code>dig</code>.</div>""",
+    "setup": r'''
+reseau_neuf
+machine sw-annecy
+machine caisse
+machine bureau
+machine box-annecy routeur
+machine sw-siege
+machine srv-stock
+machine srv-dns
+LO='auto lo
+iface lo inet loopback
+'
+# Le réseau du module 2, en état de marche
+for m in caisse:11 bureau:12; do
+  interfaces ${m%%:*} <<EOF
+$LO
+auto eth0
+iface eth0 inet static
+    address 192.168.10.${m##*:}
+    netmask 255.255.255.0
+    gateway 192.168.10.254
+EOF
+done
+interfaces box-annecy <<EOF
+$LO
+auto eth0
+iface eth0 inet static
+    address 192.168.10.254
+    netmask 255.255.255.0
+
+auto eth1
+iface eth1 inet static
+    address 10.20.0.254
+    netmask 255.255.255.0
+EOF
+fichier_sur box-annecy /etc/sysctl.conf <<'EOF'
+# Réglages du noyau, appliqués au démarrage
+net.ipv4.ip_forward=1
+EOF
+docker exec box-annecy sysctl -q -w net.ipv4.ip_forward=1
+for m in srv-stock:10 srv-dns:53; do
+  interfaces ${m%%:*} <<EOF
+$LO
+auto eth0
+iface eth0 inet static
+    address 10.20.0.${m##*:}
+    netmask 255.255.255.0
+    gateway 10.20.0.254
+EOF
+done
+# Le serveur DNS : l'annuaire cimes.lan (R3.1 : intranet, adresse propre à chaque étudiant ; R3.4 : une erreur)
+intranet=$((100 + RANDOM % 100))
+fichier_sur srv-dns /etc/dnsmasq.d/00-service.conf <<'EOF'
+# Réglages du service DNS (ne pas modifier) : répondre aux postes du magasin comme à ceux du siège,
+# sans relayer les questions vers Internet
+interface=eth0
+no-resolv
+EOF
+fichier_sur srv-dns /etc/dnsmasq.d/cimes.conf <<EOF
+# Annuaire DNS de Cimes & Sentiers : domaine cimes.lan
+# Une ligne par nom : host-record=<nom>,<adresse IP>
+host-record=dns.cimes.lan,10.20.0.53
+host-record=stock.cimes.lan,10.20.0.10
+host-record=facturation.cimes.lan,10.20.0.110
+host-record=intranet.cimes.lan,10.20.0.$intranet
+host-record=box-annecy.cimes.lan,192.168.10.254
+EOF
+emit INTRANET "10.20.0.$intranet"
+fichier_sur srv-dns /etc/lab/au-demarrage 755 <<'EOF'
+#!/bin/sh
+# Services lancés au démarrage de la machine, une fois le réseau configuré
+service dnsmasq start
+EOF
+# Serveurs DNS des postes. R3.2 : le bureau interroge l'ancienne box, qui n'existe plus
+for m in caisse srv-stock srv-dns box-annecy; do
+  fichier_sur $m /etc/resolv.conf <<'EOF'
+# Serveur DNS de l'entreprise
+nameserver 10.20.0.53
+EOF
+done
+fichier_sur bureau /etc/resolv.conf <<'EOF'
+# Serveur DNS
+nameserver 192.168.10.1
+EOF
+# R3.3 : une ligne oubliée par Marc dans le carnet local de la caisse (l'ancien serveur de stock)
+docker exec caisse sh -c 'printf "\n# Ajouté par Marc, en attendant le DNS\n10.20.0.99\tstock.cimes.lan stock\n" >> /etc/hosts'
+cable caisse eth0 $(mac 3c:52:82) sw-annecy port1 -
+cable bureau eth0 $(mac 3c:52:82) sw-annecy port2 -
+cable box-annecy eth0 $(mac 00:24:d4) sw-annecy port8 -
+cable box-annecy eth1 $(mac 00:24:d4) sw-siege port1 -
+cable srv-stock eth0 $(mac 00:50:56) sw-siege port2 -
+cable srv-dns eth0 $(mac 00:50:56) sw-siege port3 -
+cabler
+cat > $R/plan.txt <<'EOF'
+
+  Magasin d'Annecy (192.168.10.0/24) relié au siège (10.20.0.0/24) — domaine DNS : cimes.lan
+
+  sw-annecy (switch du magasin)              sw-siege (switch du siège)
+   ├─ port1 ── caisse   192.168.10.11          ├─ port2 ── srv-stock   10.20.0.10   (stock.cimes.lan)
+   ├─ port2 ── bureau   192.168.10.12          └─ port3 ── srv-dns     10.20.0.53   (serveur DNS)
+   └─ port8 ──┐                                 ┌── port1
+              └── box-annecy (routeur) ─────────┘
+                    eth0 192.168.10.254   eth1 10.20.0.254
+
+  Serveur DNS de l'entreprise : 10.20.0.53 (srv-dns) · annuaire : /etc/dnsmasq.d/cimes.conf
+
+EOF
+mkdir -p $H/reponses
+own $H/reponses
+''',
+    "exercises": [
+        {"id": "R3.1", "points": 2, "title": "Consulter l'annuaire", "manual": True,
+         "ticket": {"from": "lea", "body": "Le serveur DNS du siège est en place : <code>srv-dns</code>, adresse <code>10.20.0.53</code>. Fais-toi la main : demande-lui l'adresse de <code>intranet.cimes.lan</code>, depuis le bureau, et note-la dans <code>~/reponses/intranet.txt</code> sur la console."},
+         "desc": "Sur la console, <code>~/reponses/intranet.txt</code> contient l'adresse IP de <code>intranet.cimes.lan</code>, telle que la donne le serveur DNS <code>10.20.0.53</code>.",
+         "hints": ["La commande <code>dig</code> interroge un serveur DNS ; le cours montre comment lui désigner un serveur précis avec <code>@</code>.",
+                   "Sur le bureau : <code>dig @10.20.0.53 intranet.cimes.lan</code> (l'adresse est dans l'ANSWER SECTION), ou <code>dig +short @10.20.0.53 intranet.cimes.lan</code>. Puis, sur la console : <code>echo 10.20.0.… &gt; ~/reponses/intranet.txt</code>."],
+         "checks": [
+             ('[ -s $H/reponses/intranet.txt ]', "~/reponses/intranet.txt n'existe pas sur la console, ou il est vide."),
+             ('[ "$(ans $H/reponses/intranet.txt)" = "$LAB_INTRANET" ] || { echo "MSG:adresse notée : $(ans $H/reponses/intranet.txt)"; exit 1; }', "Ce n'est pas l'adresse que donne le serveur DNS pour intranet.cimes.lan."),
+         ]},
+        {"id": "R3.2", "points": 3, "title": "Le bureau ne trouve personne",
+         "ticket": {"from": "sophie", "body": "Depuis le bureau, plus aucun nom ne marche : <code>ping stock.cimes.lan</code> attend longtemps, puis répond <code>Temporary failure in name resolution</code>. Avec l'adresse IP, en revanche, tout fonctionne. Tu comprends quelque chose ?"},
+         "desc": "Le bureau utilise le serveur DNS de l'entreprise (<code>10.20.0.53</code>), et trouve l'adresse de <code>stock.cimes.lan</code> (<code>getent hosts stock.cimes.lan</code>).",
+         "hints": ["L'adresse IP marche, le nom non : le problème est dans la traduction du nom. Quel serveur DNS le bureau interroge-t-il ? Un fichier le dit (section « Où la machine cherche-t-elle ? »).",
+                   "<code>cat /etc/resolv.conf</code> sur le bureau : il interroge <code>192.168.10.1</code>, l'ancienne box, qui n'existe plus. Remplacez par <code>nameserver 10.20.0.53</code> (avec <code>nano /etc/resolv.conf</code>), puis <code>getent hosts stock.cimes.lan</code>."],
+         "checks": [
+             ('fichier bureau /etc/resolv.conf | grep -v "^ *#" | grep -qE "^[[:space:]]*nameserver[[:space:]]+10\\.20\\.0\\.53"', "Le bureau n'interroge pas le serveur DNS de l'entreprise (nameserver 10.20.0.53 dans /etc/resolv.conf)."),
+             ('[ "$(nom_ip bureau stock.cimes.lan)" = 10.20.0.10 ] || { echo "MSG:le bureau trouve : $(nom_ip bureau stock.cimes.lan | sed "s/^$/rien/")"; exit 1; }', "Le bureau ne trouve toujours pas l'adresse de stock.cimes.lan."),
+         ]},
+        {"id": "R3.3", "points": 3, "title": "La caisse n'en fait qu'à sa tête",
+         "ticket": {"from": "diallo", "body": "La caisse, elle, trouve bien un serveur <code>stock.cimes.lan</code>… mais ce n'est pas le bon : elle n'arrive pas à s'y connecter. Pourtant, Léa m'assure que le DNS donne la bonne adresse. Qui croire ?"},
+         "desc": "La caisse obtient pour <code>stock.cimes.lan</code> l'adresse de l'annuaire DNS (<code>10.20.0.10</code>), et son fichier <code>/etc/hosts</code> ne contient plus de ligne pour ce nom.",
+         "hints": ["Comparez la réponse du DNS (<code>dig +short stock.cimes.lan</code>) et l'adresse que la caisse utilise vraiment (<code>getent hosts stock.cimes.lan</code>). Si elles diffèrent, relisez le schéma « Où la machine cherche-t-elle ? ».",
+                   "Le fichier <code>/etc/hosts</code> de la caisse contient une ligne de Marc vers l'ancien serveur (<code>10.20.0.99</code>), consultée avant le DNS. Sur la caisse : <code>nano /etc/hosts</code>, supprimez cette ligne (Ctrl+K efface la ligne du curseur), enregistrez."],
+         "checks": [
+             ('! fichier caisse /etc/hosts | grep -v "^ *#" | grep -qw "stock\\.cimes\\.lan"', "Le fichier /etc/hosts de la caisse contient encore une ligne pour stock.cimes.lan : l'annuaire officiel, c'est le DNS."),
+             ('[ "$(nom_ip caisse stock.cimes.lan)" = 10.20.0.10 ] || { echo "MSG:la caisse trouve : $(nom_ip caisse stock.cimes.lan | sed "s/^$/rien/")"; exit 1; }', "La caisse n'obtient pas l'adresse de l'annuaire DNS (10.20.0.10) pour stock.cimes.lan."),
+         ]},
+        {"id": "R3.4", "points": 3, "title": "Une erreur dans l'annuaire",
+         "ticket": {"from": "thomas", "body": "Le logiciel de facturation tourne sur le serveur de stock (<code>10.20.0.10</code>). Mais <code>facturation.cimes.lan</code> mène dans le vide : je pense qu'il y a une faute de frappe dans l'annuaire. Tu peux corriger sur <code>srv-dns</code> ?"},
+         "desc": "Le serveur DNS répond <code>10.20.0.10</code> pour <code>facturation.cimes.lan</code>.",
+         "hints": ["Demandez d'abord au DNS ce qu'il répond pour ce nom (<code>dig</code>). Puis, sur srv-dns, le cours dit dans quel fichier se trouve l'annuaire, et ce qu'il faut faire après l'avoir modifié.",
+                   "Sur srv-dns : <code>nano /etc/dnsmasq.d/cimes.conf</code>, corrigez <code>10.20.0.110</code> en <code>10.20.0.10</code> sur la ligne de facturation, puis <code>service dnsmasq restart</code>. Vérifiez avec <code>dig +short @10.20.0.53 facturation.cimes.lan</code>."],
+         "checks": [
+             ('[ "$(dns bureau facturation.cimes.lan)" = 10.20.0.10 ] || { echo "MSG:le DNS répond : $(dns bureau facturation.cimes.lan | sed "s/^$/rien/")"; exit 1; }', "Le serveur DNS ne répond pas 10.20.0.10 pour facturation.cimes.lan (fichier corrigé, mais service redémarré ?)."),
+         ]},
+        {"id": "R3.5", "points": 3, "title": "Appeler la caisse par son nom",
+         "ticket": {"from": "sophie", "body": "Dernière demande : je voudrais qu'on puisse joindre la caisse par son nom, <code>caisse.cimes.lan</code>, depuis n'importe quel poste de l'entreprise. Tu l'ajoutes à l'annuaire ?"},
+         "desc": "Le serveur DNS répond l'adresse de la caisse (<code>192.168.10.11</code>) pour <code>caisse.cimes.lan</code>, et le bureau la trouve par ce nom.",
+         "hints": ["Un nom de plus dans l'annuaire, c'est une ligne de plus dans le même fichier, sur le même modèle que les autres. Sans oublier ce qui suit toute modification.",
+                   "Sur srv-dns, ajoutez à <code>/etc/dnsmasq.d/cimes.conf</code> la ligne <code>host-record=caisse.cimes.lan,192.168.10.11</code>, puis <code>service dnsmasq restart</code>. Depuis le bureau : <code>ping -c 2 caisse.cimes.lan</code>."],
+         "checks": [
+             ('[ "$(dns bureau caisse.cimes.lan)" = 192.168.10.11 ] || { echo "MSG:le DNS répond : $(dns bureau caisse.cimes.lan | sed "s/^$/rien/")"; exit 1; }', "Le serveur DNS ne répond pas 192.168.10.11 pour caisse.cimes.lan."),
+             ('[ "$(nom_ip bureau caisse.cimes.lan)" = 192.168.10.11 ]', "Le bureau ne trouve pas la caisse par son nom (getent hosts caisse.cimes.lan)."),
+         ]},
+    ],
+}
+
 STEPS = {
     1: MODULE_0,
     # ─────────────────────────────────────────────────────────────────────
@@ -723,4 +938,5 @@ own $H/reponses
         ],
     },
     3: MODULE_2,
+    4: MODULE_3,
 }

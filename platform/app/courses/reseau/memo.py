@@ -5,7 +5,7 @@ syntaxe, elle ne donne jamais la réponse d'un exercice.
 """
 from ..linux.memo import C
 
-BASE, OBSERVE, CONFIG, TEST, ROUTE = ("Prise en main", "Observer", "Configurer", "Tester", "Routage")
+BASE, OBSERVE, CONFIG, TEST, ROUTE, DNS = ("Prise en main", "Observer", "Configurer", "Tester", "Routage", "Noms (DNS)")
 
 CARDS = [
     C("invite", "L'invite", BASE, "Elle dit qui vous êtes, sur quelle machine et dans quel dossier ; # pour root, $ pour un compte ordinaire.",
@@ -56,4 +56,16 @@ CARDS = [
     C("gateway", "gateway (interfaces)", ROUTE, "La passerelle permanente d'un poste Debian, déclarée avec son adresse.",
       ["iface eth0 inet static", "    address <adresse>", "    netmask <masque>", "    gateway <passerelle>"],
       [("    gateway 172.16.5.254", "dans la section iface de /etc/network/interfaces")], ["R2.5"]),
+    C("dig", "dig", DNS, "Interroge un serveur DNS : quelle adresse pour ce nom ?",
+      ["dig <nom>", "dig +short <nom>", "dig @<serveur DNS> <nom>"],
+      [("dig +short boutique.chamonix.lan", "seulement l'adresse"), ("dig @172.16.5.53 boutique.chamonix.lan", "un serveur DNS précis"),
+       ("status: NXDOMAIN", "le nom n'existe pas")], ["R3.1", "R3.4"]),
+    C("resolv-conf", "/etc/resolv.conf", DNS, "Le serveur DNS qu'interroge la machine.",
+      ["nameserver <adresse>"], [("nameserver 172.16.5.53", "")], ["R3.2"]),
+    C("hosts", "/etc/hosts et getent", DNS, "Le carnet local, consulté AVANT le DNS ; getent montre l'adresse que la machine utilise vraiment.",
+      ["<adresse>  <nom> [alias…]", "getent hosts <nom>"],
+      [("172.16.5.80  boutique.chamonix.lan boutique", "une ligne de /etc/hosts"), ("getent hosts boutique.chamonix.lan", "/etc/hosts, puis DNS")], ["R3.3"]),
+    C("dnsmasq", "Annuaire dnsmasq", DNS, "Un nom par ligne dans la configuration ; redémarrer le service après chaque modification.",
+      ["host-record=<nom>,<adresse>", "service dnsmasq restart", "service dnsmasq status"],
+      [("host-record=boutique.chamonix.lan,172.16.5.80", "dans /etc/dnsmasq.d/…"), ("service dnsmasq restart", "relire l'annuaire")], ["R3.4", "R3.5"]),
 ]

@@ -14,9 +14,9 @@ for _ in $(seq 1 90); do
 done
 
 # Image des machines (une seule fois : /var/lib/docker est un volume). Changer l'étiquette si son contenu change.
-if ! docker image inspect machine-reseau:3 > /dev/null 2>&1; then
+if ! docker image inspect machine-reseau:4 > /dev/null 2>&1; then
     tar -C /opt/reseau-lab/machine -c . | docker import \
-        --change 'CMD ["/usr/local/sbin/demarrer-machine"]' --change 'ENV LANG=C.UTF-8' - machine-reseau:3 > /dev/null
+        --change 'CMD ["/usr/local/sbin/demarrer-machine"]' --change 'ENV LANG=C.UTF-8' - machine-reseau:4 > /dev/null
 fi
 
 # Les machines redémarrent avec le moteur (restart unless-stopped), sans câble : on attend qu'elles tournent,

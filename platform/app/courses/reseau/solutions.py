@@ -121,4 +121,35 @@ connexion box-annecy sysctl -p
 redemarrer box-annecy
 connexion box-annecy sysctl net.ipv4.ip_forward
 ''',
+    4: r'''
+#@ R3.1
+#? `dig @10.20.0.53 <nom>` pose la question à un serveur DNS précis ; la réponse est dans l'ANSWER SECTION (enregistrement A). `+short` n'affiche que l'adresse.
+#? La réponse s'écrit sur la console, pas sur le bureau.
+connexion bureau dig @10.20.0.53 intranet.cimes.lan
+connexion bureau dig +short @10.20.0.53 intranet.cimes.lan | tail -n 1 > ~/reponses/intranet.txt
+#@ R3.2
+#? Avec l'adresse IP tout marche, avec le nom non : la traduction échoue. Le bureau interrogeait 192.168.10.1, l'ancienne box, qui n'existe plus ; « Temporary failure in name resolution » signifie qu'aucun serveur DNS n'a répondu.
+#? On remplace le serveur DNS dans /etc/resolv.conf, puis on vérifie avec `getent hosts`, qui suit le même chemin qu'un ping.
+connexion bureau cat /etc/resolv.conf
+connexion bureau 'echo "nameserver 10.20.0.53" > /etc/resolv.conf'
+connexion bureau getent hosts stock.cimes.lan
+#@ R3.3
+#? `dig` (le DNS seul) répondait 10.20.0.10, `getent hosts` (ce que la caisse utilise vraiment) 10.20.0.99 : la machine consulte /etc/hosts avant le DNS, et Marc y avait laissé l'adresse de l'ancien serveur.
+#? On supprime la ligne : le DNS redevient la seule source de vérité. La corriger aurait marché aujourd'hui, mais elle serait de nouveau fausse au prochain déménagement du serveur.
+#? En cours, `nano /etc/hosts` suffit. Piège : `sed -i` échoue ici (« Device or resource busy ») ; ces machines sont des conteneurs, où Docker monte /etc/hosts, que sed ne peut pas remplacer par une copie. nano, ou `cat … >`, écrivent dans le fichier existant.
+connexion caisse dig +short stock.cimes.lan
+connexion caisse getent hosts stock.cimes.lan
+connexion caisse "grep -v 'stock[.]cimes[.]lan' /etc/hosts > /tmp/hosts && cat /tmp/hosts > /etc/hosts"
+connexion caisse getent hosts stock.cimes.lan
+#@ R3.4
+#? L'annuaire de dnsmasq est un simple fichier : une ligne host-record par nom. Le service ne relit pas sa configuration tout seul, d'où le redémarrage ; `dig` permet de vérifier la nouvelle réponse.
+connexion srv-dns "sed -i 's/^host-record=facturation.cimes.lan,10.20.0.110$/host-record=facturation.cimes.lan,10.20.0.10/' /etc/dnsmasq.d/cimes.conf"
+connexion srv-dns service dnsmasq restart
+connexion bureau dig +short @10.20.0.53 facturation.cimes.lan
+#@ R3.5
+#? Un nom de plus, une ligne de plus dans l'annuaire, puis le redémarrage du service. Tous les postes qui interrogent ce serveur DNS connaissent aussitôt le nouveau nom : c'est tout l'intérêt par rapport à /etc/hosts.
+connexion srv-dns 'echo "host-record=caisse.cimes.lan,192.168.10.11" >> /etc/dnsmasq.d/cimes.conf'
+connexion srv-dns service dnsmasq restart
+connexion bureau ping -c 2 caisse.cimes.lan
+''',
 }

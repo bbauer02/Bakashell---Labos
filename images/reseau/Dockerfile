@@ -3,7 +3,7 @@
 FROM debian:bookworm-slim AS machine
 RUN apt-get update && apt-get install -y --no-install-recommends \
         iproute2 iputils-ping iputils-arping ifupdown procps nano less bash-completion \
-        traceroute curl netcat-openbsd dnsutils tcpdump \
+        traceroute curl netcat-openbsd dnsutils tcpdump dnsmasq isc-dhcp-client \
     && rm -rf /var/lib/apt/lists/*
 COPY noeud/demarrer.sh /usr/local/sbin/demarrer-machine
 COPY noeud/accueil.sh /etc/profile.d/lab-accueil.sh
@@ -13,7 +13,7 @@ RUN chmod 755 /usr/local/sbin/demarrer-machine && echo '. /etc/lab-invite.sh' >>
 # ─── Console du technicien : moteur Docker interne qui fait tourner les machines, et leurs câbles ────
 FROM docker:27-dind
 RUN apk add --no-cache bash bash-completion coreutils findutils grep sed jq nano less ncurses procps \
-        iproute2 iputils util-linux-misc sudo shadow
+        iproute2 iputils util-linux-misc bind-tools sudo shadow
 # etudiant n'est PAS dans le groupe docker : il n'atteint les machines que par « connexion » (sudo, liste fermée)
 RUN adduser -D -s /bin/bash etudiant && \
     printf 'etudiant ALL=(root) NOPASSWD: /usr/local/sbin/lab-machine\n' > /etc/sudoers.d/machines && \

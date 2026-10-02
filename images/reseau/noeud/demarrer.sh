@@ -1,10 +1,30 @@
 #!/bin/sh
 # Démarrage d'une machine du réseau simulé. Elle naît sans câble : la console branche ses câbles (lab-cablage),
-# puis lui fait appliquer sa configuration réseau (ifup), comme au démarrage d'un vrai poste.
+# puis lui fait appliquer sa configuration réseau (ifup) et démarrer ses services, comme au démarrage d'un vrai poste.
 # L'état d'ifupdown ne doit pas survivre à un redémarrage (sinon ifup croit les interfaces déjà configurées).
 rm -rf /run/network
 mkdir -p /run/network
+
+# /etc/resolv.conf et /etc/hosts : Docker les réécrit à chaque démarrage, une vraie Debian les garde. On remet donc la
+# version sauvegardée à l'arrêt précédent ; au tout premier démarrage, aucun serveur DNS (pas ceux de l'hébergeur).
+SAUVE=/var/lib/lab-machine
+mkdir -p $SAUVE
+if [ -f $SAUVE/resolv.conf ]; then
+    cat $SAUVE/resolv.conf > /etc/resolv.conf
+else
+    printf '# Serveurs DNS de la machine (aucun pour le moment)\n' > /etc/resolv.conf
+fi
+[ -f $SAUVE/hosts ] && cat $SAUVE/hosts > /etc/hosts
+
 # Réglages du noyau de la machine (/etc/sysctl.conf : routage net.ipv4.ip_forward…), comme au démarrage d'une Debian.
 # Seuls les routeurs peuvent les modifier (/proc/sys en écriture) ; ailleurs, l'échec est sans conséquence.
 sysctl -q -p /etc/sysctl.conf > /dev/null 2>&1
-exec sleep infinity
+
+sauver() {
+    cat /etc/resolv.conf > $SAUVE/resolv.conf
+    cat /etc/hosts > $SAUVE/hosts
+    exit 0
+}
+trap sauver TERM INT
+sleep infinity &
+wait
