@@ -30,6 +30,8 @@ case $action in
         echo "Redémarrage de $m…"
         docker restart -t 1 "$m" > /dev/null || exit 1
         /usr/local/sbin/lab-cablage
+        # Noté à l'abri de l'étudiant (/var/lib/lab) : les vérifications savent qu'il a redémarré la machine
+        echo "$m $(date +%s)" >> /var/lib/lab/redemarrages
         echo "$m a redémarré."
         ;;
     *)

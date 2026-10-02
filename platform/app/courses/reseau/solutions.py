@@ -5,6 +5,31 @@ Les commandes passent par « connexion <machine> <commande> » ; en cours, on ou
 
 SOLUTIONS = {
     1: r'''
+#@ R0.1
+#? Tout se joue sur la bonne machine : l'onglet poste1 (ou `connexion poste1`) ouvre un terminal dont l'invite devient `root@poste1`. Le même `echo` lancé sur la console aurait créé le fichier… sur la console.
+#? `echo "texte" > fichier` crée le fichier (ou remplace son contenu) ; `cat` permet de vérifier.
+connexion poste1 'echo "Camille" > /root/signature.txt'
+connexion poste1 cat /root/signature.txt
+#@ R0.2
+#? En cours, on tape `nano ~/carnet.txt`, on écrit les lignes, puis Ctrl+O, Entrée (enregistrer) et Ctrl+X (quitter). Ce corrigé, lui, est un script : il écrit le fichier d'un coup.
+cat > ~/carnet.txt <<'EOF'
+plan : affiche le schéma du réseau
+connexion <machine> : ouvre un terminal sur une machine (ou son onglet)
+redemarrer <machine> : redémarre une machine, depuis la console
+EOF
+#@ R0.3
+#? `ls` sur chaque machine montre les fichiers du dossier de root ; le message est sur l'une des deux, tirée au sort pour chaque étudiant. `cat` l'affiche.
+#? La réponse s'écrit sur la console : l'invite doit être `etudiant@console`.
+for m in poste1 poste2; do connexion $m ls; done
+code=$(for m in poste1 poste2; do connexion $m 'cat /root/message-de-marc.txt 2>/dev/null'; done | grep -o 'MARC-[0-9]*' | head -n 1)
+echo "$code" > ~/reponses/code.txt
+#@ R0.4
+#? `redemarrer` se lance sur la console : on éteint et rallume la machine « de l'extérieur », comme on le ferait avec son bouton.
+#? Les fichiers sont toujours là après le redémarrage ; au module 1, vous verrez ce qui, en revanche, disparaît.
+redemarrer poste2
+connexion poste2 ls
+''',
+    2: r'''
 #@ R1.1
 #? Sur la caisse, `ip a` affiche un bloc par interface. `lo` est la boucle locale (la machine elle-même) : la carte branchée au switch est `eth0`.
 #? Dans son bloc, l'adresse MAC suit `link/ether` et l'adresse IP suit `inet`. Le plan donne l'adresse prévue ; seule la machine dit l'adresse réelle.
@@ -51,5 +76,49 @@ iface eth0 inet static
 EOF
 redemarrer bureau
 connexion bureau ip a
+''',
+    3: r'''
+#@ R2.1
+#? « Network is unreachable » : la destination n'est pas sur le réseau de la caisse, et la caisse n'a pas de route par défaut (`ip route` ne montre que la ligne de son propre réseau).
+#? La passerelle est l'adresse de la box côté magasin. La box répond sur ses deux adresses même quand elle ne route pas : c'est pourquoi 10.20.0.254 répond déjà.
+connexion caisse ip route
+connexion caisse ip route add default via 192.168.10.254
+connexion caisse ping -c 2 10.20.0.254
+#@ R2.2
+#? « Destination Host Unreachable », renvoyé par la propre adresse du bureau : sa passerelle, 192.168.10.1, n'existe pas sur le réseau du magasin (personne ne répond aux requêtes ARP).
+#? `ip route replace` remplace la route par défaut en une commande ; `del` puis `add` aurait aussi fonctionné.
+connexion bureau ip route
+connexion bureau ip route replace default via 192.168.10.254
+connexion bureau ping -c 2 10.20.0.254
+#@ R2.3
+#? Une machine Linux ne passe pas les paquets d'une interface à l'autre tant que le routage du noyau est désactivé (net.ipv4.ip_forward = 0) : la box répondait pour elle-même, mais ne relayait rien.
+connexion box-annecy sysctl net.ipv4.ip_forward
+connexion box-annecy sysctl -w net.ipv4.ip_forward=1
+#@ R2.4
+#? Les demandes arrivaient au serveur, mais ses réponses, destinées à 192.168.10.11, n'étaient pas sur son réseau : sans route par défaut, il ne savait pas où les envoyer. Un ping muet, sans message d'erreur, est typique d'un problème de retour.
+#? `traceroute -n` montre ensuite le chemin complet : la box, puis le serveur.
+connexion srv-stock ip route add default via 10.20.0.254
+connexion caisse ping -c 2 10.20.0.10
+connexion caisse traceroute -n 10.20.0.10
+#@ R2.5
+#? La passerelle se déclare dans /etc/network/interfaces, dans la même section que l'adresse, avec le mot-clé `gateway` : ifup crée la route par défaut à chaque démarrage.
+connexion caisse 'cat > /etc/network/interfaces' <<'EOF'
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet static
+    address 192.168.10.11
+    netmask 255.255.255.0
+    gateway 192.168.10.254
+EOF
+redemarrer caisse
+connexion caisse ip route
+#@ R2.6
+#? Les réglages du noyau tapés avec `sysctl -w` sont perdus à l'extinction ; /etc/sysctl.conf est relu à chaque démarrage. `sysctl -p` l'applique tout de suite, sans attendre.
+connexion box-annecy "sed -i 's/^net.ipv4.ip_forward=0/net.ipv4.ip_forward=1/' /etc/sysctl.conf"
+connexion box-annecy sysctl -p
+redemarrer box-annecy
+connexion box-annecy sysctl net.ipv4.ip_forward
 ''',
 }

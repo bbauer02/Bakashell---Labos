@@ -3,6 +3,7 @@
 FROM debian:bookworm-slim AS machine
 RUN apt-get update && apt-get install -y --no-install-recommends \
         iproute2 iputils-ping iputils-arping ifupdown procps nano less bash-completion \
+        traceroute curl netcat-openbsd dnsutils tcpdump \
     && rm -rf /var/lib/apt/lists/*
 COPY noeud/demarrer.sh /usr/local/sbin/demarrer-machine
 COPY noeud/accueil.sh /etc/profile.d/lab-accueil.sh
