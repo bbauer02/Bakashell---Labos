@@ -25,7 +25,7 @@ emit() { echo "@$1=$2"; }
 own() { chown -R etudiant:etudiant "$@"; }
 # Attend le moteur Docker interne et l'image des machines (premier démarrage : environ 30 s)
 for _ in $(seq 1 150); do [ -f /run/lab-ready ] && docker info >/dev/null 2>&1 && break; sleep 1; done
-docker image inspect machine-reseau:1 >/dev/null 2>&1 || { echo "Le réseau n'est pas prêt" >&2; exit 1; }
+docker image inspect machine-reseau:2 >/dev/null 2>&1 || { echo "Le réseau n'est pas prêt" >&2; exit 1; }
 R=/etc/reseau
 mkdir -p $R
 # reseau_neuf : retire toutes les machines et tous les câbles du module précédent
@@ -40,7 +40,7 @@ reseau_neuf() {
 machine() {
   docker run -d --name "$1" --hostname "$1" --label reseau-lab --network none --cap-add NET_ADMIN \
     --sysctl net.ipv6.conf.all.disable_ipv6=1 --sysctl net.ipv6.conf.default.disable_ipv6=1 \
-    --restart unless-stopped --init machine-reseau:1 >/dev/null
+    --restart unless-stopped --init machine-reseau:2 >/dev/null
   echo "$1" >> $R/machines
 }
 # interfaces <machine> : son /etc/network/interfaces (lu sur l'entrée standard), appliqué à chaque démarrage

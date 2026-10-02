@@ -6,8 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY noeud/demarrer.sh /usr/local/sbin/demarrer-machine
 COPY noeud/accueil.sh /etc/profile.d/lab-accueil.sh
-RUN chmod 755 /usr/local/sbin/demarrer-machine && \
-    echo 'export PS1="\[\e[1;31m\]root@\h\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]# "' >> /root/.bashrc
+COPY noeud/invite.sh /etc/lab-invite.sh
+RUN chmod 755 /usr/local/sbin/demarrer-machine && echo '. /etc/lab-invite.sh' >> /root/.bashrc
 
 # ─── Console du technicien : moteur Docker interne qui fait tourner les machines, et leurs câbles ────
 FROM docker:27-dind

@@ -13,9 +13,13 @@ if [ -z "$m" ] || ! grep -qxF -- "$m" "$LISTE" 2>/dev/null; then
     exit 1
 fi
 shift 2
+# Couleur de la machine (invite et onglet de la page du labo) : selon son rang dans la liste, comme dans la page
+COULEURS=("248;113;113" "251;191;36" "192;132;252" "96;165;250" "244;114;182" "251;146;60")
+rang=$(grep -nxF -- "$m" "$LISTE" | head -n 1 | cut -d: -f1)
+couleur=${COULEURS[$(( (rang - 1) % ${#COULEURS[@]} ))]}
 case $action in
     connexion)
-        opts=(-w /root)
+        opts=(-w /root -e "LAB_COULEUR=$couleur")
         if [ -t 0 ]; then opts+=(-it -e "TERM=${TERM:-xterm}"); else opts+=(-i); fi
         if [ $# -eq 0 ]; then
             exec docker exec "${opts[@]}" "$m" bash -l
