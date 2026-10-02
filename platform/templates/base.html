@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{{ APP_TITLE }}{% endblock %}</title>
     <meta name="author" content="{{ AUTHOR_NAME }} ({{ AUTHOR_EMAIL }})">
+    <meta name="description" content="{{ APP_DESCRIPTION }}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ APP_TITLE }}">
+    <meta property="og:description" content="{{ APP_DESCRIPTION }}">
     <style>
         :root {
             --bg: #0f1117; --bg2: #161822; --bg3: #1a1d2e; --card: #232639;

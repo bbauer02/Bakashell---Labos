@@ -12,6 +12,7 @@
 .btn { width:100%; padding:14px; border:none; border-radius:10px; background:linear-gradient(135deg,var(--accent),#845ec2); color:white; font-size:15px; font-weight:700; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:.2s; }
 .btn:hover { transform:translateY(-1px); box-shadow:0 4px 15px rgba(108,92,231,.4); }
 .error { background:rgba(225,112,85,.15); border:1px solid var(--err); color:var(--err); padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:20px; }
+.auth-about { color:var(--dim); font-size:12px; line-height:1.6; margin-top:28px; padding-top:20px; border-top:1px solid var(--border); }
 .link { text-align:center; margin-top:20px; font-size:13px; color:var(--dim); }
 {% endblock %}
 {% block body %}
@@ -33,6 +34,10 @@
         </form>
         <div class="link">Pas encore de compte ? <a href="/register">Créer un compte</a></div>
         <div class="link" style="margin-top:8px">Mot de passe oublié ? Demandez un lien de réinitialisation à votre enseignant·e.</div>
+        <p class="auth-about">{{ APP_SHORT }} est une plateforme pédagogique utilisée en cours d'informatique :
+            les élèves y font des travaux pratiques d'administration système (Linux en ligne de commande, Git, Docker,
+            Ansible, tests unitaires) dans un vrai terminal Linux, directement depuis le navigateur.
+            Chaque classe est suivie par son enseignant·e.</p>
     </div>
 </div>
 {% endblock %}

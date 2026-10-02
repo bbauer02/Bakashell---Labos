@@ -45,10 +45,13 @@ APP_DIR = os.environ.get("APP_DIR", "/app")
 # Nom de l'application et auteur, affichés sur toutes les pages
 APP_TITLE, APP_SHORT = "Bakashell — Labo DevOps", "Bakashell"
 AUTHOR_NAME, AUTHOR_EMAIL = "Bauer Baptiste", "bbauer02@gmail.com"
+# Description lue par les moteurs de recherche et les filtres web (proxys scolaires) pour classer le site
+APP_DESCRIPTION = ("Plateforme pédagogique de travaux pratiques en administration système et DevOps : "
+                   "Linux, Git, Docker, Ansible et tests unitaires, avec un terminal Linux dans le navigateur.")
 
 app = FastAPI(title=APP_TITLE)
 templates = Jinja2Templates(directory=os.path.join(APP_DIR, "templates"))
-templates.env.globals.update(APP_TITLE=APP_TITLE, APP_SHORT=APP_SHORT,
+templates.env.globals.update(APP_TITLE=APP_TITLE, APP_SHORT=APP_SHORT, APP_DESCRIPTION=APP_DESCRIPTION,
                              AUTHOR_NAME=AUTHOR_NAME, AUTHOR_EMAIL=AUTHOR_EMAIL)
 templates.env.filters["heure"] = lambda ts: datetime.datetime.fromtimestamp(ts).strftime("%d/%m %H:%M")
 # xterm.js et Monaco servis par la plateforme (installés dans l'image) : pas besoin d'Internet en salle

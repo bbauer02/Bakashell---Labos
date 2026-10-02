@@ -444,6 +444,13 @@ def test_titre_et_auteur(app_client):
     assert '<meta name="author" content="Bauer Baptiste (bbauer02@gmail.com)">' in page
 
 
+def test_description_pedagogique(app_client):
+    # Lue par les filtres web des établissements, qui avaient classé le site parmi les jeux
+    page = app_client.get("/login").text
+    assert '<meta name="description" content="Plateforme pédagogique de travaux pratiques' in page
+    assert '<meta property="og:description"' in page and "plateforme pédagogique utilisée en cours" in page
+
+
 # ─── Comptes enseignants : invitation, cloisonnement, désactivation ─────
 
 TEACHER_PASSWORD = "motdepasse-ens"
