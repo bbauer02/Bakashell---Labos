@@ -583,6 +583,132 @@ def test_lien_d_invitation_partage(app_client):
     assert app_client.get(path).status_code == 404
 
 
+@pytest.fixture
+def boite_mail(monkeypatch):
+    """Plateforme capable d'envoyer des e-mails ; les e-mails « envoyés » sont gardés dans une liste."""
+    monkeypatch.setenv("SMTP_HOST", "smtp.lab.test")
+    monkeypatch.setenv("MAIL_FROM", "Bakashell <noreply@lab.test>")
+    monkeypatch.delenv("TEACHER_SIGNUP_DOMAINS", raising=False)
+    envoyes = []
+    monkeypatch.setattr(main.mailer, "send", lambda to, subject, text, html=None: envoyes.append((to, subject, text)) or True)
+    return envoyes
+
+
+def lien_d_activation(texte):
+    return "/" + re.search(r"https?://[^/]+/(activation/\S+)", texte).group(1)
+
+
+def test_inscription_enseignant_desactivee_sans_smtp(app_client, monkeypatch):
+    monkeypatch.delenv("SMTP_HOST", raising=False)
+    assert app_client.get("/inscription-enseignant").status_code == 404
+    assert "/inscription-enseignant" not in app_client.get("/login").text
+    r = app_client.post("/inscription-enseignant", data={"first_name": "A", "last_name": "B", "email": "a.b@ac-lyon.fr"})
+    assert r.status_code == 404
+
+
+def test_inscription_enseignant_par_adresse_academique(app_client, boite_mail):
+    assert 'href="/inscription-enseignant"' in app_client.get("/login").text
+    form = {"first_name": "Marie", "last_name": "Curie", "email": "marie.curie@ac-lyon.fr"}
+    # Seules les adresses des académies sont acceptées (pas un domaine qui leur ressemble)
+    for email in ("marie@gmail.com", "marie@ac-truc.fr", "marie@faux.ac-lyon.fr", "marie@ac-lyon.fr.pirate.com"):
+        r = app_client.post("/inscription-enseignant", data={**form, "email": email})
+        assert "adresse académique" in r.text and "Un e-mail vient d" not in r.text, email
+    assert boite_mail == []
+
+    r = app_client.post("/inscription-enseignant", data=form)
+    assert "Un e-mail vient d" in r.text and "marie.curie@ac-lyon.fr" in r.text
+    assert len(boite_mail) == 1 and boite_mail[0][0] == "marie.curie@ac-lyon.fr"
+    lien = lien_d_activation(boite_mail[0][2])
+    assert not db.email_exists("marie.curie@ac-lyon.fr")  # aucun compte avant l'ouverture du lien
+
+    page = app_client.get(lien)
+    assert page.status_code == 200 and 'value="marie.curie@ac-lyon.fr" readonly' in page.text and 'value="Marie"' in page.text
+    assert "trop court" in app_client.post(lien, data={"first_name": "Marie", "last_name": "Curie",
+                                                       "password": "court", "password2": "court"}).text
+    r = app_client.post(lien, data={"first_name": "Marie", "last_name": "Curie", "password": TEACHER_PASSWORD,
+                                    "password2": TEACHER_PASSWORD}, follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/dashboard"
+    compte = db.get_user(user_id("marie.curie@ac-lyon.fr"))
+    assert compte["is_admin"] == 1 and compte["is_superadmin"] == 0
+    assert ">Enseignant</span>" in app_client.get("/dashboard").text
+
+    # Lien déjà utilisé : refusé
+    app_client.cookies.clear()
+    assert app_client.get(lien).status_code == 404
+    assert app_client.post(lien, data={"first_name": "X", "last_name": "Y", "password": TEACHER_PASSWORD,
+                                       "password2": TEACHER_PASSWORD}, follow_redirects=False).status_code == 404
+
+    # Adresse déjà inscrite : même réponse à l'écran, et l'e-mail (sans lien d'activation) le dit à son destinataire
+    r = app_client.post("/inscription-enseignant", data=form)
+    assert "Un e-mail vient d" in r.text
+    assert "existe déjà" in boite_mail[-1][2] and "/activation/" not in boite_mail[-1][2]
+
+    # Lien expiré
+    app_client.post("/inscription-enseignant", data={**form, "email": "pierre.curie@ac-lyon.fr"})
+    lien = lien_d_activation(boite_mail[-1][2])
+    conn = db.get_db()
+    conn.execute("UPDATE teacher_signups SET created_at = datetime('now', '-25 hours') WHERE used_at IS NULL")
+    conn.commit()
+    conn.close()
+    assert app_client.get(lien).status_code == 404
+    assert not db.email_exists("pierre.curie@ac-lyon.fr")
+
+
+def test_inscription_enseignant_limites_et_echec_d_envoi(app_client, boite_mail, monkeypatch):
+    form = {"first_name": "Ada", "last_name": "L", "email": "ada@ac-nantes.fr"}
+    for _ in range(3):
+        assert app_client.post("/inscription-enseignant", data=form).status_code == 200
+    assert app_client.post("/inscription-enseignant", data=form).status_code == 429  # boîte non bombardée
+    assert len(boite_mail) == 3
+    # Plusieurs liens envoyés : le premier ouvert crée le compte, les autres ne servent plus
+    liens = [lien_d_activation(m[2]) for m in boite_mail]
+    mdp = {"first_name": "Ada", "last_name": "L", "password": TEACHER_PASSWORD, "password2": TEACHER_PASSWORD}
+    assert app_client.post(liens[1], data=mdp, follow_redirects=False).status_code == 302
+    app_client.cookies.clear()
+    assert app_client.get(liens[0]).status_code == 404
+
+    monkeypatch.setattr(main.mailer, "send", lambda *a, **k: False)
+    r = app_client.post("/inscription-enseignant", data={**form, "email": "alan@ac-nantes.fr"})
+    assert r.status_code == 503 and "n'a pas pu être envoyé" in r.text.replace("&#39;", "'")
+
+    # Domaines choisis par l'administrateur, ou inscription libre désactivée
+    monkeypatch.setenv("TEACHER_SIGNUP_DOMAINS", "@lycee-exemple.fr")
+    assert main.teacher_email_allowed("jean@lycee-exemple.fr") and not main.teacher_email_allowed("jean@ac-lyon.fr")
+    monkeypatch.setenv("TEACHER_SIGNUP_DOMAINS", "aucun")
+    assert app_client.get("/inscription-enseignant").status_code == 404
+
+
+def test_envoi_smtp(monkeypatch):
+    from app import mailer
+    appels = []
+
+    class FauxSMTP:
+        def __init__(self, host, port, timeout=None, **kw):
+            appels.append(("connexion", host, port))
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def starttls(self, context=None): appels.append(("starttls",))
+        def login(self, user, password): appels.append(("login", user, password))
+        def send_message(self, msg): appels.append(("envoi", msg["To"], msg["From"], msg["Subject"], msg.get_body(("plain",)).get_content()))
+
+    monkeypatch.setattr(mailer.smtplib, "SMTP", FauxSMTP)
+    monkeypatch.setattr(mailer.smtplib, "SMTP_SSL", FauxSMTP)
+    monkeypatch.delenv("SMTP_HOST", raising=False)
+    assert not mailer.configured() and mailer.send("a@b.fr", "s", "t") is False and appels == []
+    monkeypatch.setenv("SMTP_HOST", "smtp-relay.brevo.com")
+    monkeypatch.setenv("SMTP_PORT", "587")
+    monkeypatch.setenv("SMTP_USER", "compte@brevo")
+    monkeypatch.setenv("SMTP_PASSWORD", "cle-secrete")
+    monkeypatch.setenv("MAIL_FROM", "Bakashell <noreply@bakashell.fr>")
+    assert mailer.send("marie@ac-lyon.fr", "Activez", "Bonjour", "<p>Bonjour</p>") is True
+    assert appels == [("connexion", "smtp-relay.brevo.com", 587), ("starttls",), ("login", "compte@brevo", "cle-secrete"),
+                      ("envoi", "marie@ac-lyon.fr", "Bakashell <noreply@bakashell.fr>", "Activez", "Bonjour\n")]
+    appels.clear()
+    monkeypatch.setenv("SMTP_PORT", "465")
+    assert mailer.send("marie@ac-lyon.fr", "Activez", "Bonjour")
+    assert appels[0] == ("connexion", "smtp-relay.brevo.com", 465) and ("starttls",) not in appels
+
+
 def test_cloisonnement_entre_enseignants(app_client):
     make_teacher(app_client, "alan@lab.test")
     make_teacher(app_client, "barbara@lab.test", first="Barbara", last="Liskov")

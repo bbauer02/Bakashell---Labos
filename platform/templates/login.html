@@ -34,6 +34,7 @@
         </form>
         <div class="link">Pas encore de compte ? <a href="/register">Créer un compte</a></div>
         <div class="link" style="margin-top:8px">Mot de passe oublié ? Demandez un lien de réinitialisation à votre enseignant·e.</div>
+        {% if teacher_signup_enabled() %}<div class="link" style="margin-top:8px">Enseignant·e ? <a href="/inscription-enseignant">Créer un compte avec votre adresse académique</a></div>{% endif %}
         <p class="auth-about">{{ APP_SHORT }} est une plateforme pédagogique utilisée en cours d'informatique :
             les élèves y font des travaux pratiques d'administration système (Linux en ligne de commande, Git, Docker,
             Ansible, tests unitaires) dans un vrai terminal Linux, directement depuis le navigateur.

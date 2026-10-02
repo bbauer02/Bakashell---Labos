@@ -62,6 +62,10 @@ LOGIN_PAIR = Limit("login-pair", 10, 15 * 60)
 LOGIN_ACCOUNT = Limit("login-account", 50, 15 * 60)
 # Inscriptions par heure et par adresse IP : plusieurs classes derrière un même NAT doivent pouvoir s'inscrire
 REGISTER = Limit("register", 200, 3600)
+# E-mails d'inscription des enseignants : par IP et par adresse (chaque demande envoie un vrai e-mail : ni
+# bombardement d'une boîte, ni épuisement du quota d'envoi)
+SIGNUP_MAIL_IP = Limit("signup-mail-ip", 10, 3600)
+SIGNUP_MAIL_ADDRESS = Limit("signup-mail-address", 3, 3600)
 # Changement de mot de passe (ancien mot de passe erroné) et liens de réinitialisation
 PASSWORD = Limit("password", 10, 15 * 60)
 

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Compte enseignant — {{ APP_SHORT }}{% endblock %}
+{% block extra_css %}
+.auth-page { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px; }
+.auth-box { background:var(--bg2); border:1px solid var(--border); border-radius:16px; padding:40px; width:100%; max-width:440px; }
+.auth-logo { text-align:center; font-size:22px; font-weight:700; color:var(--accent-l); margin-bottom:8px; }
+.auth-sub { text-align:center; color:var(--dim); font-size:14px; margin-bottom:28px; line-height:1.5; }
+.row { display:flex; gap:12px; }
+.row .field { flex:1; }
+.field { margin-bottom:18px; }
+.field label { display:block; font-size:13px; font-weight:600; color:var(--dim); margin-bottom:6px; }
+.field input { width:100%; padding:12px 16px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; outline:none; }
+.field input:focus { border-color:var(--accent); }
+.btn { width:100%; padding:14px; border:none; border-radius:10px; background:linear-gradient(135deg,var(--accent),#845ec2); color:white; font-size:15px; font-weight:700; cursor:pointer; }
+.error { background:rgba(225,112,85,.15); border:1px solid var(--err); color:var(--err); padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:20px; }
+.sent { background:rgba(0,184,148,.12); border:1px solid var(--ok); color:var(--text); padding:16px; border-radius:10px; font-size:14px; line-height:1.6; }
+.link { text-align:center; margin-top:20px; font-size:13px; color:var(--dim); }
+{% endblock %}
+{% block body %}
+<div class="auth-page">
+    <div class="auth-box">
+        <div class="auth-logo">&gt;_ Compte enseignant</div>
+        {% if not enabled %}
+        <div class="auth-sub">L'inscription des enseignants par adresse académique n'est pas ouverte sur cette plateforme.<br><br>
+            Demandez un lien d'invitation à son administrateur.</div>
+        {% elif sent %}
+        <div class="sent">📬 Un e-mail vient d'être envoyé à <strong>{{ sent }}</strong>.<br>
+            Ouvrez le lien qu'il contient (valable 24 heures) pour choisir votre mot de passe et activer votre compte.<br><br>
+            <span style="color:var(--dim);font-size:13px">Rien reçu après quelques minutes ? Regardez dans les indésirables,
+            puis vérifiez l'adresse et recommencez.</span></div>
+        {% else %}
+        <div class="auth-sub">Avec votre <strong>adresse académique</strong> (<code>@ac-…fr</code>), créez votre compte :
+            vous recevrez un lien d'activation par e-mail. Vous pourrez ensuite créer vos classes et suivre vos étudiants.</div>
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <form method="post">
+            <div class="row">
+                <div class="field">
+                    <label for="first_name">Prénom</label>
+                    <input type="text" id="first_name" name="first_name" required value="{{ form.first_name or '' }}" autocomplete="given-name">
+                </div>
+                <div class="field">
+                    <label for="last_name">Nom</label>
+                    <input type="text" id="last_name" name="last_name" required value="{{ form.last_name or '' }}" autocomplete="family-name">
+                </div>
+            </div>
+            <div class="field">
+                <label for="email">Adresse académique</label>
+                <input type="email" id="email" name="email" required value="{{ form.email or '' }}" autocomplete="email" placeholder="prenom.nom@ac-votre-academie.fr">
+            </div>
+            <button type="submit" class="btn">Recevoir le lien d'activation</button>
+            <p style="font-size:12px;color:var(--dim);margin-top:12px;line-height:1.5">Pas d'adresse académique ? Demandez un lien d'invitation à l'administrateur de la plateforme. <a href="/confidentialite">Données personnelles</a>.</p>
+        </form>
+        {% endif %}
+        <div class="link"><a href="/login">← Connexion</a></div>
+    </div>
+</div>
+{% endblock %}

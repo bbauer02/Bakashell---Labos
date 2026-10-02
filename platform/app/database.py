@@ -99,6 +99,17 @@ def init_db(courses):
             max_uses INTEGER DEFAULT 1,
             uses INTEGER DEFAULT 0
         );
+        -- Inscriptions d'enseignants par e-mail (adresse académique) : le compte n'est créé qu'à l'ouverture du lien
+        -- envoyé à l'adresse, et c'est là qu'on choisit son mot de passe (seule l'empreinte du jeton est stockée)
+        CREATE TABLE IF NOT EXISTS teacher_signups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token_hash TEXT UNIQUE NOT NULL,
+            email TEXT NOT NULL,
+            first_name TEXT,
+            last_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            used_at TIMESTAMP
+        );
         CREATE TABLE IF NOT EXISTS class_members (
             class_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
@@ -565,6 +576,70 @@ def revoke_invite(invite_id: int):
     db.execute("DELETE FROM teacher_invites WHERE id = ? AND uses < max_uses", (invite_id,))
     db.commit()
     db.close()
+
+
+SIGNUP_HOURS = 24
+_SIGNUP_VALID = f"used_at IS NULL AND created_at >= datetime('now', '-{SIGNUP_HOURS} hours')"
+
+
+def email_exists(email: str) -> bool:
+    db = get_db()
+    row = db.execute("SELECT 1 FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
+    db.close()
+    return row is not None
+
+
+def create_teacher_signup(email: str, first_name: str, last_name: str) -> str:
+    """Demande d'inscription enseignant : retourne le jeton du lien d'activation (en clair, à envoyer par e-mail)."""
+    token = secrets.token_urlsafe(24)
+    db = get_db()
+    db.execute("DELETE FROM teacher_signups WHERE created_at < datetime('now', '-7 days')")
+    db.execute("INSERT INTO teacher_signups (token_hash, email, first_name, last_name) VALUES (?, ?, ?, ?)",
+               (_token_hash(token), email.strip().lower(), first_name.strip(), last_name.strip()))
+    db.commit()
+    db.close()
+    return token
+
+
+def teacher_signup_info(token: str):
+    """La demande d'inscription correspondant à un jeton encore valable (non utilisé, moins de SIGNUP_HOURS), ou None."""
+    if not token:
+        return None
+    db = get_db()
+    row = db.execute(f"SELECT id, email, first_name, last_name FROM teacher_signups WHERE token_hash = ? AND {_SIGNUP_VALID}",
+                     (_token_hash(token),)).fetchone()
+    db.close()
+    return dict(row) if row else None
+
+
+def accept_teacher_signup(token: str, first_name: str, last_name: str, password: str):
+    """Crée le compte enseignant de l'adresse vérifiée et consomme le lien, en une seule transaction.
+    Retourne (identifiant, None) ou (None, motif) : « invalid » (lien inconnu, expiré ou déjà utilisé), « exists »."""
+    password_hash = hash_password(password)
+    db = get_db()
+    try:
+        signup = db.execute(f"SELECT id, email FROM teacher_signups WHERE token_hash = ? AND {_SIGNUP_VALID}",
+                            (_token_hash(token),)).fetchone()
+        if not signup:
+            return None, "invalid"
+        try:
+            cur = db.execute("INSERT INTO users (first_name, last_name, email, password_hash, is_admin, is_superadmin) "
+                             "VALUES (?, ?, ?, ?, 1, 0)", (first_name.strip(), last_name.strip(), signup["email"], password_hash))
+        except sqlite3.IntegrityError:
+            db.rollback()
+            return None, "exists"
+        used = db.execute(f"UPDATE teacher_signups SET used_at = CURRENT_TIMESTAMP WHERE id = ? AND {_SIGNUP_VALID}",
+                          (signup["id"],))
+        if used.rowcount != 1:
+            db.rollback()
+            return None, "invalid"
+        # Les autres liens envoyés à cette adresse ne servent plus
+        db.execute("UPDATE teacher_signups SET used_at = CURRENT_TIMESTAMP WHERE email = ? AND used_at IS NULL",
+                   (signup["email"],))
+        db.commit()
+        return cur.lastrowid, None
+    finally:
+        db.close()
 
 
 def list_teachers() -> list:

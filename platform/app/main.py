@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 from . import containers
 from . import database as db
 from . import live
+from . import mailer
 from . import progression
 from . import badges
 from . import objectif
@@ -357,6 +358,158 @@ async def invitation_submit(request: Request, token: str):
         invite = None
         return error(None, 404)
     log.info("Compte enseignant créé par invitation : %s", email.lower())
+    response = RedirectResponse("/dashboard", status_code=302)
+    set_session_cookie(response, db.create_session(user_id))
+    return response
+
+
+# ─── Inscription des enseignants par e-mail (adresses académiques) ──────
+
+# Domaines des académies (liste explicite : un joker « ac-*.fr » accepterait un domaine acheté par n'importe qui).
+# TEACHER_SIGNUP_DOMAINS (séparés par des virgules) remplace cette liste ; « aucun » désactive l'inscription.
+ACADEMIES = (
+    "ac-aix-marseille.fr ac-amiens.fr ac-besancon.fr ac-bordeaux.fr ac-clermont.fr ac-corse.fr ac-creteil.fr "
+    "ac-dijon.fr ac-grenoble.fr ac-guadeloupe.fr ac-guyane.fr ac-lille.fr ac-limoges.fr ac-lyon.fr ac-martinique.fr "
+    "ac-mayotte.fr ac-montpellier.fr ac-nancy-metz.fr ac-nantes.fr ac-nice.fr ac-normandie.fr ac-caen.fr ac-rouen.fr "
+    "ac-orleans-tours.fr ac-paris.fr ac-poitiers.fr ac-reims.fr ac-rennes.fr ac-reunion.fr ac-strasbourg.fr "
+    "ac-toulouse.fr ac-versailles.fr"
+).split()
+
+
+def _signup_domains() -> list:
+    raw = os.environ.get("TEACHER_SIGNUP_DOMAINS", "").strip().lower()
+    if raw == "aucun":
+        return []
+    return [d.strip().lstrip("@") for d in raw.split(",") if d.strip()] if raw else ACADEMIES
+
+
+def teacher_signup_enabled() -> bool:
+    """Inscription libre des enseignants : seulement si la plateforme sait envoyer des e-mails (adresse vérifiée)."""
+    return bool(_signup_domains()) and mailer.configured()
+
+
+def teacher_email_allowed(email: str) -> bool:
+    m = re.fullmatch(r"[a-z0-9._%+'-]+@([a-z0-9.-]+)", email)
+    return bool(m) and m.group(1) in _signup_domains()
+
+
+templates.env.globals["teacher_signup_enabled"] = teacher_signup_enabled
+
+
+def _signup_mail(email: str, first_name: str, link: str = "") -> tuple:
+    """(sujet, texte, html) de l'e-mail d'activation ; sans lien : un compte existe déjà avec cette adresse."""
+    hello = f"Bonjour {first_name}," if first_name else "Bonjour,"
+    if link:
+        subject = f"Activez votre compte enseignant — {APP_SHORT}"
+        body = (f"Vous avez demandé la création d'un compte enseignant sur {APP_TITLE}. Pour l'activer et choisir votre "
+                f"mot de passe, ouvrez ce lien (valable {db.SIGNUP_HOURS} heures) :")
+        action = link
+    else:
+        subject = f"Votre compte enseignant — {APP_SHORT}"
+        body = (f"Quelqu'un (vous, sans doute) a demandé la création d'un compte enseignant sur {APP_TITLE} avec cette "
+                "adresse, mais un compte existe déjà. Connectez-vous simplement ; si vous avez oublié votre mot de passe, "
+                "demandez un lien de réinitialisation à l'administrateur de la plateforme :")
+        action = f"{PUBLIC_URL}/login" if PUBLIC_URL else ""
+    outro = "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : rien ne sera créé ni modifié."
+    text = f"{hello}\n\n{body}\n\n{action}\n\n{outro}\n\n— {APP_SHORT}\n"
+    button = (f'<p><a href="{html_lib.escape(action)}" style="display:inline-block;padding:12px 20px;background:#6c5ce7;'
+              f'color:#fff;border-radius:8px;text-decoration:none;font-weight:600">'
+              f'{"Activer mon compte" if link else "Se connecter"}</a></p>'
+              f'<p style="font-size:12px;color:#666">Ou copiez ce lien : {html_lib.escape(action)}</p>') if action else ""
+    html = (f'<div style="font-family:Segoe UI,Arial,sans-serif;font-size:15px;color:#222;max-width:560px">'
+            f"<p>{html_lib.escape(hello)}</p><p>{html_lib.escape(body)}</p>{button}"
+            f'<p style="font-size:13px;color:#666">{html_lib.escape(outro)}</p><p>— {html_lib.escape(APP_SHORT)}</p></div>')
+    return subject, text, html
+
+
+@app.get("/inscription-enseignant", response_class=HTMLResponse)
+async def teacher_signup_page(request: Request):
+    return templates.TemplateResponse(request, "teacher_signup.html", {
+        "enabled": teacher_signup_enabled(), "error": None, "form": {}, "sent": None,
+    }, status_code=200 if teacher_signup_enabled() else 404)
+
+
+@app.post("/inscription-enseignant")
+async def teacher_signup_submit(request: Request):
+    """Envoie le lien d'activation à l'adresse académique. La réponse est la même, que l'adresse ait déjà un compte
+    ou non : la page ne révèle pas qui est inscrit (l'e-mail, lui, le dit à son seul destinataire)."""
+    form = await request.form()
+    first_name = form.get("first_name", "").strip()
+    last_name = form.get("last_name", "").strip()
+    email = form.get("email", "").strip().lower()
+
+    def page(error=None, sent=None, status_code=200):
+        return templates.TemplateResponse(request, "teacher_signup.html", {
+            "enabled": teacher_signup_enabled(), "error": error, "form": dict(form), "sent": sent,
+        }, status_code=status_code)
+
+    if not teacher_signup_enabled():
+        return page(status_code=404)
+    if not all([first_name, last_name, email]):
+        return page("Tous les champs sont obligatoires.")
+    if not teacher_email_allowed(email):
+        return page("Utilisez votre adresse académique (prenom.nom@ac-votre-academie.fr). Sans adresse académique, "
+                    "demandez un lien d'invitation à l'administrateur de la plateforme.")
+    ip_key, address_key = f"ip:{client_ip(request)}", f"email:{email}"
+    wait = max(ratelimit.SIGNUP_MAIL_IP.blocked(ip_key), ratelimit.SIGNUP_MAIL_ADDRESS.blocked(address_key))
+    if wait:
+        return page(ratelimit.wait_message(wait), status_code=429)
+    ratelimit.SIGNUP_MAIL_IP.hit(ip_key)
+    ratelimit.SIGNUP_MAIL_ADDRESS.hit(address_key)
+    if db.email_exists(email):
+        subject, text, html = _signup_mail(email, first_name)
+    else:
+        token = db.create_teacher_signup(email, first_name, last_name)
+        subject, text, html = _signup_mail(email, first_name, f"{public_base(request)}/activation/{token}")
+    if not await run_in_threadpool(mailer.send, email, subject, text, html):
+        return page("L'e-mail n'a pas pu être envoyé. Réessayez dans quelques minutes ; si le problème persiste, "
+                    "contactez l'administrateur de la plateforme.", status_code=503)
+    return page(sent=email)
+
+
+@app.get("/activation/{token}", response_class=HTMLResponse)
+async def activation_page(request: Request, token: str):
+    signup = db.teacher_signup_info(token)
+    form = {"first_name": signup["first_name"], "last_name": signup["last_name"]} if signup else {}
+    return templates.TemplateResponse(request, "activation.html", {"signup": signup, "error": None, "form": form},
+                                      status_code=200 if signup else 404)
+
+
+@app.post("/activation/{token}")
+async def activation_submit(request: Request, token: str):
+    """Le lien prouve l'accès à la boîte : on y choisit son mot de passe, et le compte enseignant est créé."""
+    form = await request.form()
+    first_name = form.get("first_name", "").strip()
+    last_name = form.get("last_name", "").strip()
+    password = form.get("password", "")
+    password2 = form.get("password2", "")
+    signup = db.teacher_signup_info(token)
+    ip_key = f"ip:{client_ip(request)}"
+
+    def error(msg, status_code=200):
+        return templates.TemplateResponse(request, "activation.html", {"signup": signup, "error": msg, "form": dict(form)},
+                                          status_code=status_code)
+
+    wait = ratelimit.REGISTER.blocked(ip_key)
+    if wait:
+        return error(ratelimit.wait_message(wait), 429)
+    if not signup:
+        ratelimit.REGISTER.hit(ip_key)
+        return error(None, 404)
+    if not all([first_name, last_name, password]):
+        return error("Tous les champs sont obligatoires.")
+    if password != password2:
+        return error("Les mots de passe ne correspondent pas.")
+    if len(password) < MIN_PASSWORD:
+        return error(f"Mot de passe trop court ({MIN_PASSWORD} caractères minimum).")
+    ratelimit.REGISTER.hit(ip_key)
+    user_id, reason = await run_in_threadpool(db.accept_teacher_signup, token, first_name, last_name, password)
+    if reason == "exists":
+        return error("Un compte existe déjà avec cette adresse : connectez-vous.")
+    if not user_id:
+        signup = None
+        return error(None, 404)
+    log.info("Compte enseignant créé après vérification de l'adresse : %s", signup["email"])
     response = RedirectResponse("/dashboard", status_code=302)
     set_session_cookie(response, db.create_session(user_id))
     return response

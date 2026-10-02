@@ -46,6 +46,15 @@ services:
       - BACKUP_DIR=/backups
       - BACKUP_HOURS=${BACKUP_HOURS:-24}
       - BACKUP_KEEP=${BACKUP_KEEP:-14}
+      # Envoi d'e-mails (activation des comptes enseignants) : serveur SMTP (Brevo, OVH…). Vide : aucun envoi,
+      # inscription des enseignants par invitation seulement
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - MAIL_FROM=${MAIL_FROM:-}
+      # Domaines autorisés à créer seuls un compte enseignant (vide : les académies ; « aucun » : désactivé)
+      - TEACHER_SIGNUP_DOMAINS=${TEACHER_SIGNUP_DOMAINS:-}
       # Part des points (en %) à atteindre pour obtenir l'attestation de fin de parcours
       - CERTIFICATE_MIN_PCT=${CERTIFICATE_MIN_PCT:-70}
     restart: unless-stopped

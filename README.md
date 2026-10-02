@@ -37,7 +37,7 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 | Profil | Création | Voit et gère |
 |---|---|---|
 | **Étudiant** | inscription libre (`/register`), avec ou sans code de classe | ses labos |
-| **Enseignant** | **invitation** de l'administrateur uniquement (pas d'inscription enseignant libre) | **ses** classes (dont il est propriétaire) et les étudiants membres d'au moins une d'entre elles |
+| **Enseignant** | **invitation** de l'administrateur, ou inscription avec une **adresse académique vérifiée** (si l'envoi d'e-mails est configuré) | **ses** classes (dont il est propriétaire) et les étudiants membres d'au moins une d'entre elles |
 | **Administrateur** | le compte `ADMIN_EMAIL`, créé ou mis à jour au démarrage | tout : toutes les classes, tous les étudiants, les comptes enseignants |
 
 - **Cloisonnement** : chaque classe a un propriétaire ; le nom d'une classe est unique pour un même enseignant (deux
@@ -46,11 +46,20 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
   mot de passe, remise à zéro d'un parcours. Il ne peut ni agir sur un compte du personnel, ni supprimer
   définitivement un étudiant (il le retire de sa classe) : la suppression d'un compte étudiant est réservée à
   l'administrateur. Chaque page enseignant affiche le profil connecté (« Enseignant » ou « Administrateur »).
-- **Invitation** (`/admin/enseignants`, administrateur seulement) : « Créer un lien d'invitation », éventuellement
-  réservé à une adresse e-mail. Le lien `/invitation/<jeton>` est **à usage unique, valable 7 jours**, et n'est affiché
+- **Invitation** (`/admin/enseignants`, administrateur seulement) : « Créer un lien d'invitation », pour **un ou
+  plusieurs comptes** (1 à 50 : une équipe entière avec un seul lien), éventuellement réservé à une adresse e-mail ou à
+  un domaine (`@lycee.fr` : simple filtre, l'adresse n'est pas vérifiée). Le lien `/invitation/<jeton>` est **valable
+  7 jours** (le tableau des invitations affiche les comptes déjà créés), et n'est affiché
   qu'une fois (la base n'en garde que l'empreinte SHA-256, comme pour les liens de réinitialisation) : copiez-le et
   transmettez-le. La personne y choisit prénom, nom, e-mail et mot de passe (mêmes règles et même limitation des
   tentatives que l'inscription) ; son compte enseignant est créé et connecté. Une invitation en attente peut être annulée.
+- **Inscription par adresse académique** (`/inscription-enseignant`, lien sur la page de connexion) : active
+  seulement si l'envoi d'e-mails est configuré (`SMTP_HOST`, `MAIL_FROM`… dans le `.env`, voir `.env.example` : Brevo
+  ou une boîte OVH). L'enseignant saisit son adresse ; seuls les domaines des académies (liste explicite `ac-lyon.fr`,
+  `ac-normandie.fr`… dans `main.py`, ou `TEACHER_SIGNUP_DOMAINS`) sont acceptés. Il reçoit un lien d'activation valable
+  24 h : le compte n'est créé qu'à son ouverture, où il choisit son mot de passe (l'accès à la boîte est ainsi prouvé, et
+  personne ne peut réserver l'adresse d'un autre). La page répond de la même façon que l'adresse ait un compte ou non ;
+  envois limités par IP et par adresse.
 - **Gestion des enseignants** (même page) : nom, e-mail, nombre de classes et d'étudiants, dernière connexion ; lien de
   réinitialisation du mot de passe ; **désactivation** (connexion refusée, sessions en cours coupées aussitôt) et
   réactivation ; **suppression** : ses classes sont rattachées à l'administrateur (renommées « Nom (Prénom Nom) » si
