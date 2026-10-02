@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+{% block title %}{{ APP_TITLE }} — le bac à shell : Linux, réseau et DevOps dans un vrai terminal{% endblock %}
+{% block extra_css %}
+html { scroll-behavior: smooth; }
+body { overflow-x: hidden; }
+.wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+/* Les colonnes d'une grille ne doivent jamais s'élargir sur leur contenu (lignes du terminal de démonstration) */
+.wrap > *, .etapes > *, .labos > *, .equipe > *, .chiffres .wrap > * { min-width: 0; }
+.demo-ecran { overflow-wrap: anywhere; }
+
+/* ─── En-tête ─── */
+.nav { position: sticky; top: 0; z-index: 30; backdrop-filter: blur(10px); background: rgba(9, 13, 22, .78); border-bottom: 1px solid var(--border); }
+.nav .wrap { display: flex; align-items: center; gap: 22px; height: 64px; }
+.nav-liens { display: flex; gap: 20px; margin-left: auto; font-size: 14px; }
+.nav-liens a { color: var(--dim); }
+.nav-liens a:hover { color: var(--text); text-decoration: none; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 10px; font-weight: 700; font-size: 14px;
+    border: 1px solid var(--border-hi); color: var(--text); background: var(--card); transition: .2s; white-space: nowrap; }
+.btn:hover { text-decoration: none; border-color: var(--accent); transform: translateY(-1px); }
+.btn.plein { background: var(--grad); border: none; color: #fff; box-shadow: 0 6px 24px rgba(8, 145, 178, .35); }
+.btn.plein:hover { box-shadow: 0 8px 30px rgba(16, 185, 129, .45); }
+.btn.grand { padding: 14px 24px; font-size: 15px; border-radius: 12px; }
+
+/* ─── Héros ─── */
+.heros { position: relative; padding: 72px 0 64px; overflow: hidden; }
+.heros::before { content: ''; position: absolute; inset: -40% -10% auto; height: 700px; pointer-events: none;
+    background: radial-gradient(closest-side, rgba(6, 182, 212, .20), transparent 70%), radial-gradient(closest-side at 80% 40%, rgba(16, 185, 129, .14), transparent 70%); }
+.heros::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .35;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 44px 44px; mask-image: linear-gradient(to bottom, black, transparent 85%); -webkit-mask-image: linear-gradient(to bottom, black, transparent 85%); }
+.heros .wrap { position: relative; z-index: 1; display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+.pastille { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--sand); padding: 5px 12px;
+    border-radius: 20px; border: 1px solid rgba(230, 198, 135, .35); background: rgba(230, 198, 135, .08); }
+.pastille .point { width: 7px; height: 7px; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 0 0 rgba(16, 185, 129, .7); animation: pouls 2s infinite; }
+@keyframes pouls { 70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+.heros h1 { font-size: clamp(34px, 4.6vw, 54px); line-height: 1.08; letter-spacing: -.03em; font-weight: 800; margin: 18px 0 18px; }
+.degrade { background: var(--grad-logo); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.heros .accroche { font-size: 18px; line-height: 1.6; color: var(--dim); max-width: 560px; }
+.heros .accroche strong { color: var(--text); }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.sous-actions { margin-top: 14px; font-size: 13px; color: var(--dim); }
+
+/* Terminal de démonstration */
+.demo { background: #060a12; border: 1px solid var(--border-hi); border-radius: 14px; overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .55), 0 0 0 1px rgba(34, 211, 238, .06), 0 0 60px rgba(6, 182, 212, .12); }
+.demo-barre { display: flex; align-items: center; gap: 7px; padding: 10px 14px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+.demo-barre i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.demo-onglets { display: flex; gap: 6px; margin-left: 10px; }
+.demo-onglets span { font-family: var(--font-mono); font-size: 11px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--border); color: var(--dim); }
+.demo-onglets span.actif { color: var(--c); border-color: var(--c); }
+.demo-ecran { font-family: var(--font-mono); font-size: 13px; line-height: 1.65; padding: 16px 18px; height: 330px; overflow: hidden; color: var(--text); white-space: pre-wrap; }
+.demo-ecran .ticket { color: var(--sand); }
+.demo-ecran .erreur { color: #f87171; }
+.demo-ecran .ok { color: #34d399; }
+.demo-ecran .dim { color: var(--dim); }
+.curseur { display: inline-block; width: 8px; height: 15px; background: var(--accent-l); vertical-align: -2px; animation: clignote 1s steps(1) infinite; }
+@keyframes clignote { 50% { opacity: 0; } }
+
+/* ─── Chiffres ─── */
+.chiffres { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: rgba(14, 22, 38, .6); }
+.chiffres .wrap { display: grid; grid-template-columns: repeat(4, 1fr); }
+.chiffre { padding: 26px 10px; text-align: center; border-right: 1px solid var(--border); }
+.chiffre:last-child { border-right: none; }
+.chiffre b { display: block; font-size: 34px; font-weight: 800; letter-spacing: -.02em; }
+.chiffre span { font-size: 13px; color: var(--dim); }
+
+/* ─── Sections ─── */
+section.bloc { padding: 84px 0; }
+.titre-bloc { text-align: center; max-width: 720px; margin: 0 auto 44px; }
+.titre-bloc .sur { font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-l); }
+.titre-bloc h2 { font-size: clamp(26px, 3.2vw, 38px); letter-spacing: -.02em; margin: 10px 0 12px; line-height: 1.15; }
+.titre-bloc p { color: var(--dim); font-size: 16px; line-height: 1.6; }
+
+.etapes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; counter-reset: etape; }
+.etape { position: relative; background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 24px 20px; transition: .25s; }
+.etape:hover { border-color: var(--border-hi); transform: translateY(-3px); }
+.etape .ico { font-size: 26px; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; border-radius: 12px;
+    background: rgba(6, 182, 212, .1); border: 1px solid rgba(6, 182, 212, .25); margin-bottom: 16px; }
+.etape h3 { font-size: 16px; margin-bottom: 8px; }
+.etape p { font-size: 14px; color: var(--dim); line-height: 1.6; }
+.etape::after { counter-increment: etape; content: counter(etape); position: absolute; top: 16px; right: 18px; font-family: var(--font-mono);
+    font-size: 12px; color: var(--border-hi); }
+
+/* Labos */
+.labos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.labo { display: flex; flex-direction: column; background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: .25s; }
+.labo:hover { border-color: var(--accent); transform: translateY(-4px); box-shadow: 0 16px 40px rgba(0, 0, 0, .35); }
+.labo .vignette { aspect-ratio: 640 / 280; background: var(--bg3); overflow: hidden; }
+.labo .vignette img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .5s; }
+.labo:hover .vignette img { transform: scale(1.04); }
+.labo .corps { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.labo h3 { font-size: 17px; }
+.labo p { font-size: 13.5px; color: var(--dim); line-height: 1.6; flex: 1; }
+.etiquettes { display: flex; flex-wrap: wrap; gap: 6px; }
+.etiquettes span { font-size: 11.5px; padding: 3px 9px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); color: var(--dim); }
+.etiquettes span.epreuve { color: var(--sand); border-color: rgba(230, 198, 135, .4); }
+
+/* Enseignants */
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+.liste-coches { list-style: none; display: flex; flex-direction: column; gap: 14px; margin-top: 20px; }
+.liste-coches li { display: flex; gap: 12px; font-size: 15px; line-height: 1.55; color: var(--dim); }
+.liste-coches li b { color: var(--text); }
+.liste-coches li::before { content: '✓'; flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; color: #04120d; background: var(--emerald); margin-top: 1px; }
+.tableau { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: 0 24px 60px rgba(0, 0, 0, .4); }
+.tableau h4 { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.tableau h4 .direct { margin-left: auto; font-size: 11px; color: var(--emerald); text-transform: none; letter-spacing: 0; display: flex; align-items: center; gap: 6px; }
+.tableau h4 .direct::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--emerald); animation: pouls 2s infinite; }
+.ligne-eleve { display: grid; grid-template-columns: 30px 1fr 110px 54px; gap: 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--border); font-size: 13px; }
+.ligne-eleve .av { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
+.jauge { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.jauge i { display: block; height: 100%; background: var(--grad); border-radius: 3px; width: 0; transition: width 1.4s cubic-bezier(.2, .8, .2, 1); }
+.ligne-eleve .pts { text-align: right; font-family: var(--font-mono); color: var(--accent-l); }
+
+/* Équipe */
+.equipe { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+.membre { text-align: center; padding: 20px 10px; background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; transition: .25s; }
+.membre:hover { transform: translateY(-3px); border-color: var(--border-hi); }
+.membre .av { width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: #fff; font-size: 18px; box-shadow: 0 0 0 4px rgba(255, 255, 255, .04); }
+.membre b { display: block; font-size: 14px; }
+.membre span { font-size: 12px; color: var(--dim); }
+
+/* Appel final */
+.final { text-align: center; padding: 70px 24px; border-radius: 22px; margin: 0 24px; position: relative; overflow: hidden;
+    background: radial-gradient(circle at 20% 0%, rgba(6, 182, 212, .22), transparent 55%), radial-gradient(circle at 90% 100%, rgba(230, 198, 135, .16), transparent 55%), var(--bg2);
+    border: 1px solid var(--border); }
+.final h2 { font-size: clamp(26px, 3.4vw, 40px); letter-spacing: -.02em; margin-bottom: 12px; }
+.final p { color: var(--dim); font-size: 16px; margin-bottom: 28px; }
+.final .actions { justify-content: center; }
+
+/* Apparition au défilement : seulement si le JavaScript tourne (sans lui, tout reste visible : robots, filtres web) */
+.js .revele { opacity: 0; transform: translateY(24px); transition: opacity .7s ease, transform .7s ease; }
+.js .revele.visible { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+    .js .revele { opacity: 1; transform: none; transition: none; }
+    .curseur, .pastille .point, .tableau h4 .direct::before { animation: none; }
+}
+
+/* ─── Petits écrans ─── */
+@media (max-width: 960px) {
+    .heros .wrap, .duo { grid-template-columns: minmax(0, 1fr); }
+    .etapes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .labos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .equipe { grid-template-columns: repeat(3, 1fr); }
+    .nav-liens { display: none; }
+}
+@media (max-width: 600px) {
+    .wrap { padding: 0 16px; }
+    .etapes, .labos { grid-template-columns: minmax(0, 1fr); }
+    .chiffres .wrap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .heros { padding: 40px 0 44px; }
+    .heros h1 { font-size: 32px; }
+    .heros .accroche { font-size: 16px; }
+    .chiffre:nth-child(2) { border-right: none; }
+    .equipe { grid-template-columns: 1fr 1fr; }
+    .demo-ecran { font-size: 11.5px; height: 300px; }
+    .nav .btn:not(.plein) { display: none; }
+    .final { margin: 0 12px; padding: 48px 18px; }
+}
+{% endblock %}
+{% block body %}
+<script>document.documentElement.classList.add('js');</script>
+<header class="nav">
+    <div class="wrap">
+        {{ marque("normal", "/") }}
+        <nav class="nav-liens">
+            <a href="#fonctionnement">Comment ça marche</a>
+            <a href="#labos">Les labos</a>
+            <a href="#enseignants">Enseignants</a>
+        </nav>
+        <a class="btn" href="/login">Se connecter</a>
+        <a class="btn plein" href="/register">Créer un compte</a>
+    </div>
+</header>
+
+<main>
+<section class="heros">
+    <div class="wrap">
+        <div>
+            <span class="pastille"><span class="point"></span>Plateforme pédagogique · BTS, licences, formations</span>
+            <h1>Apprenez l'admin système en cassant de <span class="degrade">vrais serveurs</span>.<br>Sans rien casser.</h1>
+            <p class="accroche">Bakashell, c'est le <strong>bac à shell</strong> : Linux, réseau, Git, Docker, Ansible… dans un
+                <strong>vrai terminal</strong>, directement dans le navigateur. Des tickets à résoudre, une vérification automatique,
+                et une progression qui donne envie d'aller plus loin. Rien à installer.</p>
+            <div class="actions">
+                <a class="btn plein grand" href="/register">Créer mon compte →</a>
+                <a class="btn grand" href="#labos">Voir les labos</a>
+            </div>
+            <p class="sous-actions">Enseignant·e ? <a href="#enseignants">Suivez vos classes en direct</a>.</p>
+        </div>
+        <div class="demo" aria-hidden="true">
+            <div class="demo-barre">
+                <i style="background:#ef4444"></i><i style="background:#fbbf24"></i><i style="background:#10b981"></i>
+                <div class="demo-onglets" id="demo-onglets"></div>
+            </div>
+            <div class="demo-ecran" id="demo-ecran"></div>
+        </div>
+    </div>
+</section>
+
+<section class="chiffres">
+    <div class="wrap">
+        <div class="chiffre revele"><b class="degrade" data-compte="{{ stats.labos }}">{{ stats.labos }}</b><span>labos thématiques</span></div>
+        <div class="chiffre revele"><b class="degrade" data-compte="{{ stats.exercices }}">{{ stats.exercices }}</b><span>tickets à résoudre</span></div>
+        <div class="chiffre revele"><b class="degrade" data-compte="{{ stats.fiches }}">{{ stats.fiches }}</b><span>fiches de mémo à découvrir</span></div>
+        <div class="chiffre revele"><b class="degrade">0</b><span>logiciel à installer</span></div>
+    </div>
+</section>
+
+<section class="bloc" id="fonctionnement">
+    <div class="wrap">
+        <div class="titre-bloc revele">
+            <div class="sur">Comment ça marche</div>
+            <h2>On apprend comme au travail : <span class="degrade">un ticket, une solution</span>.</h2>
+            <p>Vous rejoignez l'équipe informatique de Cimes &amp; Sentiers, une PME de matériel de randonnée. Vos collègues ont
+                besoin de vous : à vous de jouer, dans votre propre environnement.</p>
+        </div>
+        <div class="etapes">
+            <div class="etape revele"><div class="ico">🎫</div><h3>Un ticket arrive</h3><p>La caisse ne joint plus le serveur, le site est en panne, un collègue a tout cassé… Chaque exercice est une vraie demande, avec son contexte.</p></div>
+            <div class="etape revele"><div class="ico">⌨️</div><h3>Un vrai terminal</h3><p>Votre propre serveur Linux, vos machines, votre réseau : de vraies commandes, de vraies erreurs. Vous pouvez tout essayer, rien ne casse pour de bon.</p></div>
+            <div class="etape revele"><div class="ico">✅</div><h3>Vérifié automatiquement</h3><p>La plateforme contrôle le résultat réel sur les machines, pas la commande tapée : il y a souvent plusieurs bonnes façons de faire.</p></div>
+            <div class="etape revele"><div class="ico">⚡</div><h3>Progresser</h3><p>Cours illustrés, indices quand on bloque, mémo des commandes, grades et badges : de « Recrue » à « Ghost », chaque ticket compte.</p></div>
+        </div>
+    </div>
+</section>
+
+<section class="bloc" id="labos" style="padding-top:20px">
+    <div class="wrap">
+        <div class="titre-bloc revele">
+            <div class="sur">Les labos</div>
+            <h2>Du premier <code style="font-size:.8em">ls</code> à la mise en production.</h2>
+            <p>Chaque labo se suit indépendamment, à son rythme. Votre enseignant·e choisit ceux de votre classe.</p>
+        </div>
+        <div class="labos">
+            {% for l in labos %}
+            <article class="labo revele">
+                <div class="vignette">{% if l.thumbnail %}<img src="{{ l.thumbnail }}" alt="" loading="lazy">{% endif %}</div>
+                <div class="corps">
+                    <h3>{{ l.title }}</h3>
+                    <div class="etiquettes">
+                        {% if l.exam %}<span class="epreuve">Épreuve notée</span>{% endif %}
+                        <span>{{ l.level }}</span>
+                        <span>{{ l.steps }} étape{{ 's' if l.steps > 1 }} · {{ l.exercises }} tickets</span>
+                        <span>{{ l.duration }}</span>
+                    </div>
+                    <p>{{ l.summary }}</p>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<section class="bloc" id="enseignants">
+    <div class="wrap duo">
+        <div class="revele">
+            <div class="titre-bloc" style="text-align:left;margin:0">
+                <div class="sur">Pour les enseignant·e·s</div>
+                <h2>Vos classes, <span class="degrade">en direct</span>.</h2>
+                <p>Bakashell a été conçu en cours, pour des cours. Vous gardez la main, sans rien installer dans votre salle.</p>
+            </div>
+            <ul class="liste-coches">
+                <li><span><b>Des classes et des codes</b> : vos élèves rejoignent leur classe avec un code, et ne voient que les labos que vous ouvrez.</span></li>
+                <li><span><b>Un tableau de bord en direct</b> : qui travaille, qui bloque, sur quel ticket, depuis combien de temps.</span></li>
+                <li><span><b>Le terminal de l'élève, en lecture seule</b> : vous voyez ce qu'il voit, pour l'aider à distance.</span></li>
+                <li><span><b>Notes, échéances et attestations</b> : export des notes, dates limites par étape, attestation de réussite.</span></li>
+            </ul>
+            <div class="actions">
+                {% if teacher_signup %}<a class="btn plein" href="/inscription-enseignant">Créer un compte enseignant</a>{% endif %}
+                <a class="btn" href="mailto:{{ AUTHOR_EMAIL }}">Nous contacter</a>
+            </div>
+            {% if teacher_signup %}<p class="sous-actions">Avec votre adresse académique (@ac-….fr). Sinon, demandez une invitation.</p>{% endif %}
+        </div>
+        <div class="tableau revele" aria-hidden="true">
+            <h4>Tableau des scores <span class="direct">en direct</span></h4>
+            {% for nom, couleur, pct, pts in [("Camille M.", "#06b6d4", 92, 548), ("Yanis B.", "#10b981", 74, 441), ("Léna R.", "#c084fc", 58, 346), ("Hugo T.", "#fb923c", 41, 245), ("Inès K.", "#f472b6", 23, 137)] %}
+            <div class="ligne-eleve"><span class="av" style="background:{{ couleur }}">{{ nom[0] }}{{ nom.split()[1][0] }}</span><span>{{ nom }}</span>
+                <span class="jauge"><i data-largeur="{{ pct }}"></i></span><span class="pts">{{ pts }}</span></div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<section class="bloc" style="padding-top:20px">
+    <div class="wrap">
+        <div class="titre-bloc revele">
+            <div class="sur">L'univers</div>
+            <h2>Une équipe vous attend chez <span class="degrade">Cimes &amp; Sentiers</span>.</h2>
+            <p>Votre prédécesseur, Marc, est parti précipitamment en laissant des scripts obscurs et des notes éparpillées. Vos collègues comptent sur vous.</p>
+        </div>
+        <div class="equipe">
+            {% for p in equipe %}
+            <div class="membre revele"><div class="av" style="background:{{ p.color }}">{{ p.initials }}</div><b>{{ p.name }}</b><span>{{ p.role }}</span></div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<section class="bloc" style="padding-top:20px">
+    <div class="final revele">
+        <h2>Prêt·e à ouvrir votre premier ticket ?</h2>
+        <p>Créez votre compte en une minute. Le code de classe se demande à votre enseignant·e.</p>
+        <div class="actions">
+            <a class="btn plein grand" href="/register">Créer mon compte →</a>
+            <a class="btn grand" href="/login">J'ai déjà un compte</a>
+        </div>
+    </div>
+</section>
+</main>
+
+<script>
+// ─── Terminal de démonstration : trois tickets joués en boucle ───
+(function () {
+    const ecran = document.getElementById('demo-ecran');
+    const onglets = document.getElementById('demo-onglets');
+    const calme = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const C = { console: '#10b981', caisse: '#fbbf24', web1: '#60a5fa', boutique: '#c084fc' };
+    // [type, texte] : t = ticket, p = invite + commande tapée, o = sortie, e = erreur, k = réussite, w = pause
+    const scenarios = [
+        { machines: ['console', 'caisse'], lignes: [
+            ['t', '🎫 Aminata : « La caisse n\'arrive plus à joindre le serveur de stock ! »'],
+            ['p', 'caisse', 'ping -c 1 10.20.0.10'], ['e', 'ping: connect: Network is unreachable'],
+            ['p', 'caisse', 'ip route'], ['o', '192.168.10.0/24 dev eth0 proto kernel scope link'],
+            ['p', 'caisse', 'ip route add default via 192.168.10.254'],
+            ['p', 'caisse', 'ping -c 1 10.20.0.10'], ['o', '64 bytes from 10.20.0.10: icmp_seq=1 ttl=63 time=0.41 ms'],
+            ['k', '✔ Ticket résolu · +3 pts — « Propre. Je valide. » (Léa)'] ] },
+        { machines: ['console', 'web1'], lignes: [
+            ['t', '🎫 Sophie : « Plus personne ne peut enregistrer de commande : le serveur est plein ! »'],
+            ['p', 'web1', 'df -h /'], ['e', '/dev/sda1        20G   20G     0 100% /'],
+            ['p', 'web1', 'du -sh /var/log/* | sort -h | tail -1'], ['o', '17G     /var/log/boutique-debug.log'],
+            ['p', 'web1', 'truncate -s 0 /var/log/boutique-debug.log'],
+            ['p', 'web1', 'df -h /'], ['o', '/dev/sda1        20G  3,1G   16G  17% /'],
+            ['k', '✔ Ticket résolu · +4 pts — « Parfait, je clôture le ticket. Merci ! » (Sophie)'] ] },
+        { machines: ['console', 'boutique'], lignes: [
+            ['t', '🎫 Nadia : « Il faut livrer la correction du panier sur la branche main. »'],
+            ['p', 'boutique', 'git switch -c correctif-panier'], ['o', 'Switched to a new branch \'correctif-panier\''],
+            ['p', 'boutique', 'git commit -am "Panier : arrondi de la TVA"'], ['o', '[correctif-panier 3f9c2a1] Panier : arrondi de la TVA'],
+            ['p', 'boutique', 'git switch main && git merge correctif-panier'], ['o', 'Fast-forward\n js/panier.js | 2 +-'],
+            ['k', '✔ Ticket résolu · +3 pts — « Nickel, je valide de mon côté 👍 » (Nadia)'] ] },
+    ];
+    const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const pause = (ms) => new Promise((r) => setTimeout(r, calme ? 0 : ms));
+    const invite = (m) => m === 'console' ? `<span style="color:${C.console}">etudiant@console</span>:~$ `
+        : `<span style="color:${C[m]}">root@${m}</span>:~# `;
+    function afficherOnglets(machines, active) {
+        onglets.innerHTML = machines.map((m) => `<span class="${m === active ? 'actif' : ''}" style="--c:${C[m]}">${m}</span>`).join('');
+    }
+    async function jouer(s) {
+        ecran.innerHTML = '';
+        afficherOnglets(s.machines, s.machines[0]);
+        for (const [type, a, b] of s.lignes) {
+            const ligne = document.createElement('div');
+            ecran.appendChild(ligne);
+            if (type === 'p') {
+                afficherOnglets(s.machines, a);
+                ligne.innerHTML = invite(a);
+                const cmd = document.createElement('span'); ligne.appendChild(cmd);
+                const cur = document.createElement('span'); cur.className = 'curseur'; ligne.appendChild(cur);
+                await pause(350);
+                for (const ch of b) { cmd.textContent += ch; await pause(28 + Math.random() * 45); }
+                await pause(280); cur.remove();
+            } else {
+                const cls = { t: 'ticket', o: '', e: 'erreur', k: 'ok' }[type];
+                ligne.innerHTML = `<span class="${cls}">${esc(a)}</span>`;
+                await pause(type === 't' ? 1100 : type === 'k' ? 2600 : 450);
+            }
+            while (ecran.scrollHeight > ecran.clientHeight && ecran.firstChild) ecran.firstChild.remove();
+        }
+    }
+    (async function boucle() {
+        for (let i = 0; ; i = (i + 1) % scenarios.length) {
+            await jouer(scenarios[i]);
+            if (calme) return;  // mouvement réduit : un seul scénario, affiché d'un coup
+            await pause(1500);
+        }
+    })();
+})();
+
+// ─── Apparition au défilement, compteurs et jauges ───
+(function () {
+    const vus = new IntersectionObserver((entrees) => {
+        for (const e of entrees) {
+            if (!e.isIntersecting) continue;
+            e.target.classList.add('visible');
+            e.target.querySelectorAll('[data-compte]').forEach(compter);
+            e.target.querySelectorAll('[data-largeur]').forEach((j) => { j.style.width = j.dataset.largeur + '%'; });
+            vus.unobserve(e.target);
+        }
+    }, { threshold: 0.15 });
+    document.querySelectorAll('.revele').forEach((el, i) => { el.style.transitionDelay = (i % 4) * 70 + 'ms'; vus.observe(el); });
+    function compter(el) {
+        const fin = Number(el.dataset.compte), t0 = performance.now(), duree = 1200;
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        (function pas(t) {
+            const k = Math.min(1, (t - t0) / duree);
+            el.textContent = Math.round(fin * (1 - Math.pow(1 - k, 3)));
+            if (k < 1) requestAnimationFrame(pas);
+        })(t0);
+    }
+})();
+</script>
+{% endblock %}

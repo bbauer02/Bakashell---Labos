@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sqlite3
+from markupsafe import escape as html_escape
 
 import pytest
 from starlette.websockets import WebSocketDisconnect
@@ -469,6 +470,20 @@ def test_titre_et_auteur(app_client):
     assert "Connexion — Bakashell</title>" in page and "Bakashell — Labo DevOps" in page
     assert "Bauer Baptiste" in page and 'href="mailto:contact@bakashell.fr"' in page
     assert '<meta name="author" content="Bauer Baptiste (contact@bakashell.fr)">' in page
+
+
+def test_page_d_accueil(app_client):
+    # Visiteur : la présentation, construite à partir des vrais parcours ; connecté : ses labos
+    page = app_client.get("/", follow_redirects=False)
+    assert page.status_code == 200
+    html = page.text
+    for course in COURSES.values():
+        assert html_escape(course["title"]) in html, course["key"]
+    assert 'href="/register"' in html and 'href="/login"' in html
+    assert f'data-compte="{sum(c["total_exercises"] for c in COURSES.values())}"' in html
+    assert "Sophie Marchand" in html and "Cimes &amp; Sentiers" in html
+    admin_client(app_client)
+    assert app_client.get("/", follow_redirects=False).headers["location"] == "/catalogue"
 
 
 def test_icones_et_charte(app_client):

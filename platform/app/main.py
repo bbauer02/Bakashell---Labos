@@ -249,7 +249,20 @@ async def favicon():
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return RedirectResponse("/catalogue" if get_current_user(request) else "/login", status_code=302)
+    """Connecté : ses labos. Sinon : la page de présentation de Bakashell, construite à partir des vrais parcours."""
+    if get_current_user(request):
+        return RedirectResponse("/catalogue", status_code=302)
+    labos = [{"key": k, "title": c["title"], "short": c["short"], "summary": c["summary"], "level": c["level"],
+              "duration": c["duration"], "steps": len(c["steps"]), "exercises": c["total_exercises"],
+              "thumbnail": thumbnail_url(k), "exam": bool(c.get("exam"))} for k, c in COURSES.items()]
+    stats = {"labos": sum(1 for lab in labos if not lab["exam"]),
+             "exercices": sum(c["total_exercises"] for c in COURSES.values()),
+             "fiches": sum(len(cards) for cards in memo.MEMOS.values())}
+    equipe = [{"name": p["name"], "role": p["role"].split(",")[0], "color": p["color"],
+               "initials": "".join(w[0] for w in p["name"].split()[:2])} for p in CHARACTERS.values()]
+    return templates.TemplateResponse(request, "accueil.html", {
+        "labos": labos, "stats": stats, "equipe": equipe, "teacher_signup": teacher_signup_enabled(),
+    })
 
 
 @app.get("/login", response_class=HTMLResponse)
