@@ -571,10 +571,21 @@
         .term-tab.active { color: var(--c); background: var(--bg-card); border-color: var(--c); box-shadow: inset 0 -2px 0 var(--c); font-weight: 700; }
 
         /* ─── Parcours et éditeur ──────────────────── */
-        .course-switch { display: flex; gap: 4px; margin-left: 14px; flex-shrink: 0; }
-        .course-switch a { font-size: 12px; padding: 4px 10px; border-radius: 12px; border: 1px solid var(--border); color: var(--text-dim); text-decoration: none; white-space: nowrap; }
-        .course-switch a.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-        .course-switch a:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+        /* Menu des labos : le labo courant, les autres dans la liste déroulante */
+        .course-menu { position: relative; margin-left: 6px; flex-shrink: 0; }
+        .course-menu summary { list-style: none; cursor: pointer; font-size: 13px; font-weight: 600; padding: 5px 12px; border-radius: 14px;
+            background: rgba(6, 182, 212, .15); border: 1px solid var(--accent); color: var(--accent-light); white-space: nowrap; user-select: none; }
+        .course-menu summary::-webkit-details-marker { display: none; }
+        .course-menu .caret { font-size: 10px; margin-left: 2px; }
+        .course-menu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 50; min-width: 260px; display: flex; flex-direction: column;
+            background: var(--bg-card); border: 1px solid var(--border-hi); border-radius: 10px; padding: 6px; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+        .course-menu-list a { padding: 8px 10px; border-radius: 6px; font-size: 13px; color: var(--text); text-decoration: none; white-space: nowrap; }
+        .course-menu-list a:hover { background: var(--bg-primary); }
+        .course-menu-list a.active { color: var(--accent-light); font-weight: 600; }
+        .course-menu-list a.active::before { content: '● '; }
+        .course-menu-list a.all { color: var(--text-dim); border-top: 1px solid var(--border); margin-top: 4px; padding-top: 10px; border-radius: 0 0 6px 6px; }
+        /* Étiquette devant les étapes : « Modules », « Jours »… */
+        .step-caption { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); margin-right: 4px; flex-shrink: 0; }
         .editor-pane { flex: 3; display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--border); background: #1e1e1e; }
         .editor-toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); font-size: 12px; }
         .editor-toolbar select { background: var(--bg-primary); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; max-width: 320px; }
@@ -855,8 +866,6 @@
             .topbar-right { gap: 10px; }
             .topbar-right .lbl, .grade-btn .alt { display: none; }
             .topbar-right .user-name { display: none; }
-            /* Le sélecteur de labos se réduit au labo courant (les autres : « Mes labos ») : place aux étapes */
-            .course-switch a:not(.active) { display: none; }
             .topbar-center { min-width: 120px; }
         }
         @media (max-width: 768px) {
@@ -879,9 +888,13 @@
     <div class="topbar">
         <div class="topbar-left">
             {{ marque() }}
-            <nav class="course-switch">
-                {% for c in courses %}<a href="/lab/{{ c.key }}" class="{% if c.key == course.key %}active{% endif %}" title="{{ c.title }}">{{ c.short }}</a>{% endfor %}
-            </nav>
+            <details class="course-menu" id="course-menu">
+                <summary title="Changer de labo">{{ course.short }} <span class="caret">▾</span></summary>
+                <div class="course-menu-list">
+                    {% for c in courses %}<a href="/lab/{{ c.key }}" class="{% if c.key == course.key %}active{% endif %}">{{ c.title }}</a>{% endfor %}
+                    <a href="/catalogue" class="all">Tous mes labos…</a>
+                </div>
+            </details>
         </div>
         <div class="topbar-center" id="step-dots"></div>
         <div class="topbar-right">
@@ -1196,6 +1209,10 @@
         })();
 
         window.addEventListener('resize', ajusterTerminal);
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('course-menu');
+            if (menu && menu.open && !menu.contains(e.target)) menu.open = false;
+        });
 
         // ─── Panel Resize ──────────────────────────────
         const resizeHandle = document.getElementById('resize-handle');
@@ -1263,9 +1280,20 @@
         // Dates SQLite (UTC, « AAAA-MM-JJ HH:MM:SS ») -> heure locale lisible
         const frDateTime = (sql) => new Date(sql.replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
+        // Nom et numéro d'une étape d'après son titre (« Module 0 — … », « Jour 3 — … ») : le parcours Réseau commence
+        // au module 0, et ses ronds doivent dire 0, 1, 2 comme les titres. À défaut : « Étape n ».
+        function nomEtape(num) {
+            const s = stepsData.find((x) => x.num === num) || { num, title: '' };
+            const m = /^(Module|Jour|Mission)\s+(\d+)/.exec(s.title || '');
+            return m ? { mot: m[1], num: m[2] } : { mot: 'Étape', num: String(num) };
+        }
+        const etiquetteEtape = (num) => { const e = nomEtape(num); return `${e.mot} ${e.num}`; };
+        const accord = (num) => ['Étape', 'Mission'].includes(nomEtape(num).mot) ? 'e' : '';  // terminé(e), complet/complète
+
         function renderStepDots() {
             const container = document.getElementById('step-dots');
-            container.innerHTML = stepsData.map(s => {
+            const mot = stepsData.length ? nomEtape(stepsData[0].num).mot : 'Étape';
+            container.innerHTML = `<span class="step-caption">${mot}s</span>` + stepsData.map(s => {
                 let cls = '';
                 if (s.num === currentStep) cls = 'active';
                 else if (s.completed === s.total && s.total > 0) cls = 'done';
@@ -1273,7 +1301,7 @@
                 const finished = s.completed === s.total && s.total > 0;
                 if (s.due && !finished) cls += s.due < todayIso() ? ' late' : ' due';
                 const due = s.due ? ` — à terminer pour le ${frDate(s.due)}` : '';
-                return `<div class="step-dot ${cls}" onclick="selectStep(${s.num})" title="Étape ${s.num}: ${escHtml(s.title)}${due}">${s.num}</div>`;
+                return `<div class="step-dot ${cls}" onclick="selectStep(${s.num})" title="${escHtml(s.title)}${due}">${nomEtape(s.num).num}</div>`;
             }).join('');
             const active = container.querySelector('.step-dot.active');
             if (active) {
@@ -1363,7 +1391,7 @@
         }
 
         async function renderExercises(stepData) {
-            document.getElementById('step-tag').textContent = `Étape ${stepData.num}`;
+            document.getElementById('step-tag').textContent = etiquetteEtape(stepData.num);
             document.getElementById('step-title').textContent = stepData.title;
             document.getElementById('step-desc').textContent = stepData.description;
             const dueEl = document.getElementById('step-due');
@@ -1676,7 +1704,7 @@ ${s.preamble}
                 fetchSteps().catch(() => {});
                 if (r.passed) {
                     const left = [...document.querySelectorAll('.exercise-card')].filter((c) => !c.classList.contains('passed')).length;
-                    showToast(left ? `Exercice ${id} validé ! +${r.earned} pts` : `Exercice ${id} validé ! Étape ${currentStep} terminée 🎉`, 'success');
+                    showToast(left ? `Exercice ${id} validé ! +${r.earned} pts` : `Exercice ${id} validé ! ${etiquetteEtape(currentStep)} terminé${accord(currentStep)} 🎉`, 'success');
                     if (!left && !r.already) celebrate();
                 } else {
                     showToast(`Exercice ${id} : pas encore, lisez le message sous l'exercice.`, 'error');
@@ -1829,7 +1857,7 @@ ${s.preamble}
                 const cur = s.num === currentStep ? ' current' : '';
                 const fill = cls === 'partial' ? `<span class="fill" style="width:${Math.round(100 * s.completed / s.total)}%"></span>` : '';
                 const state = done(s) ? 'PERCÉE' : (s.completed > 0 ? `${s.completed}/${s.total}` : '░░░');
-                return `<button class="ice ${cls}${cur}" onclick="trailStep(${s.num})" title="Étape ${s.num} : ${escHtml(s.title)} (${s.completed}/${s.total})">${fill}`
+                return `<button class="ice ${cls}${cur}" onclick="trailStep(${s.num})" title="${escHtml(s.title)} (${s.completed}/${s.total})">${fill}`
                     + `<span class="num">ICE ${String(s.num).padStart(2, '0')}</span><span class="title">${escHtml(s.title.split(' — ').pop())}</span><span class="state">${state}</span></button>`;
             }).join('');
             html += `<div class="ice-core${stepsData.length && stepsData.every(done) ? ' reached' : ''}"><div class="glyph">◈</div><div class="name">${escHtml(b.core)}</div>`
@@ -1861,7 +1889,7 @@ ${s.preamble}
         async function selectStep(num) {
             currentStep = num;
             renderStepDots();
-            document.getElementById('step-tag').textContent = `Étape ${num}`;
+            document.getElementById('step-tag').textContent = etiquetteEtape(num);
             document.getElementById('step-title').textContent = "Préparation de l'étape…";
             let stepData;
             try {
@@ -1980,7 +2008,7 @@ ${s.preamble}
 
                 // Toast
                 if (allPassed) {
-                    showToast(`Étape ${currentStep} complète ! ${newPoints > 0 ? '+' + newPoints + ' pts' : ''}`, 'success');
+                    showToast(`${etiquetteEtape(currentStep)} ${accord(currentStep) ? 'complète' : 'complet'} ! ${newPoints > 0 ? '+' + newPoints + ' pts' : ''}`, 'success');
                     if (newPoints > 0) celebrate();
                     btn.className = 'btn-validate success';
                     btn.innerHTML = `
@@ -2075,7 +2103,7 @@ ${s.preamble}
                 if (allPassed && newPoints > 0) celebrate();
                 // Auto-advance when step complete
                 if (allPassed && currentStep < stepsData.length) {
-                    showToast(`Étape ${currentStep} terminée !`, 'success');
+                    showToast(`${etiquetteEtape(currentStep)} terminé${accord(currentStep)} !`, 'success');
                     setTimeout(() => selectStep(currentStep + 1), 2500);
                 }
             } catch (e) {
