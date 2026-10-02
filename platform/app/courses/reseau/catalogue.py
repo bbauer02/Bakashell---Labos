@@ -28,10 +28,12 @@ for _ in $(seq 1 150); do [ -f /run/lab-ready ] && docker info >/dev/null 2>&1 &
 docker image inspect machine-reseau:2 >/dev/null 2>&1 || { echo "Le réseau n'est pas prêt" >&2; exit 1; }
 R=/etc/reseau
 mkdir -p $R
-# reseau_neuf : retire toutes les machines et tous les câbles du module précédent
+# reseau_neuf : retire toutes les machines et tous les câbles du module précédent. Par leur étiquette, pas par la
+# liste : après une recréation de la console (nouvelle image), la liste est vide mais les machines existent encore
+# dans le moteur Docker (volume conservé), et leurs noms bloqueraient la création des nouvelles.
 reseau_neuf() {
   local m
-  for m in $(cat $R/machines 2>/dev/null); do docker rm -f "$m" >/dev/null 2>&1 || true; done
+  for m in $(docker ps -aq --filter label=reseau-lab); do docker rm -f "$m" >/dev/null 2>&1 || true; done
   : > $R/machines; : > $R/cables; : > $R/plan.txt
   chmod 644 $R/machines $R/cables $R/plan.txt
 }
