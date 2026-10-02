@@ -133,28 +133,44 @@ SCHEMA_IP_A = (
 )
 
 
-def _repere(adresse, etiquette):
-    """Une adresse 172.16.5.<adresse> placée sur les deux règles du schéma du masque."""
-    x = round(70 + 560 * (adresse + 0.5) / 256, 1)
-    return (f'<path class="ld" d="M{x},138 L{x},218"/>'
-            f'<text class="t2" x="{x}" y="234" text-anchor="middle">{etiquette}</text>')
+def _x(adresse):
+    """Position de l'adresse 172.16.5.<adresse> sur la règle du schéma du masque (de .0 à .255)."""
+    return round(20 + 440 * (adresse + 0.5) / 256, 1)
+
+
+def _cas(y, titre, etendue, regle, verdict, detail, ok):
+    """Un cas du schéma du masque : ce que la vitrine considère comme son réseau, et le verdict pour le serveur."""
+    return (f'<rect class="b" x="8" y="{y}" width="624" height="104" rx="8"/>'
+            f'<text class="ttl" x="20" y="{y + 22}">{titre}</text>'
+            f'<text class="t2" x="20" y="{y + 40}">{etendue}</text>'
+            + regle
+            + f'<circle class="a" cx="{_x(20)}" cy="{y + 59}" r="6"/><circle class="w" cx="{_x(70)}" cy="{y + 59}" r="6"/>'
+            f'<text class="t2" x="{_x(20)}" y="{y + 86}" text-anchor="middle">serveur .20</text>'
+            f'<text class="t2" x="{_x(70)}" y="{y + 86}" text-anchor="middle">vitrine .70</text>'
+            f'<text class="t2" x="20" y="{y + 98}">.0</text><text class="t2" x="460" y="{y + 98}" text-anchor="end">.255</text>'
+            f'<rect class="{"g" if ok else "r"}" x="468" y="{y + 30}" width="160" height="50" rx="6"/>'
+            f'<text x="478" y="{y + 51}">{verdict}</text><text class="t2" x="478" y="{y + 69}">{detail}</text>')
 
 
 SCHEMA_MASQUE = (
-    '<figure class="schema"><svg viewBox="0 0 640 244" role="img" aria-label="Le masque décide quelles adresses sont sur le même réseau">'
+    '<figure class="schema"><svg viewBox="0 0 640 100" role="img" aria-label="Une adresse IP : partie réseau et partie machine">'
     '<rect class="g" x="150" y="10" width="190" height="40" rx="6"/><text class="ttl" x="214" y="35">172.16.5</text>'
     '<rect class="a" x="346" y="10" width="110" height="40" rx="6"/><text class="ttl" x="388" y="35">.70</text>'
     '<text class="t2" x="160" y="66">partie réseau (/24 : 24 bits)</text><text class="t2" x="356" y="66">partie machine</text>'
-    '<text class="t2" x="150" y="86">Masque /24 = 255.255.255.0 : même réseau = mêmes trois premiers nombres.</text>'
-    '<text x="8" y="122">Les adresses 172.16.5.0 à 172.16.5.255, vues par la machine 172.16.5.70 :</text>'
-    '<text x="8" y="161">en /24</text><rect class="g" x="70" y="146" width="560" height="22" rx="3"/>'
-    '<text class="t2" x="620" y="161" text-anchor="end">tout est « mon réseau »</text>'
-    '<text x="8" y="205">en /28</text><rect class="b" x="70" y="190" width="560" height="22" rx="3"/>'
-    '<rect class="w" x="210" y="190" width="35" height="22"/><text class="t2" x="252" y="205">.64 à .79 : « mon réseau »</text>'
-    '<text class="t2" x="620" y="205" text-anchor="end">« un autre réseau »</text>'
-    + _repere(20, ".20 serveur") + _repere(70, ".70 vitrine") + _repere(150, ".150 imprimante")
-    + '</svg><figcaption>La même adresse avec deux masques différents. En /28, la vitrine (.70) ne considère comme voisines que '
-    'les 16 adresses de .64 à .79 : pour elle, le serveur (.20) est sur un autre réseau, qu\'elle ne sait pas joindre.</figcaption></figure>'
+    '<text class="t2" x="150" y="88">Masque /24 = 255.255.255.0 : même réseau = mêmes trois premiers nombres.</text>'
+    '</svg></figure>'
+    '<figure class="schema"><svg viewBox="0 0 640 262" role="img" aria-label="Avec /24 le serveur est sur le réseau de la vitrine, avec /28 il ne l\'est plus">'
+    '<text x="8" y="18">La vitrine (172.16.5.70) veut joindre le serveur (172.16.5.20). Est-il sur son réseau ?</text>'
+    + _cas(34, "Avec le masque /24 (255.255.255.0)", "réseau de la vitrine : de 172.16.5.0 à 172.16.5.255 (256 adresses)",
+           '<rect class="g" x="20" y="86" width="440" height="14" rx="3"/>',
+           "✓ même réseau", "elle lui parle directement", True)
+    + _cas(152, "Avec le masque /28 (255.255.255.240)", "réseau de la vitrine : de 172.16.5.64 à 172.16.5.79 (16 adresses)",
+           f'<rect class="r" x="20" y="204" width="440" height="14" rx="3"/>'
+           f'<rect class="g" x="{_x(64) - 0.9}" y="204" width="{round(440 * 16 / 256, 1)}" height="14"/>',
+           "✗ autre réseau", "« Network is unreachable »", False)
+    + '</svg><figcaption>En vert, les adresses que la vitrine considère comme <strong>son</strong> réseau, d\'après son masque. '
+    'En /28, ce réseau ne compte plus que 16 adresses : le serveur (.20) n\'en fait pas partie, et la vitrine ne sait pas '
+    'où lui envoyer ses messages.</figcaption></figure>'
 )
 
 SCHEMA_ARP = (
