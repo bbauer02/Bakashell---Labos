@@ -45,7 +45,7 @@ APP_DIR = os.environ.get("APP_DIR", "/app")
 
 # Nom de l'application et auteur, affichés sur toutes les pages
 APP_TITLE, APP_SHORT = "Bakashell — Labo DevOps", "Bakashell"
-AUTHOR_NAME, AUTHOR_EMAIL = "Bauer Baptiste", "bbauer02@gmail.com"
+AUTHOR_NAME, AUTHOR_EMAIL = "Bauer Baptiste", "contact@bakashell.fr"
 # Description lue par les moteurs de recherche et les filtres web (proxys scolaires) pour classer le site
 APP_DESCRIPTION = ("Plateforme pédagogique de travaux pratiques en administration système et DevOps : "
                    "Linux, Git, Docker, Ansible et tests unitaires, avec un terminal Linux dans le navigateur.")

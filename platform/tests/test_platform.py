@@ -440,8 +440,8 @@ def test_page_integrite(app_client):
 def test_titre_et_auteur(app_client):
     page = app_client.get("/login").text
     assert "Connexion — Bakashell</title>" in page and "Bakashell — Labo DevOps" in page
-    assert "Bauer Baptiste" in page and 'href="mailto:bbauer02@gmail.com"' in page
-    assert '<meta name="author" content="Bauer Baptiste (bbauer02@gmail.com)">' in page
+    assert "Bauer Baptiste" in page and 'href="mailto:contact@bakashell.fr"' in page
+    assert '<meta name="author" content="Bauer Baptiste (contact@bakashell.fr)">' in page
 
 
 def test_description_pedagogique(app_client):
