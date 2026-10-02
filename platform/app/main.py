@@ -46,6 +46,8 @@ APP_DIR = os.environ.get("APP_DIR", "/app")
 
 # Nom de l'application et auteur, affichés sur toutes les pages
 APP_TITLE, APP_SHORT = "Bakashell — Labo DevOps", "Bakashell"
+# Version de la plateforme, affichée dans la bannière des terminaux : à augmenter à chaque version notable
+APP_VERSION = "1.0"
 AUTHOR_NAME, AUTHOR_EMAIL = "Bauer Baptiste", "contact@bakashell.fr"
 # Description lue par les moteurs de recherche et les filtres web (proxys scolaires) pour classer le site
 APP_DESCRIPTION = ("Plateforme pédagogique de travaux pratiques en administration système et DevOps : "
@@ -53,7 +55,7 @@ APP_DESCRIPTION = ("Plateforme pédagogique de travaux pratiques en administrati
 
 app = FastAPI(title=APP_TITLE)
 templates = Jinja2Templates(directory=os.path.join(APP_DIR, "templates"))
-templates.env.globals.update(APP_TITLE=APP_TITLE, APP_SHORT=APP_SHORT, APP_DESCRIPTION=APP_DESCRIPTION,
+templates.env.globals.update(APP_TITLE=APP_TITLE, APP_SHORT=APP_SHORT, APP_VERSION=APP_VERSION, APP_DESCRIPTION=APP_DESCRIPTION,
                              AUTHOR_NAME=AUTHOR_NAME, AUTHOR_EMAIL=AUTHOR_EMAIL)
 templates.env.filters["heure"] = lambda ts: datetime.datetime.fromtimestamp(ts).strftime("%d/%m %H:%M")
 
