@@ -1,0 +1,8 @@
+#!/bin/bash
+# connexion <machine> [commande…] : ouvre un terminal sur une machine du réseau, ou y lance une seule commande
+if [ $# -eq 0 ]; then
+    echo "Usage : connexion <machine> [commande]" >&2
+    echo "Machines du réseau : $(paste -sd' ' /etc/reseau/machines 2>/dev/null) (commande plan : le schéma)" >&2
+    exit 1
+fi
+exec sudo -n /usr/local/sbin/lab-machine connexion "$@"

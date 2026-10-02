@@ -24,6 +24,7 @@ CORES = {
     "docker": "Port franc",
     "git": "Arbre des commits",
     "ansible": "La Ruche",
+    "reseau": "La Matrice",
     "projet": "Cœur de prod",
 }
 DEFAULT_CORE = "Noyau"

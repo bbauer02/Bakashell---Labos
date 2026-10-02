@@ -12,6 +12,7 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 | **Docker : conteneuriser la boutique** | `/lab/docker` | 11 journées, 65 exercices, 280 points — un moteur Docker par étudiant + éditeur |
 | **Git : travailler en équipe** | `/lab/git` | 9 journées, 40 exercices, 178 points — terminal + dépôt partagé de l'équipe |
 | **Ansible : automatiser l'infrastructure** | `/lab/ansible` | 10 journées, 39 exercices, 188 points — poste de contrôle + vrais serveurs joignables en SSH + éditeur |
+| **Réseau : du câble à la sécurité** (en construction) | `/lab/reseau` | module 1, 6 exercices, 18 points — console + machines Debian (postes, switch…) reliées par des câbles virtuels |
 | **Projet final** (épreuve notée) | `/lab/projet` | 5 missions, 20 exercices, 100 points — les cinq parcours enchaînés sur l'API de la boutique, sans indice ni correction |
 
 ## Organisation : catalogue et classes
@@ -102,13 +103,14 @@ personnel, d'un cours par étape et d'exercices validés automatiquement. Cinq p
 | `images/docker/` | Image `docker-lab` : moteur Docker complet (docker:dind), images de base préchargées, projet de la boutique |
 | `images/git/` | Image `git-lab` : Git, invite qui affiche la branche courante, dépôt partagé de l'équipe dans `/srv/git` |
 | `images/ansible/` | Image `ansible-lab` : poste de contrôle (ansible-core) + moteur Docker interne qui fait tourner les serveurs gérés (Debian + SSH) et le dépôt APT interne |
+| `images/reseau/` | Image `reseau-lab` : console du technicien + moteur Docker interne qui fait tourner les machines du réseau simulé (Debian, ifupdown) ; câbles (`lab-cablage`), accès aux machines (`connexion`, `redemarrer`, `plan`) |
 | `images/projet/` | Image `projet-lab` (projet final) : poste de contrôle du parcours Ansible + Git, Node et Jest, serveurs Debian, serveur de construction Docker `ci1`, modèle du projet, tests cachés et correcteur (`correcteur.js`) |
 | `platform/tests/` | Banc de test des parcours (`run_lab_tests.py`) et tests unitaires de la plateforme (`test_platform.py`) |
 | `.github/workflows/ci.yml` | Intégration continue : tests unitaires, image de la plateforme, banc de test de chaque parcours |
 | `docs/tutoriel/step-*/` | Tutoriel texte d'origine (historique, non utilisé par la plateforme) |
 
 Chaque étudiant a un conteneur **par parcours** (`lab-student-<id>`, `lab-jest-<id>`, `lab-docker-<id>`,
-`lab-git-<id>`, `lab-ansible-<id>`, `lab-projet-<id>`), créé à sa première visite. Un conteneur arrêté pour inactivité redémarre à la visite suivante, avec
+`lab-git-<id>`, `lab-ansible-<id>`, `lab-reseau-<id>`, `lab-projet-<id>`), créé à sa première visite. Un conteneur arrêté pour inactivité redémarre à la visite suivante, avec
 un message qui prévient l'étudiant ; son travail est conservé.
 
 Fonctionnement d'une étape :
@@ -263,6 +265,24 @@ moteur : pour lui, ce sont des serveurs distants. Un dépôt APT interne (`depot
 sans Internet. Les vérifications observent le résultat réel sur les serveurs (pages HTTP, Redis, comptes) et, pour
 les exercices `manual`, rejouent les playbooks de l'étudiant pour contrôler qu'un second passage ne change rien.
 
+## Parcours Réseau
+
+En construction : des modules courts pour démarrer (découverte, BTS 1re année), puis des chantiers plus longs, jusqu'à
+la sécurité réseau. Module 1, *Le magasin d'Annecy* : `ip a`, adresses IP et MAC, état d'une interface, masque, `ping`,
+ARP et conflit d'adresses, configuration temporaire (`ip addr`) et permanente (`/etc/network/interfaces`).
+
+L'étudiant travaille sur une **console** qui n'est pas branchée sur le réseau : `plan` affiche le schéma et les adresses
+prévues, `connexion <machine>` ouvre un terminal root sur une machine (ou y lance une commande), `redemarrer <machine>`
+la redémarre. Il n'a ni `sudo` ni accès au moteur Docker : `connexion` passe par `/usr/local/sbin/lab-machine`, seule
+commande autorisée par sudo, limitée aux machines de `/etc/reseau/machines`.
+
+Chaque machine (postes, imprimante, switch `sw-…`) est un conteneur Debian sans réseau, dans le moteur Docker interne.
+`lab-cablage` branche les câbles décrits dans `/etc/reseau/cables` (paires veth, MAC fixes ; côté switch, un pont
+`br0`), puis chaque poste applique son `/etc/network/interfaces` (`ifup -a`) : un redémarrage de la console ou d'une
+machine rejoue un vrai démarrage, et ce qui n'a pas été enregistré est perdu. Les vérifications observent le réseau de
+chaque machine avec les outils de la console (`nsenter`) : root sur une machine, l'étudiant ne peut pas les tromper.
+Environ 65 Mo par étudiant pour le module 1.
+
 ## Projet final
 
 Épreuve notée de synthèse (parcours marqué `"exam": True` : aucun indice, aucune correction montrée aux étudiants ; les
@@ -401,7 +421,7 @@ progression de ce parcours est archivée dans la table `progress_archive`, jamai
 
 ## Modifier ou ajouter des exercices
 
-Catalogues : `platform/app/courses/<parcours>/catalogue.py` (`linux`, `jest`, `docker`, `git`, `ansible`, `projet`),
+Catalogues : `platform/app/courses/<parcours>/catalogue.py` (`linux`, `jest`, `docker`, `git`, `ansible`, `reseau`, `projet`),
 format documenté en tête
 de fichier ; corrigés correspondants dans `solutions.py` du même dossier. Dans
 chaque script d'étape, une ligne `#@ <exercice>` ouvre la correction de cet exercice : c'est ce découpage que voient
@@ -410,13 +430,14 @@ de référence est dans `images/jest/ref/`, les fichiers livrés aux étudiants 
 `images/jest/mutants.json` et les tests cachés dans `images/jest/hidden/`. Puis :
 
 ```bash
-docker build -t linux-lab ./images/linux && docker build -t jest-lab ./images/jest && docker build -t docker-lab ./images/docker && docker build -t git-lab ./images/git && docker build -t ansible-lab ./images/ansible && docker build -t projet-lab ./images/projet
+docker build -t linux-lab ./images/linux && docker build -t jest-lab ./images/jest && docker build -t docker-lab ./images/docker && docker build -t git-lab ./images/git && docker build -t ansible-lab ./images/ansible && docker build -t reseau-lab ./images/reseau && docker build -t projet-lab ./images/projet
 python platform/tests/run_lab_tests.py                  # parcours Linux (~8 min, dont cron)
 python platform/tests/run_lab_tests.py --only 1-8
 python platform/tests/run_lab_tests.py --course jest    # parcours Jest (~3,5 min)
 python platform/tests/run_lab_tests.py --course docker  # parcours Docker (~7 min, conteneur privilégié par défaut)
 python platform/tests/run_lab_tests.py --course git     # parcours Git (~30 s)
 python platform/tests/run_lab_tests.py --course ansible # parcours Ansible (~17 min, conteneur privilégié par défaut)
+python platform/tests/run_lab_tests.py --course reseau  # parcours Réseau (~30 s, conteneur privilégié par défaut)
 python platform/tests/run_lab_tests.py --course projet  # projet final (~5 min, conteneur privilégié par défaut)
 ```
 

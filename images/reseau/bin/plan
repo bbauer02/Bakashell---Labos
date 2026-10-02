@@ -1,0 +1,7 @@
+#!/bin/bash
+# plan : le schéma du réseau sur lequel vous travaillez (préparé par chaque module)
+if [ -s /etc/reseau/plan.txt ]; then
+    cat /etc/reseau/plan.txt
+else
+    echo "Le réseau n'est pas encore installé : ouvrez le premier module du cours."
+fi

@@ -50,6 +50,7 @@ jobs:
           - { course: docker, dir: images/docker, image: docker-lab }
           - { course: git, dir: images/git, image: git-lab }
           - { course: ansible, dir: images/ansible, image: ansible-lab }
+          - { course: reseau, dir: images/reseau, image: reseau-lab }
           - { course: projet, dir: images/projet, image: projet-lab }
     steps:
       - uses: actions/checkout@v4

@@ -14,9 +14,10 @@ from .courses.git import solutions as git
 from .courses.jest import solutions as jest
 from .courses.linux import solutions as linux
 from .courses.projet import solutions as projet
+from .courses.reseau import solutions as reseau
 
 SCRIPTS = {"linux": linux.SOLUTIONS, "jest": jest.SOLUTIONS, "docker": docker.SOLUTIONS, "git": git.SOLUTIONS, "ansible": ansible.SOLUTIONS,
-           "projet": projet.SOLUTIONS}
+           "reseau": reseau.SOLUTIONS, "projet": projet.SOLUTIONS}
 
 _MARKER = re.compile(r"^#@\s*(\S+)\s*$")
 

@@ -1,0 +1,50 @@
+#!/bin/bash
+# Branche les câbles du réseau simulé, décrits dans /etc/reseau/cables (une ligne par câble) :
+#   <machine A> <interface A> <MAC A ou -> <machine B> <interface B> <MAC B ou ->
+# Un câble est une paire veth entre les espaces réseau des deux machines. Côté switch (machine « sw-… »), le port
+# est relié au pont br0 et allumé. Côté poste, l'interface naît éteinte : la machine applique ensuite sa propre
+# configuration (/etc/network/interfaces, ifup -a), comme au démarrage d'un vrai poste.
+# Idempotent : relancé au démarrage de la console et après le redémarrage d'une machine (son espace réseau est
+# alors neuf, et ses câbles ont disparu avec lui).
+C=/etc/reseau/cables
+[ -s $C ] || exit 0
+pid() { docker inspect -f '{{if .State.Running}}{{.State.Pid}}{{end}}' "$1" 2>/dev/null; }
+dans() { local p=$1; shift; nsenter -t "$p" -n -- "$@"; }
+est_switch() { case $1 in sw-*) return 0;; esac; return 1; }
+
+n=0
+a_configurer=()
+while read -r a ia ma b ib mb; do
+    case $a in ''|'#'*) continue;; esac
+    pa=$(pid "$a"); pb=$(pid "$b")
+    [ -n "$pa" ] && [ -n "$pb" ] || continue
+    if dans "$pa" ip link show "$ia" > /dev/null 2>&1 && dans "$pb" ip link show "$ib" > /dev/null 2>&1; then
+        continue
+    fi
+    dans "$pa" ip link del "$ia" 2> /dev/null
+    dans "$pb" ip link del "$ib" 2> /dev/null
+    n=$((n + 1)); t1="cab${n}a$$"; t2="cab${n}b$$"
+    ip link add "$t1" type veth peer name "$t2" || continue
+    [ "$ma" != - ] && ip link set "$t1" address "$ma"
+    [ "$mb" != - ] && ip link set "$t2" address "$mb"
+    ip link set "$t1" netns "$pa"
+    ip link set "$t2" netns "$pb"
+    dans "$pa" ip link set "$t1" name "$ia"
+    dans "$pb" ip link set "$t2" name "$ib"
+    for bout in "$a $pa $ia" "$b $pb $ib"; do
+        set -- $bout
+        if est_switch "$1"; then
+            dans "$2" sh -c 'ip link show br0 >/dev/null 2>&1 || ip link add br0 type bridge; ip link set br0 up'
+            dans "$2" ip link set "$3" master br0
+            dans "$2" ip link set "$3" up
+        else
+            a_configurer+=("$1")
+        fi
+    done
+done < $C
+
+# Chaque poste rebranché applique sa configuration réseau (les interfaces « auto » de /etc/network/interfaces)
+for m in $(printf '%s\n' "${a_configurer[@]}" | sort -u); do
+    docker exec "$m" sh -c 'rm -f /run/network/ifstate*; ifup -a' > /dev/null 2>&1
+done
+exit 0

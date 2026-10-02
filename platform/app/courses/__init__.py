@@ -2,7 +2,7 @@
 
 Chaque parcours a son image Docker, son conteneur par étudiant, son catalogue d'étapes et
 sa version (un changement de version archive la progression du parcours et recrée les
-conteneurs). Les identifiants d'exercices sont uniques entre parcours (« 4.2 », « J4.2 », « D4.2 », « G4.2 », « A4.2 », « P4.2 »).
+conteneurs). Les identifiants d'exercices sont uniques entre parcours (« 4.2 », « J4.2 », « D4.2 », « G4.2 », « A4.2 », « R4.2 », « P4.2 »).
 """
 import importlib
 import importlib.util
@@ -14,6 +14,7 @@ from .git import catalogue as git_catalogue
 from .jest import catalogue as jest_catalogue
 from .linux import catalogue as linux_catalogue
 from .projet import catalogue as projet_catalogue
+from .reseau import catalogue as reseau_catalogue
 from ..scenario import CHARACTERS, contexte
 
 COURSES = {
@@ -135,6 +136,31 @@ COURSES = {
         "cpu_quota": 100000,
         "pids_limit": 2048,
         # Les serveurs gérés (web1, web2, db1, web3) tournent dans un moteur Docker propre à l'étudiant
+        "docker_in_docker": os.environ.get("DOCKER_LAB_RUNTIME", "sysbox-runc"),
+    },
+    "reseau": {
+        "key": "reseau",
+        "title": "Réseau : du câble à la sécurité",
+        "short": "Réseau",
+        "summary": "Comprendre, configurer et dépanner le réseau de Cimes & Sentiers, du premier câble jusqu'à la sécurité, sur de vraies machines reliées par des câbles virtuels. Des modules courts pour démarrer, des chantiers plus longs ensuite.",
+        "level": "Découverte à avancé (progressif)",
+        "duration": "En construction : module 1 (environ 1 h)",
+        "steps": reseau_catalogue.STEPS,
+        "version": reseau_catalogue.EXERCISES_VERSION,
+        "meta_key": "exercises_version:reseau",
+        "id_glob": "R*",
+        "image": os.environ.get("RESEAU_LAB_IMAGE", "reseau-lab"),
+        "container_prefix": "lab-reseau-",
+        "setup_prelude": reseau_catalogue.SETUP_PRELUDE,
+        "check_prelude": reseau_catalogue.CHECK_PRELUDE,
+        "mentor": reseau_catalogue.MENTOR,
+        "editor_root": None,
+        "auto_validate": True,
+        "check_timeout": 120,
+        "mem_limit": "512m",
+        "cpu_quota": 100000,
+        "pids_limit": 1024,
+        # Les machines du réseau (postes, switch…) tournent dans un moteur Docker propre à l'étudiant
         "docker_in_docker": os.environ.get("DOCKER_LAB_RUNTIME", "sysbox-runc"),
     },
     "projet": {

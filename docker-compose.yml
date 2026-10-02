@@ -21,7 +21,8 @@ services:
       - GIT_LAB_IMAGE=git-lab
       - ANSIBLE_LAB_IMAGE=ansible-lab
       - PROJET_LAB_IMAGE=projet-lab
-      # Parcours Docker, Ansible et projet final : chaque étudiant a son propre moteur Docker.
+      - RESEAU_LAB_IMAGE=reseau-lab
+      # Parcours Docker, Ansible, Réseau et projet final : chaque étudiant a son propre moteur Docker.
       # sysbox-runc (recommandé, nécessite Sysbox sur l'hôte) ou privileged (machine dédiée / développement)
       - DOCKER_LAB_RUNTIME=${DOCKER_LAB_RUNTIME:-sysbox-runc}
       - LAB_NETWORK=linux-lab-students
@@ -61,6 +62,8 @@ services:
         condition: service_completed_successfully
       projet-image:
         condition: service_completed_successfully
+      reseau-image:
+        condition: service_completed_successfully
 
   # Ce service construit seulement l'image des conteneurs étudiants (parcours Linux), puis s'arrête
   lab-image:
@@ -97,6 +100,12 @@ services:
     build: ./images/projet
     image: projet-lab
     entrypoint: ["echo", "Projet lab image built"]
+
+  # Idem pour l'image du parcours Réseau (console + machines du réseau simulé, dans un moteur Docker interne)
+  reseau-image:
+    build: ./images/reseau
+    image: reseau-lab
+    entrypoint: ["echo", "Reseau lab image built"]
 
 networks:
   web-proxy:

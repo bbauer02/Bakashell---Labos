@@ -8,8 +8,10 @@ from .courses.docker import memo as docker
 from .courses.git import memo as git
 from .courses.jest import memo as jest
 from .courses.linux import memo as linux
+from .courses.reseau import memo as reseau
 
-MEMOS = {"linux": linux.CARDS, "jest": jest.CARDS, "docker": docker.CARDS, "git": git.CARDS, "ansible": ansible.CARDS}
+MEMOS = {"linux": linux.CARDS, "jest": jest.CARDS, "docker": docker.CARDS, "git": git.CARDS, "ansible": ansible.CARDS,
+         "reseau": reseau.CARDS}
 
 
 def check(courses: dict, exercise_index: dict):

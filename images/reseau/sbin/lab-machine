@@ -1,0 +1,35 @@
+#!/bin/bash
+# Seul accès de l'étudiant au moteur Docker (via sudo) : ouvrir un terminal sur une machine du réseau, y lancer une
+# commande, ou la redémarrer. Les machines autorisées sont celles de /etc/reseau/machines.
+#   lab-machine connexion <machine> [commande…]
+#   lab-machine redemarrer <machine>
+set -u
+LISTE=/etc/reseau/machines
+action=${1:-}
+m=${2:-}
+if [ -z "$m" ] || ! grep -qxF -- "$m" "$LISTE" 2>/dev/null; then
+    echo "Machine inconnue : « $m »." >&2
+    echo "Machines du réseau : $(paste -sd' ' "$LISTE" 2>/dev/null) (commande plan : le schéma)" >&2
+    exit 1
+fi
+shift 2
+case $action in
+    connexion)
+        opts=(-w /root)
+        if [ -t 0 ]; then opts+=(-it -e "TERM=${TERM:-xterm}"); else opts+=(-i); fi
+        if [ $# -eq 0 ]; then
+            exec docker exec "${opts[@]}" "$m" bash -l
+        fi
+        exec docker exec "${opts[@]}" "$m" bash -lc "$*"
+        ;;
+    redemarrer)
+        echo "Redémarrage de $m…"
+        docker restart -t 1 "$m" > /dev/null || exit 1
+        /usr/local/sbin/lab-cablage
+        echo "$m a redémarré."
+        ;;
+    *)
+        echo "Action inconnue : $action" >&2
+        exit 1
+        ;;
+esac

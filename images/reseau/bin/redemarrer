@@ -1,0 +1,7 @@
+#!/bin/bash
+# redemarrer <machine> : redémarre une machine du réseau (ce qui n'est pas enregistré dans sa configuration est perdu)
+if [ $# -ne 1 ]; then
+    echo "Usage : redemarrer <machine>" >&2
+    exit 1
+fi
+exec sudo -n /usr/local/sbin/lab-machine redemarrer "$1"
